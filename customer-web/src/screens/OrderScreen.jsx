@@ -18,6 +18,7 @@ const orderSchema = z.object({
   pickup: z.string().min(5, 'Pickup address is required'),
   drop: z.string().min(5, 'Destination address is required'),
   item: z.string().min(2, 'Item description is required'),
+  instructions: z.string().optional(),
   distance: z.coerce.number().min(0.1, 'Distance required').max(8, 'Max 8km for bicycles'),
 })
 
@@ -56,6 +57,7 @@ export default function OrderScreen() {
       pickup: '',
       drop: '',
       item: '',
+      instructions: '',
       distance: 2.0,
     },
     validators: {
@@ -83,6 +85,7 @@ export default function OrderScreen() {
           delivery_address: value.drop,
           delivery_zone: value.drop?.split(',').pop()?.trim() || 'General Accra',
           item_description: value.item,
+          delivery_instructions: value.instructions || null,
           status: 'pending',
           delivery_fee: pricing.breakdown.totalFee,
           base_price: pricing.breakdown.basePrice,
@@ -315,6 +318,26 @@ export default function OrderScreen() {
                       placeholder="What are you sending?"
                     />
                     <FieldError errors={field.state.meta.errors} />
+                  </Field>
+                )}
+              />
+            )}
+
+            {step === 2 && (
+              <form.Field
+                name="instructions"
+                children={(field) => (
+                  <Field>
+                    <FieldLabel htmlFor="instructions">Delivery Instructions (Optional)</FieldLabel>
+                    <textarea
+                      id="instructions"
+                      name="instructions"
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      placeholder="e.g., Call upon arrival, leave at gate, etc."
+                      className="w-full min-h-[80px] px-3 py-2 text-sm rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                    />
                   </Field>
                 )}
               />

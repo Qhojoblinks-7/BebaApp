@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Linking, Platform } from 'react-native';
-import { X, Phone, CircleCheck, Package } from 'lucide-react-native';
+import { X, Phone, CircleCheck,MessageSquare,Package } from 'lucide-react-native';
 import RiderOrderCard from './RiderOrderCard';
 
 const STAGES = [
@@ -18,12 +18,27 @@ export default function DeliveryDetailsBottomSheet({ order, visible, onClose, on
   const currentIdx = STAGES.findIndex(s => s.key === order.status);
   const isCancelled = order.status === 'cancelled';
   const isDone = order.status === 'delivered' || isCancelled;
+  const [contactMode, setContactMode] = useState('pickup');
 
   const fmt = (d) => {
     if (!d) return '---';
     const date = new Date(d);
     if (isNaN(date)) return '---';
     return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const pickupPhone = order.sender_phone || '';
+  const deliveryPhone = order.customer_phone || order.sender_phone || '';
+  const activePhone = contactMode === 'pickup' ? pickupPhone : deliveryPhone;
+  const activeLabel = contactMode === 'pickup' ? 'Sender' : 'Recipient';
+  const activeName = contactMode === 'pickup' ? order.sender_name : order.customer_name;
+
+  const handleCall = () => {
+    if (activePhone) Linking.openURL(`tel:${activePhone}`);
+  };
+
+  const handleSMS = () => {
+    if (activePhone) Linking.openURL(`sms:${activePhone}`);
   };
 
   return (
@@ -102,6 +117,12 @@ export default function DeliveryDetailsBottomSheet({ order, visible, onClose, on
                   <Text style={styles.infoValue}>{order.received_by}</Text>
                 </View>
               ) : null}
+              {order.delivery_instructions ? (
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Instructions</Text>
+                  <Text style={styles.infoValue}>{order.delivery_instructions}</Text>
+                </View>
+              ) : null}
               {(order.customer_phone || order.sender_phone) ? (
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Phone</Text>
@@ -110,6 +131,38 @@ export default function DeliveryDetailsBottomSheet({ order, visible, onClose, on
                   </TouchableOpacity>
                 </View>
               ) : null}
+
+              <View style={styles.contactSwitcher}>
+                <View style={styles.contactToggle}>
+                  <TouchableOpacity
+                    style={[styles.contactTab, contactMode === 'pickup' && styles.contactTabActive]}
+                    onPress={() => setContactMode('pickup')}
+                  >
+                    <Text style={[styles.contactTabText, contactMode === 'pickup' && styles.contactTabTextActive]}>
+                      Pickup
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.contactTab, contactMode === 'delivery' && styles.contactTabActive]}
+                    onPress={() => setContactMode('delivery')}
+                  >
+                    <Text style={[styles.contactTabText, contactMode === 'delivery' && styles.contactTabTextActive]}>
+                      Delivery
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.contactName}>{activeName || 'Unknown'}</Text>
+                <View style={styles.contactActions}>
+                  <TouchableOpacity style={styles.contactBtn} onPress={handleCall}>
+                    <Phone size={18} color="#ffffff" />
+                    <Text style={styles.contactBtnText}>Call</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.contactBtn, styles.contactBtnSMS]} onPress={handleSMS}>
+                    <MessageSquare size={18} color="#ffffff" />
+                    <Text style={styles.contactBtnText}>SMS</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
 
             {!isDone ? (
@@ -182,6 +235,70 @@ const styles = StyleSheet.create({
   infoValueAccent: { flex: 1, fontSize: 14, fontWeight: '800', color: '#f59e0b', textAlign: 'right' },
   infoSub: { fontSize: 11, fontWeight: '500', color: '#64748b', textAlign: 'right', marginTop: 2 },
   phoneText: { flex: 1, fontSize: 13, fontWeight: '700', color: '#38bdf8', textAlign: 'right' },
+  contactSwitcher: {
+    backgroundColor: '#11151a',
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 4,
+    gap: 10,
+  },
+  contactToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#0f1115',
+    borderRadius: 10,
+    padding: 3,
+    gap: 3,
+  },
+  contactTab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contactTabActive: {
+    backgroundColor: '#115e59',
+  },
+  contactTabText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  contactTabTextActive: {
+    color: '#ffffff',
+  },
+  contactName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#e2e8f0',
+    textAlign: 'center',
+  },
+  contactActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  contactBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#115e59',
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  contactBtnSMS: {
+    backgroundColor: '#0f766e',
+  },
+  contactBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#ffffff',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
   primaryBtn: {
     backgroundColor: '#115e59', marginHorizontal: 20, height: 50, borderRadius: 14,
     justifyContent: 'center', alignItems: 'center', marginBottom: 12,

@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS orders (
   
   -- Parcel info
   item_description TEXT,
+  delivery_instructions TEXT,
   delivery_fee DECIMAL(10,2) NOT NULL DEFAULT 0,
   base_price DECIMAL(10,2),
   distance_fee DECIMAL(10,2),

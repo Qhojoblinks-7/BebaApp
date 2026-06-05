@@ -123,6 +123,13 @@ export default function RiderOrderCard({ order, onPress }) {
           </View>
         )}
 
+        {order.delivery_instructions ? (
+          <View style={styles.instructionsRow}>
+            <Text style={styles.instructionsLabel}>Note:</Text>
+            <Text style={styles.instructionsText}>{order.delivery_instructions}</Text>
+          </View>
+        ) : null}
+
         {order.status === "in_transit" && order.delivery_pin ? (
           <View style={styles.pinRow}>
             <Text style={styles.pinLabel}>Delivery PIN</Text>
@@ -215,6 +222,26 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   metaLabel: { fontSize: 9, fontWeight: "500", color: "#ffffff60" },
+  instructionsRow: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#ffffff20",
+  },
+  instructionsLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#f59e0b",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  instructionsText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#ffffff90",
+    lineHeight: 16,
+  },
   pinRow: {
     flexDirection: "row",
     justifyContent: "space-between",
