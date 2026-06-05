@@ -1,0 +1,299 @@
+-- Supabase Database Schema for Beba Logistics
+-- Run this in Supabase SQL Editor to set up tables
+
+-- Users table: stores rider and customer profiles (maps to Supabase auth users)
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  phone TEXT UNIQUE NOT NULL,
+  full_name TEXT NOT NULL,
+  email TEXT,
+  user_type TEXT NOT NULL CHECK (user_type IN ('rider', 'customer')) DEFAULT 'customer',
+  rider_password TEXT, -- Pre-set password for riders (NULL for customers)
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Profiles table: alternative user metadata (used by AuthContext)
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID PRIMARY KEY REFERENCES users(id),
+  role TEXT NOT NULL CHECK (role IN ('rider', 'customer')) DEFAULT 'customer',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Rider status table: tracks online/offline state and last known location
+CREATE TABLE IF NOT EXISTS rider_status (
+  id UUID PRIMARY KEY REFERENCES users(id),
+  is_rider_online BOOLEAN NOT NULL DEFAULT false,
+  current_latitude DECIMAL(10,8),
+  current_longitude DECIMAL(11,8),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Geofences table: defines delivery zones with polygon boundaries
+CREATE TABLE IF NOT EXISTS geofences (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE, -- e.g., "Mamprobi", "Circle"
+  boundary JSONB NOT NULL, -- Array of [lng, lat] coordinates defining the polygon
+  center_latitude DECIMAL(10,8) NOT NULL,
+  center_longitude DECIMAL(11,8) NOT NULL,
+  radius_km INTEGER NOT NULL DEFAULT 8, -- Fallback radius for quick checks
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Geofence boundary points for accurate polygon checking
+CREATE TABLE IF NOT EXISTS geofence_points (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  geofence_id UUID REFERENCES geofences(id) ON DELETE CASCADE,
+  longitude DECIMAL(11,8) NOT NULL,
+  latitude DECIMAL(10,8) NOT NULL,
+  point_order INTEGER NOT NULL -- For polygon ordering
+);
+
+-- Orders table: main dispatch manifests
+CREATE TABLE IF NOT EXISTS orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id TEXT UNIQUE NOT NULL, -- Human-readable waybill (e.g., "BBA-8921-XP")
+  customer_id UUID REFERENCES users(id),
+  rider_id UUID REFERENCES users(id),
+  
+  -- Customer details (denormalized for quick access)
+  customer_name TEXT NOT NULL,
+  customer_phone TEXT NOT NULL,
+  
+  -- Sender details (pickup)
+  sender_name TEXT NOT NULL,
+  sender_phone TEXT NOT NULL,
+  pickup_address TEXT NOT NULL,
+  pickup_zone TEXT, -- For batch grouping
+  
+  -- Delivery details
+  delivery_address TEXT NOT NULL,
+  delivery_zone TEXT NOT NULL, -- For batch grouping
+  
+  -- Parcel info
+  item_description TEXT,
+  delivery_fee DECIMAL(10,2) NOT NULL DEFAULT 0,
+  base_price DECIMAL(10,2),
+  distance_fee DECIMAL(10,2),
+  surge_fee DECIMAL(10,2),
+  
+  -- Status tracking
+  status TEXT NOT NULL CHECK (status IN ('pending', 'assigned', 'picked_up', 'in_transit', 'delivered', 'cancelled')) DEFAULT 'pending',
+  
+  -- Batch optimization fields
+  route_sequence INTEGER DEFAULT 0, -- 0 means not yet sequenced
+  batch_id UUID, -- Optional: group orders into explicit batches
+  
+-- Delivery confirmation
+   received_by TEXT, -- Name of person who received
+   received_at TIMESTAMPTZ,
+   delivery_pin TEXT, -- 4-digit PIN for delivery verification
+   signature TEXT, -- Base64 encoded signature
+  
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Rider locations table: for real-time tracking
+CREATE TABLE IF NOT EXISTS rider_locations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  rider_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  latitude DECIMAL(10,8),
+  longitude DECIMAL(11,8),
+  accuracy DECIMAL(5,2), -- meters
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Revenue table: track earnings per rider
+CREATE TABLE IF NOT EXISTS revenue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  rider_id UUID REFERENCES users(id),
+  order_id UUID REFERENCES orders(id),
+  amount DECIMAL(10,2) NOT NULL,
+  order_completed_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Notifications table: for rider order alerts
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID REFERENCES orders(id),
+  rider_id UUID REFERENCES users(id),
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  is_read BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Point-in-polygon function for geofence checking
+-- Uses ray casting algorithm
+CREATE OR REPLACE FUNCTION point_in_polygon(lon DECIMAL, lat DECIMAL, polygon_lnglat JSONB)
+RETURNS BOOLEAN AS $$
+DECLARE
+  points JSONB[] := polygon_lnglat;
+  n INTEGER := jsonb_array_length(polygon_lnglat);
+  inside BOOLEAN := false;
+  p1 JSONB;
+  p2 JSONB;
+  i INTEGER := 1;
+  j INTEGER;
+BEGIN
+  i := n;
+  FOR j IN 1..n LOOP
+    p1 := points[i];
+    p2 := points[j];
+    
+    IF (jsonb_extract_path_text(p1::jsonb, '1')::DECIMAL < lat) <> (jsonb_extract_path_text(p2::jsonb, '1')::DECIMAL < lat) THEN
+      IF lon < (jsonb_extract_path_text(p2::jsonb, '0')::DECIMAL - jsonb_extract_path_text(p1::jsonb, '0')::DECIMAL) * (lat - jsonb_extract_path_text(p1::jsonb, '1')::DECIMAL) / 
+         (jsonb_extract_path_text(p2::jsonb, '1')::DECIMAL - jsonb_extract_path_text(p1::jsonb, '1')::DECIMAL) + jsonb_extract_path_text(p1::jsonb, '0')::DECIMAL THEN
+        inside := NOT inside;
+      END IF;
+    END IF;
+    i := j;
+  END LOOP;
+  RETURN inside;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- Geofence check function - determines which geofence a point belongs to
+CREATE OR REPLACE FUNCTION check_point_geofence(lat DECIMAL, lon DECIMAL)
+RETURNS TABLE(geofence_name TEXT, distance_km NUMERIC) AS $$
+DECLARE
+  g RECORD;
+BEGIN
+  FOR g IN 
+    SELECT name, center_latitude, center_longitude, boundary, radius_km 
+    FROM geofences 
+    WHERE is_active = true
+  LOOP
+    -- First check radius (fast)
+    IF (point(lat, lon) <-> point(g.center_latitude, g.center_longitude)) * 111.32 <= g.radius_km THEN
+      RETURN QUERY SELECT 
+        g.name as geofence_name,
+        (ROUND(point(lat, lon) <-> point(g.center_latitude, g.center_longitude) * 111.32))::NUMERIC as distance_km;
+    END IF;
+  END LOOP;
+  RETURN;
+END;
+$$ language 'plpgsql';
+
+-- Insert trigger to send notifications to all online riders when order is created
+CREATE OR REPLACE FUNCTION notify_riders_new_order()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO notifications (order_id, rider_id, title, body)
+  SELECT 
+    NEW.id,
+    rs.id,
+    'New Order Available',
+    'Order ' || NEW.order_id || ' needs pickup from ' || NEW.pickup_address
+  FROM rider_status rs
+  WHERE rs.is_rider_online = true;
+  RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER new_order_notification 
+  AFTER INSERT ON orders
+  FOR EACH ROW EXECUTE PROCEDURE notify_riders_new_order();
+
+-- Note: WhatsApp webhooks must be configured in Supabase Dashboard under Database → Webhooks
+-- - CREATE webhook: orders INSERT → whatsapp-notify
+-- - UPDATE webhook: orders UPDATE → whatsapp-notify
+-- The function supabase/functions/whatsapp-notify/index.ts handles customer notifications
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_rider ON orders(rider_id);
+CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
+CREATE INDEX IF NOT EXISTS idx_orders_delivery_zone ON orders(delivery_zone);
+CREATE INDEX IF NOT EXISTS idx_orders_route_sequence ON orders(route_sequence);
+CREATE INDEX IF NOT EXISTS idx_rider_locations_rider ON rider_locations(rider_id);
+CREATE INDEX IF NOT EXISTS idx_rider_locations_updated ON rider_locations(updated_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_rider ON notifications(rider_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+
+-- Triggers for updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON orders 
+FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users 
+FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+
+-- Row Level Security (RLS) Policies
+-- Enable RLS
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rider_status ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rider_locations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE revenue ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+-- Users policies
+CREATE POLICY "Users can view their own data" ON users
+  FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can update their own data" ON users
+  FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "Riders can insert their own profile" ON users
+  FOR INSERT WITH CHECK (true);
+
+-- Profiles policies
+CREATE POLICY "Users can view their own profile" ON profiles
+  FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can insert their own profile" ON profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- Rider status policies
+CREATE POLICY "Riders can manage their status" ON rider_status
+  FOR ALL USING (auth.uid() = id);
+
+CREATE POLICY "Riders can insert their status" ON rider_status
+  FOR INSERT WITH CHECK (true);
+
+-- Orders policies
+CREATE POLICY "Anyone can view orders by waybill" ON orders
+  FOR SELECT USING (true);
+
+CREATE POLICY "Customers can view their orders" ON orders
+  FOR SELECT USING (auth.uid() = customer_id);
+
+CREATE POLICY "Riders can view assigned orders" ON orders
+  FOR SELECT USING (auth.uid() = rider_id OR rider_id IS NULL);
+
+CREATE POLICY "Riders can update assigned orders" ON orders
+  FOR UPDATE USING (auth.uid() = rider_id);
+
+CREATE POLICY "Anyone can create orders" ON orders
+  FOR INSERT WITH CHECK (true);
+
+-- Rider locations policies
+CREATE POLICY "Anyone can insert location" ON rider_locations
+  FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Riders can view their own location" ON rider_locations
+  FOR SELECT USING (auth.uid() = rider_id);
+
+-- Revenue policies
+CREATE POLICY "Riders can view their own revenue" ON revenue
+  FOR SELECT USING (auth.uid() = rider_id);
+
+-- Notifications policies
+CREATE POLICY "Riders can view their notifications" ON notifications
+  FOR SELECT USING (auth.uid() = rider_id);
+
+CREATE POLICY "Riders can update their notifications" ON notifications
+  FOR UPDATE USING (auth.uid() = rider_id);

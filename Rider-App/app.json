@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "Rider-App",
+    "slug": "Rider-App",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#020617"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.beba.rider",
+      "config": {
+        "googleSignIn": { "reservedClientId": "com.googleusercontent.apps.YOUR_CLIENT_ID" }
+      },
+      "infoPlist": {
+        "NSCameraUsageDescription": "Camera access required for delivery signature capture",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Location required for real-time fleet tracking and route optimization",
+        "NSLocationAlwaysUsageDescription": "Background location for continuous fleet telemetry",
+        "NSLocationWhenInUseUsageDescription": "Location needed to navigate delivery addresses",
+        "NSUserInterfaceStyle": "automatic",
+        "UIBackgroundModes": ["location", "fetch"]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#020617"
+      },
+      "edgeToEdgeEnabled": true,
+      "permissions": ["NOTIFICATIONS"],
+      "googleServicesFile": "./google-services.json"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-location",
+      "expo-notifications"
+    ],
+    "extra": {
+      "EXPO_PUBLIC_SUPABASE_URL": "YOUR_SUPABASE_URL",
+      "EXPO_PUBLIC_SUPABASE_ANON_KEY": "YOUR_SUPABASE_ANON_KEY"
+    }
+  }
+}
