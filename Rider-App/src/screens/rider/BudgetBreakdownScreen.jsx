@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   View,
@@ -10,6 +10,8 @@ import {
 } from "react-native";
 import Svg, { Path, Circle } from "react-native-svg";
 import { ArrowLeft, Home, ShoppingBag, PiggyBank, ArrowUpRight } from "lucide-react-native";
+import { useAuth } from "../../context/AuthContext";
+import { getLiveBudgetFromRevenue } from "../../services/budgetService";
 
 const ICON_MAP = {
   Home,
@@ -18,59 +20,48 @@ const ICON_MAP = {
 };
 
 export default function BudgetBreakdownScreen({ route, navigation }) {
-  const { budgetData } = route.params || {};
+  const { user } = useAuth();
+  const params = route.params || {};
+  const serverBudgetData = params.budgetData;
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Atomically mapped defaults matching your 50/30/20 data structures
-  const categories = budgetData || [
-    {
-      id: "needs",
-      title: "50% Needs",
-      allocated: 3500,
-      spent: 2100,
-      color: "#a855f7",
-      description: "Rent, utilities, fuel, food",
-      icon: "Home",
-      subItems: [
-        { name: "Rent & Housing", amount: 1200 },
-        { name: "Utilities & Data", amount: 400 },
-        { name: "Courier Fuel & Transit", amount: 300 },
-        { name: "Groceries", amount: 200 },
-      ],
-    },
-    {
-      id: "wants",
-      title: "30% Wants",
-      allocated: 2100,
-      spent: 1470,
-      color: "#6366f1",
-      description: "Dining out, hobbies, shopping",
-      icon: "ShoppingBag",
-      subItems: [
-        { name: "Dining Out", amount: 650 },
-        { name: "Entertainment & Hobbies", amount: 500 },
-        { name: "Subscribes & Gear Spares", amount: 320 },
-      ],
-    },
-    {
-      id: "savings",
-      title: "20% Savings",
-      allocated: 1400,
-      spent: 1400,
-      color: "#10b981",
-      description: "Emergency fund, investments",
-      icon: "PiggyBank",
-      subItems: [
-        { name: "Emergency Contingency Runway", amount: 600 },
-        { name: "Fixed Income & Wealth Assets", amount: 800 },
-      ],
-    },
-  ];
+  useEffect(() => {
+    if (serverBudgetData) {
+      const categoriesWithIcons = serverBudgetData.map((cat) => ({
+        ...cat,
+        icon: cat.icon || "Wallet",
+      }));
+      setCategories(categoriesWithIcons);
+      setLoading(false);
+    } else if (user?.id) {
+      loadBudget();
+    } else {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, serverBudgetData]);
+
+  const loadBudget = async () => {
+    try {
+      const data = await getLiveBudgetFromRevenue(user.id);
+      if (data && data.length > 0) {
+        setCategories(data);
+      } else {
+        setCategories([]);
+      }
+    } catch (e) {
+      console.warn("[BudgetBreakdown] load failed:", e.message);
+      setCategories([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0b0d0f" />
 
-      {/* --- REFINED APP ROW NAVIGATION HEADER --- */}
       <View style={styles.headerRow}>
         <TouchableOpacity 
           style={styles.backButton} 
@@ -88,98 +79,102 @@ export default function BudgetBreakdownScreen({ route, navigation }) {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* --- DYNAMIC BUDGET CARDS --- */}
-        {categories.map((category) => {
-          const percentage = category.allocated > 0 ? Math.round((category.spent / category.allocated) * 100) : 0;
-          const remaining = category.allocated - category.spent;
-          const IconComponent = ICON_MAP[category.icon];
+        {loading ? (
+          <View style={styles.loadingWrap}>
+            <Text style={styles.loadingText}>Loading budget...</Text>
+          </View>
+        ) : categories.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyText}>No budget data yet. Start delivering to see your budget breakdown.</Text>
+          </View>
+        ) : (
+          categories.map((category) => {
+            const percentage = category.allocated > 0 ? Math.round((category.spent / category.allocated) * 100) : 0;
+            const remaining = category.allocated - category.spent;
+            const IconComponent = ICON_MAP[category.icon];
 
-          // Compute SVG Progress Arc Circumference parameters
-          const radius = 16;
-          const circumference = 2 * Math.PI * radius;
-          const strokeDashoffset = circumference - (percentage / 100) * circumference;
+            const radius = 16;
+            const circumference = 2 * Math.PI * radius;
+            const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
-          return (
-            <TouchableOpacity key={category.id} style={styles.budgetBucketCard} activeOpacity={0.8} onPress={() => navigation.navigate("BudgetInsightDetail", { categoryId: category.id })}>
-              
-              {/* Top Summary Frame */}
-              <View style={styles.cardMainHeader}>
-                <View style={styles.leftMetaStack}>
-                  <View style={styles.cardHeaderInline}>
-                    <View style={[styles.iconCircle, { backgroundColor: category.color + "15" }]}>
-                      {IconComponent && <IconComponent size={14} color={category.color} />}
-                    </View>
-                    <Text style={styles.cardLabelText}>{category.title}</Text>
-                  </View>
-                  <Text style={styles.descriptionText}>{category.description}</Text>
-                </View>
-
-                {/* Progress Arc matching the demographic tracking circle of image_3a97a8.png */}
-                <View style={styles.arcVisualContainer}>
-                  <Svg height="48" width="48" viewBox="0 0 40 40">
-                    <Circle cx="20" cy="20" r={radius} fill="none" stroke="#1e293b" strokeWidth="3" />
-                    <Circle
-                      cx="20"
-                      cy="20"
-                      r={radius}
-                      fill="none"
-                      stroke={category.color}
-                      strokeWidth="3.5"
-                      strokeDasharray={`${circumference} ${circumference}`}
-                      strokeDashoffset={strokeDashoffset}
-                      strokeLinecap="round"
-                      transform="rotate(-90 20 20)"
-                    />
-                  </Svg>
-                  <View style={styles.arcAbsoluteLabelCenter}>
-                    <Text style={styles.arcPercentageText}>{percentage}%</Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Dynamic Allocation Aggregated Metadata Rows */}
-              <View style={styles.metricRowGroup}>
-                <View style={styles.metricBlock}>
-                  <Text style={styles.metricLabelStatic}>Allocated Base</Text>
-                  <Text style={styles.metricValueText}>GH₵ {category.allocated.toLocaleString()}</Text>
-                </View>
-                <View style={styles.metricBlock}>
-                  <Text style={styles.metricLabelStatic}>Spent Outflow</Text>
-                  <Text style={[styles.metricValueText, { color: "#ffffff" }]}>GH₵ {category.spent.toLocaleString()}</Text>
-                </View>
-                <View style={[styles.metricBlock, { alignItems: "flex-end" }]}>
-                  <Text style={styles.metricLabelStatic}>Remaining Free</Text>
-                  <Text style={[styles.metricValueText, { color: remaining < 0 ? "#ef4444" : "#94a3b8" }]}>
-                    GH₵ {remaining.toLocaleString()}
-                  </Text>
-                </View>
-              </View>
-
-              {/* --- NESTED SUB-ITEMS LEDGER EXPANSION --- */}
-              <View style={styles.subItemsSection}>
-                <Text style={styles.subSectionTitle}>Atomic Cost Ledger</Text>
+            return (
+              <TouchableOpacity key={category.id} style={styles.budgetBucketCard} activeOpacity={0.8} onPress={() => navigation.navigate("BudgetInsightDetail", { categoryId: category.id, budgetData: categories })}>
                 
-                {category.subItems.map((subItem, idx) => (
-                  <View key={idx} style={styles.subItemRow}>
-                    <View style={styles.subItemLeftNode}>
-                      <View style={[styles.dot, { backgroundColor: category.color }]} />
-                      <Text style={styles.subItemName} numberOfLines={1}>
-                        {subItem.name}
-                      </Text>
+                <View style={styles.cardMainHeader}>
+                  <View style={styles.leftMetaStack}>
+                    <View style={styles.cardHeaderInline}>
+                      <View style={[styles.iconCircle, { backgroundColor: category.color + "15" }]}>
+                        {IconComponent && <IconComponent size={14} color={category.color} />}
+                      </View>
+                      <Text style={styles.cardLabelText}>{category.title}</Text>
                     </View>
-                    <View style={styles.subItemRightNode}>
-                      <Text style={styles.subItemAmount}>GH₵ {subItem.amount.toLocaleString()}</Text>
-                      <TouchableOpacity style={styles.microArrowAction} activeOpacity={0.7}>
-                        <ArrowUpRight size={12} color="#475569" />
-                      </TouchableOpacity>
+                    <Text style={styles.descriptionText}>{category.description}</Text>
+                  </View>
+
+                  <View style={styles.arcVisualContainer}>
+                    <Svg height="48" width="48" viewBox="0 0 40 40">
+                      <Circle cx="20" cy="20" r={radius} fill="none" stroke="#1e293b" strokeWidth="3" />
+                      <Circle
+                        cx="20"
+                        cy="20"
+                        r={radius}
+                        fill="none"
+                        stroke={category.color}
+                        strokeWidth="3.5"
+                        strokeDasharray={`${circumference} ${circumference}`}
+                        strokeDashoffset={strokeDashoffset}
+                        strokeLinecap="round"
+                        transform="rotate(-90 20 20)"
+                      />
+                    </Svg>
+                    <View style={styles.arcAbsoluteLabelCenter}>
+                      <Text style={styles.arcPercentageText}>{percentage}%</Text>
                     </View>
                   </View>
-                ))}
-              </View>
+                </View>
 
-            </TouchableOpacity>
-          );
-        })}
+                <View style={styles.metricRowGroup}>
+                  <View style={styles.metricBlock}>
+                    <Text style={styles.metricLabelStatic}>Allocated Base</Text>
+                    <Text style={styles.metricValueText}>GH₵ {Number(category.allocated).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+                  </View>
+                  <View style={styles.metricBlock}>
+                    <Text style={styles.metricLabelStatic}>Spent Outflow</Text>
+                    <Text style={[styles.metricValueText, { color: "#ffffff" }]}>GH₵ {Number(category.spent).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+                  </View>
+                  <View style={[styles.metricBlock, { alignItems: "flex-end" }]}>
+                    <Text style={styles.metricLabelStatic}>Remaining Free</Text>
+                    <Text style={[styles.metricValueText, { color: remaining < 0 ? "#ef4444" : "#94a3b8" }]}>
+                      GH₵ {Number(remaining).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.subItemsSection}>
+                  <Text style={styles.subSectionTitle}>Atomic Cost Ledger</Text>
+                  
+                  {(category.subItems || []).map((subItem, idx) => (
+                    <View key={idx} style={styles.subItemRow}>
+                      <View style={styles.subItemLeftNode}>
+                        <View style={[styles.dot, { backgroundColor: category.color }]} />
+                        <Text style={styles.subItemName} numberOfLines={1}>
+                          {subItem.name}
+                        </Text>
+                      </View>
+                      <View style={styles.subItemRightNode}>
+                        <Text style={styles.subItemAmount}>GH₵ {Number(subItem.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+                        <TouchableOpacity style={styles.microArrowAction} activeOpacity={0.7}>
+                          <ArrowUpRight size={12} color="#475569" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+
+              </TouchableOpacity>
+            );
+          })
+        )}
         <View style={{ height: 40 }} />
       </ScrollView>
     </View>
@@ -217,6 +212,10 @@ const styles = StyleSheet.create({
   headerRightSpacer: { width: 38 },
   scrollContainer: { flex: 1 },
   scrollContent: { paddingHorizontal: 18, paddingVertical: 16, gap: 14 },
+  loadingWrap: { paddingTop: 40, alignItems: "center", gap: 12 },
+  loadingText: { color: "#64748b", fontSize: 13, fontWeight: "600" },
+  emptyWrap: { paddingTop: 40, alignItems: "center", gap: 12 },
+  emptyText: { color: "#64748b", fontSize: 14, fontWeight: "600", textAlign: "center" },
   budgetBucketCard: {
     backgroundColor: "#16191e",
     borderRadius: 28,

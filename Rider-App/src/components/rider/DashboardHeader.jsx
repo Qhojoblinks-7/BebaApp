@@ -59,14 +59,14 @@ function MonthSelector({ monthLabel, onPrev, onNext }) {
   );
 }
 
-function ProfileBadge() {
+function ProfileBadge({ onPress }) {
   return (
-    <View style={styles.profileBadge}>
+    <TouchableOpacity style={styles.profileBadge} onPress={onPress} activeOpacity={0.8}>
       <View style={styles.avatar} />
       <View style={styles.profileTextContainer}>
         <Text style={styles.profileName}>Immanuel E.</Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -118,13 +118,20 @@ export default function DashboardHeader({
   unreadCount = 0,
   onToggleOnline,
   onNavigateNotifications,
-  monthLabel,
+  onNavigateProfile,
+  weekStart,
   onMonthPrev,
   onMonthNext,
   calendarDays = [],
   selectedDayIndex,
   onSelectDay,
 }) {
+  const monthLabel = weekStart
+    ? weekStart.toLocaleDateString("en-US", {
+        month: "long",
+        year: "numeric",
+      })
+    : "";
   return (
     <View style={styles.headerBackground}>
       <StatusBar
@@ -136,8 +143,8 @@ export default function DashboardHeader({
       <View style={styles.safeHeader}>
         {/* Profile Details & Fleet Availability Switch Strip */}
         <View style={styles.headerRow}>
-          <ProfileBadge />
-          <ActionButtons
+        <ProfileBadge onPress={onNavigateProfile} />
+        <ActionButtons
             isOnline={isOnline}
             unreadCount={unreadCount}
             onToggleOnline={onToggleOnline}

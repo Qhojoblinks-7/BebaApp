@@ -2,7 +2,7 @@ import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Home, Briefcase, Route, DollarSign } from "lucide-react-native";
+import { Home, Briefcase, Route, DollarSign, User } from "lucide-react-native";
 
 // Core Screens
 import DashboardScreen from "../screens/rider/Dashboard";
@@ -10,13 +10,20 @@ import JobQueueScreen from "../screens/rider/JobQueueScreen";
 import ActiveDeliveryScreen from "../screens/rider/ActiveDeliveryScreen";
 import DeliveryClosureScreen from "../screens/rider/DeliveryClosureScreen";
 import NotificationsScreen from "../screens/rider/NotificationsScreen";
+import NotificationsSettingsScreen from "../screens/rider/NotificationsSettingsScreen";
+import PrivacySecurityScreen from "../screens/rider/PrivacySecurityScreen";
+import PreferencesScreen from "../screens/rider/PreferencesScreen";
+import HelpSupportScreen from "../screens/rider/HelpSupportScreen";
+import TermsPrivacyPolicyScreen from "../screens/rider/TermsPrivacyPolicyScreen";
 import FinancesScreen from "../screens/rider/FinancesScreen";
+import ProfileScreen from "../screens/rider/ProfileScreen";
 import BudgetBreakdownScreen from "../screens/rider/BudgetBreakdownScreen";
 import SmartInsightsScreen from "../screens/rider/SmartInsightsScreen";
 import BudgetInsightDetailScreen from "../screens/rider/BudgetInsightDetailScreen";
 import ReportsScreen from "../screens/rider/ReportsScreen";
 import ManualCashFlowScreen from "../screens/rider/ManualCashFlowScreen";
 import QuickAddEntryScreen from "../screens/rider/QuickAddEntryScreen";
+import DeliveryHistoryScreen from "../screens/rider/DeliveryHistoryScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -94,6 +101,7 @@ function TabNavigator() {
           ),
         }}
       />
+
     </Tab.Navigator>
   );
 }
@@ -151,6 +159,55 @@ export default function AppNavigator() {
         <Stack.Screen
           name="QuickAddEntry"
           component={QuickAddEntryScreen}
+          options={{
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
+          name="DeliveryHistory"
+          component={DeliveryHistoryScreen}
+          options={{
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
+          name="NotificationsSettings"
+          component={NotificationsSettingsScreen}
+          options={{
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
+          name="PrivacySecurity"
+          component={PrivacySecurityScreen}
+          options={{
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
+          name="Preferences"
+          component={PreferencesScreen}
+          options={{
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
+          name="HelpSupport"
+          component={HelpSupportScreen}
+          options={{
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
+          name="TermsPrivacyPolicy"
+          component={TermsPrivacyPolicyScreen}
+          options={{
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
+          name="Profile"
+          component={ProfileScreen}
           options={{
             animation: "slide_from_right",
           }}

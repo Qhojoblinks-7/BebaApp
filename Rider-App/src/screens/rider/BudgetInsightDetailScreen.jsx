@@ -1,25 +1,29 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   View,
   Text,
   ScrollView,
   TouchableOpacity,
-  Platform,
+  ActivityIndicator,
   StatusBar,
   Dimensions,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
-import {
+import { 
+  CheckCircle2, 
+  ArrowUpRight, 
+  AlertTriangle, 
+  ShieldCheck, 
+  Zap, 
+  Loader2,
   ArrowLeft,
   TrendingUp,
-  AlertTriangle,
-  CheckCircle2,
   Sparkles,
-  TrendingDown,
 } from "lucide-react-native";
-
-const { width } = Dimensions.get("window");
+import { useAuth } from "../../context/AuthContext";
+import { fetchInsightsByCategory, fetchActionPlans } from "../../services/insightsService";
+import { fetchBudgetBreakdownData } from "../../services/budgetService";
 
 const INSIGHT_DATA_MAP = {
   needs: {
@@ -29,30 +33,6 @@ const INSIGHT_DATA_MAP = {
     burnRateText: "Optimal",
     chartPath:
       "M 0 35 Q 30 15 60 28 T 120 8 T 180 32 T 240 12 T 300 5",
-    leaks: [
-      {
-        id: 1,
-        type: "warning",
-        message:
-          "Fuel inflation tracking 6% higher along your usual transit corridors.",
-      },
-      {
-        id: 2,
-        type: "info",
-        message:
-          "Fixed utility overhead stabilized following low-power server migration.",
-      },
-    ],
-    optimizations: [
-      {
-        title: "Consolidate Logistics Hubs",
-        desc: "Batch your delivery runs closer to high-density commercial pick-up points to drop true operating cost per km.",
-      },
-      {
-        title: "Bulk Fuel Purchases",
-        desc: "Utilize commercial partner discounts or high-volume stations to protect cash flow limits.",
-      },
-    ],
   },
   wants: {
     title: "30% Wants deep dive",
@@ -61,30 +41,6 @@ const INSIGHT_DATA_MAP = {
     burnRateText: "Accelerated",
     chartPath:
       "M 0 35 Q 40 38 80 20 T 160 5 T 240 2 T 300 1",
-    leaks: [
-      {
-        id: 1,
-        type: "danger",
-        message:
-          "Mid-day restaurant dining in Osu represents 42% of this bucket's total usage.",
-      },
-      {
-        id: 2,
-        type: "warning",
-        message:
-          "Unused digital layout tool subscription renewed silently this cycle.",
-      },
-    ],
-    optimizations: [
-      {
-        title: "Implement a 48-Hour Cool-Down",
-        desc: "Delay discretionary tech acquisitions or personal lifestyle upgrades by 2 days to verify utility necessity.",
-      },
-      {
-        title: "Cap Food Delivery Applications",
-        desc: "Set an atomic monthly threshold strictly for lifestyle convenience dining.",
-      },
-    ],
   },
   savings: {
     title: "20% Savings deep dive",
@@ -93,31 +49,63 @@ const INSIGHT_DATA_MAP = {
     burnRateText: "Target Achieved",
     chartPath:
       "M 0 38 Q 50 35 100 25 T 200 15 T 300 8",
-    leaks: [
-      {
-        id: 1,
-        type: "success",
-        message:
-          "Automated allocations hit investment targets 3 days ahead of cycle schedule.",
-      },
-    ],
-    optimizations: [
-      {
-        title: "Optimize Inflation Spreads",
-        desc: "Reallocate low-yield idle cash balances into fixed-income or inflation-shielded investment instruments.",
-      },
-      {
-        title: "Scale Runway Targets",
-        desc: "Gradually increase liquid reserves from 4.5 months to 6 months to offset macroeconomic shifts.",
-      },
-    ],
   },
 };
 
 export default function BudgetInsightDetailScreen({ route, navigation }) {
+  const { user } = useAuth();
   const { categoryId } = route.params || { categoryId: "needs" };
-  const currentInsight =
-    INSIGHT_DATA_MAP[categoryId] || INSIGHT_DATA_MAP.needs;
+  const [categoryData, setCategoryData] = useState(null);
+  const [insights, setInsights] = useState([]);
+  const [actions, setActions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const currentInsight = INSIGHT_DATA_MAP[categoryId] || INSIGHT_DATA_MAP.needs;
+
+  useEffect(() => {
+    if (user?.id) {
+      loadCategoryData();
+    }
+  }, [user?.id, categoryId]);
+
+  const loadCategoryData = async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    try {
+      const [breakdownData, rawInsights, rawActions] = await Promise.all([
+        fetchBudgetBreakdownData(user.id),
+        fetchInsightsByCategory(user.id, categoryId),
+        fetchActionPlans(user.id),
+      ]);
+
+      if (breakdownData && breakdownData[categoryId]) {
+        setCategoryData(breakdownData[categoryId]);
+      } else {
+        setCategoryData(null);
+      }
+
+      setInsights(rawInsights);
+      const categoryActions = rawActions.filter((a) => a.category === categoryId);
+      setActions(categoryActions);
+    } catch (e) {
+      console.warn("[BudgetInsightDetail] load failed:", e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const noData = !loading && !categoryData;
+
+  const leaks = insights.map((ins) => ({
+    id: ins.id,
+    type: ins.type,
+    message: ins.body,
+  }));
+
+  const optimizations = actions.map((action, idx) => ({
+    title: action.title,
+    desc: action.description,
+  }));
 
   return (
     <View style={styles.container}>
@@ -139,128 +127,166 @@ export default function BudgetInsightDetailScreen({ route, navigation }) {
         style={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.heroSummaryCard}>
-          <Text
-            style={[
-              styles.heroBadgeText,
-              { color: currentInsight.accentColor },
-            ]}
-          >
-            {currentInsight.title}
-          </Text>
-          <Text style={styles.heroSubtitleText}>
-            {currentInsight.subtitle}
-          </Text>
-
-          <View style={styles.heroStatsFooter}>
-            <View>
-              <Text style={styles.labelStaticText}>
-                Monthly Exhaust Flow
-              </Text>
-              <Text style={styles.mainValueText}>
-                {currentInsight.burnRateText}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.statusIndicatorPill,
-                { backgroundColor: currentInsight.accentColor + "15" },
-              ]}
-            >
+        {loading ? (
+          <View style={styles.loadingWrap}>
+            <Loader2 size={24} color="#64748b" />
+            <Text style={styles.loadingText}>Loading insights...</Text>
+          </View>
+        ) : noData ? (
+          <View style={styles.emptyWrap}>
+            <AlertTriangle size={32} color="#334155" />
+            <Text style={styles.emptyText}>No budget data available yet for this category.</Text>
+            <Text style={styles.emptySubtext}>Deliveries and cash flow entries will generate insights.</Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.heroSummaryCard}>
               <Text
                 style={[
-                  styles.statusPillText,
+                  styles.heroBadgeText,
                   { color: currentInsight.accentColor },
                 ]}
               >
-                Active Scan
+                {currentInsight.title}
               </Text>
-            </View>
-          </View>
-        </View>
+              <Text style={styles.heroSubtitleText}>
+                {currentInsight.subtitle}
+              </Text>
 
-        <View style={styles.sectionHeader}>
-          <TrendingUp size={15} color="#94a3b8" />
-          <Text style={styles.sectionTitleText}>
-            Velocity Trajectory (30 Days)
-          </Text>
-        </View>
-
-        <View style={styles.chartContainerCard}>
-          <View style={styles.chartYAxisLegends}>
-            <Text style={styles.axisLegendText}>Max</Text>
-            <Text style={styles.axisLegendText}>Mid</Text>
-            <Text style={styles.axisLegendText}>Min</Text>
-          </View>
-
-          <View style={styles.svgCanvasWrapper}>
-            <Svg
-              height="100"
-              width={width - 80}
-              viewBox={`0 0 ${width - 80} 40`}
-            >
-              <Path
-                d={currentInsight.chartPath}
-                fill="none"
-                stroke={currentInsight.accentColor}
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-            </Svg>
-          </View>
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <AlertTriangle size={15} color="#facc15" />
-          <Text style={styles.sectionTitleText}>
-            Detected Outflow Flaws
-          </Text>
-        </View>
-
-        {currentInsight.leaks.map((leak) => (
-          <View key={leak.id} style={styles.leakNotificationBar}>
-            <View style={styles.leakLeftNode}>
+            <View style={styles.heroStatsFooter}>
+              <View>
+                <Text style={styles.labelStaticText}>
+                  Monthly Exhaust Flow
+                </Text>
+                <Text style={styles.mainValueText}>
+                  {categoryData ? currentInsight.burnRateText : "No Data"}
+                </Text>
+              </View>
               <View
                 style={[
-                  styles.leakIndicatorDot,
-                  {
-                    backgroundColor:
-                      leak.type === "danger" || leak.type === "warning"
-                        ? "#ef4444"
-                        : "#10b981",
-                  },
+                  styles.statusIndicatorPill,
+                  { backgroundColor: currentInsight.accentColor + "15" },
                 ]}
-              />
-              <Text style={styles.leakMessageText}>{leak.message}</Text>
+              >
+                <Text
+                  style={[
+                    styles.statusPillText,
+                    { color: currentInsight.accentColor },
+                  ]}
+                >
+                  {categoryData ? "Active Scan" : "Idle"}
+                </Text>
+              </View>
             </View>
           </View>
-        ))}
 
-        <View style={[styles.sectionHeader, { marginTop: 24 }]}>
-          <Sparkles size={15} color="#a855f7" />
-          <Text style={styles.sectionTitleText}>
-            Strategic Action Blueprints
-          </Text>
-        </View>
+          {categoryData ? (
+            <>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitleText}>Velocity Trajectory (30 Days)</Text>
+              </View>
 
-        {currentInsight.optimizations.map((opt, index) => (
-          <View key={index} style={styles.optimizationStrategyCard}>
-            <View style={styles.strategyHeaderRow}>
-              <CheckCircle2
-                size={16}
-                color={currentInsight.accentColor}
-              />
-              <Text style={styles.strategyTitleText}>{opt.title}</Text>
+              <View style={styles.chartContainerCard}>
+                <View style={styles.chartYAxisLegends}>
+                  <Text style={styles.axisLegendText}>Max</Text>
+                  <Text style={styles.axisLegendText}>Mid</Text>
+                  <Text style={styles.axisLegendText}>Min</Text>
+                </View>
+
+                <View style={styles.svgCanvasWrapper}>
+                  <Svg
+                    height="100"
+                    width={width - 80}
+                    viewBox={`0 0 ${width - 80} 40`}
+                  >
+                    <Path
+                      d={currentInsight.chartPath}
+                      fill="none"
+                      stroke={currentInsight.accentColor}
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                    />
+                  </Svg>
+                </View>
+              </View>
+            </>
+          ) : (
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyText}>No activity recorded yet.</Text>
+              <Text style={styles.emptySubtext}>Charts will appear once budget data exists.</Text>
             </View>
-            <Text style={styles.strategyDescriptionText}>{opt.desc}</Text>
-          </View>
-        ))}
+          )}
 
-        <View style={{ height: 60 }} />
+            {leaks.length > 0 && (
+              <>
+                <View style={styles.sectionHeader}>
+                  <AlertTriangle size={15} color="#facc15" />
+                  <Text style={styles.sectionTitleText}>
+                    Detected Outflow Flaws
+                  </Text>
+                </View>
+
+                {leaks.map((leak) => (
+                  <View key={leak.id} style={styles.leakNotificationBar}>
+                    <View style={styles.leakLeftNode}>
+                      <View
+                        style={[
+                          styles.leakIndicatorDot,
+                          {
+                            backgroundColor:
+                              leak.type === "danger" || leak.type === "warning"
+                                ? "#ef4444"
+                                : "#10b981",
+                          },
+                        ]}
+                      />
+                      <Text style={styles.leakMessageText}>{leak.message}</Text>
+                    </View>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {optimizations.length > 0 && (
+              <>
+                <View style={[styles.sectionHeader, { marginTop: 24 }]}>
+                  <ShieldCheck size={15} color="#10b981" />
+                  <Text style={styles.sectionTitleText}>
+                    Strategic Action Blueprints
+                  </Text>
+                </View>
+
+                {optimizations.map((opt, index) => (
+                  <View key={index} style={styles.optimizationStrategyCard}>
+                    <View style={styles.strategyHeaderRow}>
+                      <CheckCircle2
+                        size={16}
+                        color={currentInsight.accentColor}
+                      />
+                      <Text style={styles.strategyTitleText}>{opt.title}</Text>
+                    </View>
+                    <Text style={styles.strategyDescriptionText}>{opt.desc}</Text>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {leaks.length === 0 && optimizations.length === 0 && (
+              <View style={styles.emptyWrap}>
+                <Text style={styles.emptyText}>No insights or actions available yet.</Text>
+                <Text style={styles.emptySubtext}>Insights will appear as activity is recorded.</Text>
+              </View>
+            )}
+
+            <View style={{ height: 60 }} />
+          </>
+        )}
       </ScrollView>
     </View>
   );
 }
+
+const { width } = Dimensions.get("window");
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0b0d0f", paddingTop: 12 },
@@ -292,7 +318,8 @@ const styles = StyleSheet.create({
   },
   headerRightSpacer: { width: 38 },
   scrollContainer: { flex: 1 },
-  scrollContent: { paddingHorizontal: 18, paddingVertical: 16 },
+  loadingWrap: { paddingTop: 40, alignItems: "center", gap: 12 },
+  loadingText: { color: "#64748b", fontSize: 13, fontWeight: "600" },
   heroSummaryCard: {
     backgroundColor: "#16191e",
     borderRadius: 28,
@@ -428,4 +455,11 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     paddingLeft: 26,
   },
+  emptyWrap: {
+    paddingTop: 40,
+    alignItems: "center",
+    gap: 12,
+  },
+  emptyText: { color: "#64748b", fontSize: 14, fontWeight: "600", textAlign: "center" },
+  emptySubtext: { color: "#475569", fontSize: 12, fontWeight: "500", textAlign: "center", marginTop: 4 },
 });

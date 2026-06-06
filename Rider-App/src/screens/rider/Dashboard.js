@@ -272,12 +272,12 @@ export default function DashboardScreen({ navigation }) {
         unreadCount={unreadCount}
         onToggleOnline={toggleAvailabilityState}
         onNavigateNotifications={() => navigation.navigate("Notifications")}
+        onNavigateProfile={() => navigation.navigate("Profile")}
         onMonthPrev={handleMonthPrev}
         onMonthNext={handleMonthNext}
         calendarDays={calendarDays}
         selectedDayIndex={selectedDayIndex}
         onSelectDay={handleSelectDay}
-        monthLabel={monthLabel}
       />
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>

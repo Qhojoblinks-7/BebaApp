@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -6,8 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
-  Platform,
   StatusBar,
+  ActivityIndicator,
 } from "react-native";
 import Svg, { Path, Circle } from "react-native-svg";
 import {
@@ -20,81 +20,184 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react-native";
+import { useAuth } from "../../context/AuthContext";
+import { supabase } from "../../services/supabaseClient";
+import { fetchInsights } from "../../services/insightsService";
 
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.44;
 
-const DEFAULT_METRICS = {
-  daily: {
-    completionRate: 92,
-    totalEarnings: 245.5,
-    totalCompletions: 18,
-    prevCompletionRate: 88,
-    prevTotalEarnings: 210.0,
-    prevTotalCompletions: 15,
-  },
-  weekly: {
-    completionRate: 90,
-    totalEarnings: 1420.75,
-    totalCompletions: 112,
-    prevCompletionRate: 86,
-    prevTotalEarnings: 1180.0,
-    prevTotalCompletions: 98,
-  },
-  monthly: {
-    completionRate: 88,
-    totalEarnings: 6100.0,
-    totalCompletions: 480,
-    prevCompletionRate: 85,
-    prevTotalEarnings: 5800.0,
-    prevTotalCompletions: 445,
-  },
-};
+function getStartOfDay(d) {
+  const date = new Date(d);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function getMonday(d) {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+  date.setDate(diff);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function getStartOfMonth(d) {
+  const date = new Date(d);
+  date.setDate(1);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function getEndOfMonth(d) {
+  const date = new Date(d);
+  date.setMonth(date.getMonth() + 1);
+  date.setDate(0);
+  date.setHours(23, 59, 59, 999);
+  return date;
+}
+
+function getPeriodRange(period, startDate, endDate) {
+  const now = new Date();
+  if (period === "daily") {
+    const start = getStartOfDay(now);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { start, end, prevStart: new Date(start.getTime() - 24 * 60 * 60 * 1000), prevEnd: start };
+  }
+  if (period === "weekly") {
+    const monday = getMonday(now);
+    const start = monday;
+    const end = new Date(monday);
+    end.setDate(end.getDate() + 7);
+    const prevStart = new Date(monday.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const prevEnd = monday;
+    return { start, end, prevStart, prevEnd };
+  }
+  if (period === "monthly") {
+    const start = getStartOfMonth(now);
+    const end = getEndOfMonth(now);
+    const prevStart = new Date(start.getFullYear(), start.getMonth() - 1, 1);
+    const prevEnd = start;
+    return { start, end, prevStart, prevEnd };
+  }
+  if (period === "custom" && startDate && endDate) {
+    const start = getStartOfDay(startDate);
+    const end = getStartOfDay(endDate);
+    end.setDate(end.getDate() + 1);
+    const prevStart = new Date(start.getTime() - (end - start));
+    const prevEnd = start;
+    return { start, end, prevStart, prevEnd };
+  }
+  const start = getStartOfMonth(now);
+  const end = getEndOfMonth(now);
+  return { start, end, prevStart: new Date(start.getFullYear(), start.getMonth() - 1, 1), prevEnd: start };
+}
+
+async function fetchMetricsForRange(userId, start, end) {
+  const startStr = start.toISOString();
+  const endStr = end.toISOString();
+
+  const { data: revenue, error: revenueError } = await supabase
+    .from("revenue")
+    .select("amount, order_completed_at")
+    .eq("rider_id", userId)
+    .gte("order_completed_at", startStr)
+    .lt("order_completed_at", endStr);
+
+  if (revenueError) throw revenueError;
+
+  const { data: orders, error: ordersError } = await supabase
+    .from("orders")
+    .select("id, status")
+    .eq("rider_id", userId)
+    .gte("created_at", startStr)
+    .lt("created_at", endStr);
+
+  if (ordersError) throw ordersError;
+
+  const totalEarnings = (revenue || []).reduce((sum, r) => sum + Number(r.amount), 0);
+  const totalCompletions = (orders || []).filter((o) => o.status === "delivered").length;
+  const totalOrders = (orders || []).length;
+  const completionRate = totalOrders > 0 ? Math.round((totalCompletions / totalOrders) * 100) : 0;
+
+  return { totalEarnings, totalCompletions, completionRate, totalOrders };
+}
 
 export default function ReportsScreen({ route, navigation }) {
-  const params = route?.params || {};
-  const initialPeriod = params?.period || "monthly";
-  const [period, setPeriod] = useState(initialPeriod);
+  const { user } = useAuth();
+  const [period, setPeriod] = useState(
+    route?.params?.period || "monthly",
+  );
   const [expandedInsight, setExpandedInsight] = useState(null);
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
   const [showDateModal, setShowDateModal] = useState(false);
   const [dateMode, setDateMode] = useState("start");
   const [tempDate, setTempDate] = useState(new Date());
+  const [metrics, setMetrics] = useState(null);
+  const [insights, setInsights] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const computeCustomMetrics = () => {
-    if (!startDate || !endDate) return null;
-    const days = Math.max(Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)), 1);
-    const baseEarnings = 245.5;
-    const baseCompletions = 18;
-    const multiplier = days / 1;
-    const totalEarnings = Math.round(baseEarnings * multiplier * 100) / 100;
-    const totalCompletions = Math.round(baseCompletions * multiplier);
-    const completionRate = 88 + Math.floor(Math.random() * 8);
-    const prevTotalEarnings = Math.round(totalEarnings * 0.85 * 100) / 100;
-    const prevTotalCompletions = Math.round(totalCompletions * 0.85);
-    const prevCompletionRate = 82 + Math.floor(Math.random() * 6);
-    return { completionRate, totalEarnings, totalCompletions, prevCompletionRate, prevTotalEarnings, prevTotalCompletions };
+  const range = useMemo(
+    () => getPeriodRange(period, startDate, endDate),
+    [period, startDate, endDate],
+  );
+
+  const loadData = async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    try {
+      const [current, previous] = await Promise.all([
+        fetchMetricsForRange(user.id, range.start, range.end),
+        fetchMetricsForRange(user.id, range.prevStart, range.prevEnd),
+      ]);
+
+      const earningsDelta = previous.totalEarnings > 0 ? ((current.totalEarnings - previous.totalEarnings) / previous.totalEarnings) * 100 : current.totalEarnings > 0 ? 100 : 0;
+      const completionDelta = previous.completionRate > 0 ? ((current.completionRate - previous.completionRate) / previous.completionRate) * 100 : current.completionRate > 0 ? 100 : 0;
+      const completionsDelta = previous.totalCompletions > 0 ? ((current.totalCompletions - previous.totalCompletions) / previous.totalCompletions) * 100 : current.totalCompletions > 0 ? 100 : 0;
+
+      setMetrics({
+        completionRate: current.completionRate,
+        totalEarnings: current.totalEarnings,
+        totalCompletions: current.totalCompletions,
+        totalOrders: current.totalOrders,
+        prevCompletionRate: previous.completionRate,
+        prevTotalEarnings: previous.totalEarnings,
+        prevTotalCompletions: previous.totalCompletions,
+        earningsDelta,
+        completionDelta,
+        completionsDelta,
+      });
+
+      const insightsData = await fetchInsights(user.id);
+      setInsights(insightsData);
+    } catch (err) {
+      console.warn("[Reports] load failed:", err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const customMetrics = computeCustomMetrics();
-  const metrics = period === "custom" ? customMetrics : DEFAULT_METRICS[period] || DEFAULT_METRICS.monthly;
-  if (!metrics) return null;
+  useEffect(() => {
+    loadData();
+  }, [user?.id, period, startDate, endDate]);
 
-  const earnings = metrics.totalEarnings || 0;
+  const earnings = metrics?.totalEarnings || 0;
   const needs = earnings * 0.5;
   const wants = earnings * 0.3;
   const savings = earnings * 0.2;
 
-  const renderDelta = (current, previous) => {
-    if (previous === 0) return null;
-    const delta = ((current - previous) / previous) * 100;
+  const hasActivity = (metrics?.totalEarnings || 0) > 0;
+
+  const renderDelta = (delta) => {
+    if (!delta || delta === 0) return null;
     const isUp = delta >= 0;
     return (
       <View style={styles.deltaRow}>
         {isUp ? <TrendingUp size={12} color="#10b981" /> : <TrendingDown size={12} color="#ef4444" />}
         <Text style={[styles.deltaText, { color: isUp ? "#10b981" : "#ef4444" }]}>
-          {delta >= 0 ? "+" : ""}{delta.toFixed(1)}%
+          {delta >= 0 ? "+" : ""}{Math.abs(delta).toFixed(1)}%
         </Text>
       </View>
     );
@@ -137,52 +240,16 @@ export default function ReportsScreen({ route, navigation }) {
     );
   };
 
-  const insights = {
-    daily: [
-      {
-        id: "d1",
-        title: "Peak Window",
-        body: "Highest completion rate between 12:30-14:00 hrs. Stack high-priority drops during this block.",
-        tag: "Optimize",
-      },
-      {
-        id: "d2",
-        title: "Route Density",
-        body: "Osu corridor yielded 28% more accepts today. Recalibrate standby points accordingly.",
-        tag: "Action",
-      },
-    ],
-    weekly: [
-      {
-        id: "w1",
-        title: "Weekend Surge",
-        body: "Friday-Saturday earnings outperformed weekday average by 34%. Pre-position for evening demand peaks.",
-        tag: "Trend",
-      },
-      {
-        id: "w2",
-        title: "Fuel Drift",
-        body: "Operating cost per km climbed 6% this week. Switch to lower-cost refill partners on Thursday onward.",
-        tag: "Alert",
-      },
-    ],
-    monthly: [
-      {
-        id: "m1",
-        title: "Runway Health",
-        body: "Savings vault covers 4.5 months of essential needs. Maintain the current allocation ratio to sustain runway target.",
-        tag: "Stable",
-      },
-      {
-        id: "m2",
-        title: "Subscription Audit",
-        body: "3 recurring developer costs auto-renewed. Evaluate tier downgrades to protect Wants bucket liquidity.",
-        tag: "Review",
-      },
-    ],
-  };
+  const mappedInsights = useMemo(() => {
+    if (insights.length === 0) return [];
 
-  const activeInsights = insights[period] || insights.monthly;
+    return insights.map((item, idx) => ({
+      id: item.id || String(idx),
+      title: item.title,
+      body: item.body,
+      tag: item.type === "warning" ? "Alert" : item.type === "success" ? "Stable" : item.type === "danger" ? "Action" : "Info",
+    }));
+  }, [insights]);
 
   return (
     <View style={styles.container}>
@@ -196,146 +263,162 @@ export default function ReportsScreen({ route, navigation }) {
       </View>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.periodSelectorRow}>
-        {["daily", "weekly", "monthly", "custom"].map((p) => {
-          const isSelected = period === p;
-          return (
-            <TouchableOpacity
-              key={p}
-              style={[styles.periodChip, isSelected && styles.activePeriodChip]}
-              activeOpacity={0.8}
-              onPress={() => {
-                if (p === "custom") {
-                  setShowDateModal(true);
-                } else {
-                  setPeriod(p);
-                  setStartDate(null);
-                  setEndDate(null);
-                }
-              }}
-            >
-              <Text style={[styles.periodChipText, isSelected && styles.activePeriodChipText]}>
-                {p === "daily" ? "Daily" : p === "weekly" ? "Weekly" : p === "monthly" ? "Monthly" : "Custom"}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-        {period === "custom" && startDate && endDate && (
-          <View style={styles.selectedDatePill}>
-            <Text style={styles.selectedDateText}>
-              {startDate.toLocaleDateString()} - {endDate.toLocaleDateString()}
-            </Text>
-            <TouchableOpacity onPress={() => { setStartDate(null); setEndDate(null); }}>
-              <Text style={styles.clearDateText}>Clear</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.metricsScrollRow}>
-          <View style={styles.metricCard}>
-            <View style={styles.cardHeaderInline}>
-              <Target size={14} color="#94a3b8" />
-              <Text style={styles.cardLabelText}>Completion Rate</Text>
-            </View>
-            <View style={styles.progressRow}>
-              <ProgressArc value={metrics.completionRate} color={getProgressColor(metrics.completionRate)} />
-            </View>
-            <View style={styles.footerStack}>
-              {renderDelta(metrics.completionRate, metrics.prevCompletionRate)}
-              <Text style={styles.disclaimerText}>Orders delivered successfully</Text>
-            </View>
-          </View>
-
-          <View style={styles.metricCard}>
-            <View style={styles.cardHeaderInline}>
-              <Wallet size={14} color="#94a3b8" />
-              <Text style={styles.cardLabelText}>Total Earnings</Text>
-            </View>
-            <Text style={styles.valuePrimaryText}>GH₵ {metrics.totalEarnings.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
-            <View style={styles.footerStack}>
-              {renderDelta(metrics.totalEarnings, metrics.prevTotalEarnings)}
-              <Text style={styles.disclaimerText}>Gross rider payout</Text>
-            </View>
-          </View>
-
-          <View style={styles.metricCard}>
-            <View style={styles.cardHeaderInline}>
-              <PieChart size={14} color="#94a3b8" />
-              <Text style={styles.cardLabelText}>Total Completions</Text>
-            </View>
-            <Text style={styles.valuePrimaryText}>{metrics.totalCompletions.toLocaleString()}</Text>
-            <View style={styles.footerStack}>
-              {renderDelta(metrics.totalCompletions, metrics.prevTotalCompletions)}
-              <Text style={styles.disclaimerText}>Deliveries closed</Text>
-            </View>
-          </View>
-        </ScrollView>
-
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitleText}>Budget Allocation</Text>
-          <View style={[styles.badgePill, { backgroundColor: "#115e5920" }]}>
-            <Text style={[styles.badgeText, { color: "#115e59" }]}>50/30/20</Text>
-          </View>
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.budgetRollRow}>
-          <View style={styles.budgetBucketCard}>
-            <Text style={styles.bucketLabel}>Needs</Text>
-            <Text style={styles.bucketValue}>GH₵ {needs.toFixed(2)}</Text>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: "50%", backgroundColor: "#a855f7" }]} />
-            </View>
-            <Text style={styles.bucketShare}>50%</Text>
-          </View>
-
-          <View style={styles.budgetBucketCard}>
-            <Text style={styles.bucketLabel}>Wants</Text>
-            <Text style={styles.bucketValue}>GH₵ {wants.toFixed(2)}</Text>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: "30%", backgroundColor: "#6366f1" }]} />
-            </View>
-            <Text style={styles.bucketShare}>30%</Text>
-          </View>
-
-          <View style={styles.budgetBucketCard}>
-            <Text style={styles.bucketLabel}>Savings</Text>
-            <Text style={styles.bucketValue}>GH₵ {savings.toFixed(2)}</Text>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: "20%", backgroundColor: "#10b981" }]} />
-            </View>
-            <Text style={styles.bucketShare}>20%</Text>
-          </View>
-        </ScrollView>
-
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitleText}>Insights</Text>
-        </View>
-
-        <View style={styles.insightsStack}>
-          {activeInsights.map((item) => {
-            const isOpen = expandedInsight === item.id;
+        <View style={styles.periodSelectorRow}>
+          {["daily", "weekly", "monthly", "custom"].map((p) => {
+            const isSelected = period === p;
             return (
               <TouchableOpacity
-                key={item.id}
-                style={styles.insightCard}
+                key={p}
+                style={[styles.periodChip, isSelected && styles.activePeriodChip]}
                 activeOpacity={0.8}
-                onPress={() => setExpandedInsight(isOpen ? null : item.id)}
+                onPress={() => {
+                  if (p === "custom") {
+                    setShowDateModal(true);
+                  } else {
+                    setPeriod(p);
+                    setStartDate(null);
+                    setEndDate(null);
+                  }
+                }}
               >
-                <View style={styles.insightHeaderRow}>
-                  <View style={styles.insightTitleGroup}>
-                    <Text style={styles.insightTitle}>{item.title}</Text>
-                    <View style={[styles.statusTag, { borderColor: "#94a3b840" }]}>
-                      <Text style={styles.statusTagText}>{item.tag}</Text>
-                    </View>
-                  </View>
-                  {isOpen ? <ChevronUp size={16} color="#94a3b8" /> : <ChevronDown size={16} color="#94a3b8" />}
-                </View>
-                <Text style={styles.insightBody}>{item.body}</Text>
+                <Text style={[styles.periodChipText, isSelected && styles.activePeriodChipText]}>
+                  {p === "daily" ? "Daily" : p === "weekly" ? "Weekly" : p === "monthly" ? "Monthly" : "Custom"}
+                </Text>
               </TouchableOpacity>
             );
           })}
+          {period === "custom" && startDate && endDate && (
+            <View style={styles.selectedDatePill}>
+              <Text style={styles.selectedDateText}>
+                {startDate.toLocaleDateString()} - {endDate.toLocaleDateString()}
+              </Text>
+              <TouchableOpacity onPress={() => { setStartDate(null); setEndDate(null); }}>
+                <Text style={styles.clearDateText}>Clear</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
+
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#facc15" />
+          </View>
+        ) : !hasActivity ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>No report data available for this period.</Text>
+          </View>
+        ) : (
+          <>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.metricsScrollRow}>
+              <View style={styles.metricCard}>
+                <View style={styles.cardHeaderInline}>
+                  <Target size={14} color="#94a3b8" />
+                  <Text style={styles.cardLabelText}>Completion Rate</Text>
+                </View>
+                <View style={styles.progressRow}>
+                  <ProgressArc value={metrics.completionRate} color={getProgressColor(metrics.completionRate)} />
+                </View>
+                <View style={styles.footerStack}>
+                  {renderDelta(metrics.completionDelta)}
+                  <Text style={styles.disclaimerText}>Orders delivered successfully</Text>
+                </View>
+              </View>
+
+              <View style={styles.metricCard}>
+                <View style={styles.cardHeaderInline}>
+                  <Wallet size={14} color="#94a3b8" />
+                  <Text style={styles.cardLabelText}>Total Earnings</Text>
+                </View>
+                <Text style={styles.valuePrimaryText}>GH₵ {metrics.totalEarnings.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+                <View style={styles.footerStack}>
+                  {renderDelta(metrics.earningsDelta)}
+                  <Text style={styles.disclaimerText}>Gross rider payout</Text>
+                </View>
+              </View>
+
+              <View style={styles.metricCard}>
+                <View style={styles.cardHeaderInline}>
+                  <PieChart size={14} color="#94a3b8" />
+                  <Text style={styles.cardLabelText}>Total Completions</Text>
+                </View>
+                <Text style={styles.valuePrimaryText}>{metrics.totalCompletions.toLocaleString()}</Text>
+                <View style={styles.footerStack}>
+                  {renderDelta(metrics.completionsDelta)}
+                  <Text style={styles.disclaimerText}>Deliveries closed</Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitleText}>Budget Allocation</Text>
+              <View style={[styles.badgePill, { backgroundColor: "#115e5920" }]}>
+                <Text style={[styles.badgeText, { color: "#115e59" }]}>50/30/20</Text>
+              </View>
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.budgetRollRow}>
+              <View style={styles.budgetBucketCard}>
+                <Text style={styles.bucketLabel}>Needs</Text>
+                <Text style={styles.bucketValue}>GH₵ {needs.toFixed(2)}</Text>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: "50%", backgroundColor: "#a855f7" }]} />
+                </View>
+                <Text style={styles.bucketShare}>50%</Text>
+              </View>
+
+              <View style={styles.budgetBucketCard}>
+                <Text style={styles.bucketLabel}>Wants</Text>
+                <Text style={styles.bucketValue}>GH₵ {wants.toFixed(2)}</Text>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: "30%", backgroundColor: "#6366f1" }]} />
+                </View>
+                <Text style={styles.bucketShare}>30%</Text>
+              </View>
+
+              <View style={styles.budgetBucketCard}>
+                <Text style={styles.bucketLabel}>Savings</Text>
+                <Text style={styles.bucketValue}>GH₵ {savings.toFixed(2)}</Text>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: "20%", backgroundColor: "#10b981" }]} />
+                </View>
+                <Text style={styles.bucketShare}>20%</Text>
+              </View>
+            </ScrollView>
+
+            {mappedInsights.length > 0 && (
+              <>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionTitleText}>Insights</Text>
+                </View>
+
+                <View style={styles.insightsStack}>
+                  {mappedInsights.map((item) => {
+                    const isOpen = expandedInsight === item.id;
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={styles.insightCard}
+                        activeOpacity={0.8}
+                        onPress={() => setExpandedInsight(isOpen ? null : item.id)}
+                      >
+                        <View style={styles.insightHeaderRow}>
+                          <View style={styles.insightTitleGroup}>
+                            <Text style={styles.insightTitle}>{item.title}</Text>
+                            <View style={[styles.statusTag, { borderColor: "#94a3b840" }]}>
+                              <Text style={styles.statusTagText}>{item.tag}</Text>
+                            </View>
+                          </View>
+                          {isOpen ? <ChevronUp size={16} color="#94a3b8" /> : <ChevronDown size={16} color="#94a3b8" />}
+                        </View>
+                        <Text style={styles.insightBody}>{item.body}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+          </>
+        )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -393,7 +476,7 @@ export default function ReportsScreen({ route, navigation }) {
             </View>
 
             <View style={styles.datePickerRow}>
-              <Text style={styles.pickerLabel}>{tempDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</Text>
+              <Text style={styles.pickerLabel}>{tempDate.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</Text>
               <View style={styles.stepperRow}>
                 <TouchableOpacity style={styles.stepperButton} activeOpacity={0.8} onPress={() => { const d = new Date(tempDate); d.setDate(d.getDate() - 1); setTempDate(d); }}>
                   <Text style={styles.stepperButtonText}>−</Text>
@@ -444,7 +527,10 @@ const styles = StyleSheet.create({
   },
   headerTitleText: { fontSize: 20, fontWeight: "800", color: "#ffffff", letterSpacing: -0.3 },
   scrollContent: { flex: 1, paddingHorizontal: 18 },
-  periodSelectorRow: { flexDirection: "row", gap: 8, marginBottom: 18, marginTop: 4 },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 40 },
+  emptyState: { paddingTop: 40, alignItems: "center" },
+  emptyText: { color: "#64748b", fontSize: 14, fontWeight: "600" },
+  periodSelectorRow: { flexDirection: "row", gap: 8, marginBottom: 18, marginTop: 4, flexWrap: "wrap" },
   periodChip: {
     paddingHorizontal: 14,
     paddingVertical: 8,

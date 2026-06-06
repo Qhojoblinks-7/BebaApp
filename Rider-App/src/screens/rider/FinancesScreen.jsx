@@ -11,10 +11,11 @@ import {
   Platform,
 } from "react-native";
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from "react-native-svg";
-import { TrendingUp, Wallet, ArrowRight, Download, DollarSign, PieChart, Users, Home, ShoppingBag, PiggyBank, Fuel, CreditCard, Zap } from "lucide-react-native";
+import { TrendingUp, Wallet, ArrowRight, Download, DollarSign, PieChart, Users, Home, ShoppingBag, PiggyBank, Fuel, CreditCard, Zap, ClipboardList } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabaseClient";
 import { useNavigation } from "@react-navigation/native";
+import { getLiveBudgetFromRevenue } from "../../services/budgetService";
 
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.44;
@@ -23,6 +24,7 @@ const BUDGET_ICON_MAP = {
   Home,
   ShoppingBag,
   PiggyBank,
+  ClipboardList,
 };
 
 function getMonday(d) {
@@ -47,6 +49,26 @@ function buildWeekDays(fromMonday) {
   });
 }
 
+function buildDefaultBudget(totalEarnings) {
+  return [
+    { id: "needs", title: "50% Needs", allocated: totalEarnings * 0.5, spent: totalEarnings * 0.4, color: "#a855f7", description: "Rent, utilities, fuel, food", icon: "Home", subItems: [
+      { name: "Rent", amount: totalEarnings * 0.15 },
+      { name: "Utilities", amount: totalEarnings * 0.05 },
+      { name: "Fuel", amount: totalEarnings * 0.08 },
+      { name: "Groceries", amount: totalEarnings * 0.12 },
+    ]},
+    { id: "wants", title: "30% Wants", allocated: totalEarnings * 0.3, spent: totalEarnings * 0.25, color: "#6366f1", description: "Dining out, hobbies, shopping", icon: "ShoppingBag", subItems: [
+      { name: "Dining Out", amount: totalEarnings * 0.08 },
+      { name: "Hobbies", amount: totalEarnings * 0.05 },
+      { name: "Shopping", amount: totalEarnings * 0.12 },
+    ]},
+    { id: "savings", title: "20% Savings", allocated: totalEarnings * 0.2, spent: totalEarnings * 0.2, color: "#10b981", description: "Emergency fund, investments", icon: "PiggyBank", subItems: [
+      { name: "Emergency Fund", amount: totalEarnings * 0.1 },
+      { name: "Investments", amount: totalEarnings * 0.1 },
+    ]},
+  ];
+}
+
 export default function FinancesScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
@@ -60,6 +82,7 @@ export default function FinancesScreen() {
   });
   const [weeklyData, setWeeklyData] = useState([]);
   const [loadingWeekly, setLoadingWeekly] = useState(false);
+  const [budgetData, setBudgetData] = useState([]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -68,6 +91,23 @@ export default function FinancesScreen() {
     }
     fetchFinancialData();
   }, [user?.id]);
+
+  useEffect(() => {
+    if (user?.id && financeSummary.totalEarnings > 0) {
+      loadBudgetData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, financeSummary.totalEarnings]);
+
+  const loadBudgetData = async () => {
+    if (!user?.id) return;
+    try {
+      const data = await getLiveBudgetFromRevenue(user.id);
+      if (data) setBudgetData(data);
+    } catch (e) {
+      console.warn("[Finances] budget load failed:", e.message);
+    }
+  };
 
   async function fetchFinancialData() {
     try {
@@ -307,24 +347,8 @@ export default function FinancesScreen() {
             style={styles.inlineHeaderLinkAction}
             activeOpacity={0.7}
             onPress={() => {
-              const budgetData = [
-                { id: "needs", title: "50% Needs", allocated: financeSummary.totalEarnings * 0.5, spent: financeSummary.totalEarnings * 0.4, color: "#a855f7", description: "Rent, utilities, fuel, food", icon: "Home", subItems: [
-                  { name: "Rent", amount: financeSummary.totalEarnings * 0.15 },
-                  { name: "Utilities", amount: financeSummary.totalEarnings * 0.05 },
-                  { name: "Fuel", amount: financeSummary.totalEarnings * 0.08 },
-                  { name: "Groceries", amount: financeSummary.totalEarnings * 0.12 },
-                ]},
-                { id: "wants", title: "30% Wants", allocated: financeSummary.totalEarnings * 0.3, spent: financeSummary.totalEarnings * 0.25, color: "#6366f1", description: "Dining out, hobbies, shopping", icon: "ShoppingBag", subItems: [
-                  { name: "Dining Out", amount: financeSummary.totalEarnings * 0.08 },
-                  { name: "Hobbies", amount: financeSummary.totalEarnings * 0.05 },
-                  { name: "Shopping", amount: financeSummary.totalEarnings * 0.12 },
-                ]},
-                { id: "savings", title: "20% Savings", allocated: financeSummary.totalEarnings * 0.2, spent: financeSummary.totalEarnings * 0.2, color: "#10b981", description: "Emergency fund, investments", icon: "PiggyBank", subItems: [
-                  { name: "Emergency Fund", amount: financeSummary.totalEarnings * 0.1 },
-                  { name: "Investments", amount: financeSummary.totalEarnings * 0.1 },
-                ]},
-              ];
-              navigation.navigate("BudgetBreakdown", { budgetData });
+              const data = budgetData.length > 0 ? budgetData : buildDefaultBudget(financeSummary.totalEarnings);
+              navigation.navigate("BudgetBreakdown", { budgetData: data });
             }}
           >
             <ArrowRight size={16} color="#94a3b8" />
@@ -336,33 +360,13 @@ export default function FinancesScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.budgetBucketsScrollWrapper}
         >
-          {[
-            { id: "needs", title: "50% Needs", allocated: financeSummary.totalEarnings * 0.5, spent: financeSummary.totalEarnings * 0.4, color: "#a855f7", icon: "Home" },
-            { id: "wants", title: "30% Wants", allocated: financeSummary.totalEarnings * 0.3, spent: financeSummary.totalEarnings * 0.25, color: "#6366f1", icon: "ShoppingBag" },
-            { id: "savings", title: "20% Savings", allocated: financeSummary.totalEarnings * 0.2, spent: financeSummary.totalEarnings * 0.2, color: "#10b981", icon: "PiggyBank" },
-          ].map((bucket) => {
-            const percentage = bucket.allocated > 0 ? Math.round((bucket.spent / bucket.allocated) * 100) : 0;
-            const remaining = bucket.allocated - bucket.spent;
+          {(budgetData.length > 0 ? budgetData : buildDefaultBudget(financeSummary.totalEarnings)).map((bucket) => {
+            const savedAmount = Math.max(bucket.allocated - bucket.spent, 0);
+            const savedPercent = bucket.allocated > 0 ? Math.round((savedAmount / bucket.allocated) * 100) : 0;
             return (
               <TouchableOpacity key={bucket.id} style={styles.budgetBucketCard} activeOpacity={0.8} onPress={() => {
-                const budgetData = [
-                  { id: "needs", title: "50% Needs", allocated: financeSummary.totalEarnings * 0.5, spent: financeSummary.totalEarnings * 0.4, color: "#a855f7", description: "Rent, utilities, fuel, food", icon: "Home", subItems: [
-                    { name: "Rent", amount: financeSummary.totalEarnings * 0.15 },
-                    { name: "Utilities", amount: financeSummary.totalEarnings * 0.05 },
-                    { name: "Fuel", amount: financeSummary.totalEarnings * 0.08 },
-                    { name: "Groceries", amount: financeSummary.totalEarnings * 0.12 },
-                  ]},
-                  { id: "wants", title: "30% Wants", allocated: financeSummary.totalEarnings * 0.3, spent: financeSummary.totalEarnings * 0.25, color: "#6366f1", description: "Dining out, hobbies, shopping", icon: "ShoppingBag", subItems: [
-                    { name: "Dining Out", amount: financeSummary.totalEarnings * 0.08 },
-                    { name: "Hobbies", amount: financeSummary.totalEarnings * 0.05 },
-                    { name: "Shopping", amount: financeSummary.totalEarnings * 0.12 },
-                  ]},
-                  { id: "savings", title: "20% Savings", allocated: financeSummary.totalEarnings * 0.2, spent: financeSummary.totalEarnings * 0.2, color: "#10b981", description: "Emergency fund, investments", icon: "PiggyBank", subItems: [
-                    { name: "Emergency Fund", amount: financeSummary.totalEarnings * 0.1 },
-                    { name: "Investments", amount: financeSummary.totalEarnings * 0.1 },
-                  ]},
-                ];
-                navigation.navigate("BudgetBreakdown", { budgetData });
+                const data = budgetData.length > 0 ? budgetData : buildDefaultBudget(financeSummary.totalEarnings);
+                navigation.navigate("BudgetBreakdown", { budgetData: data });
               }}>
                 <View style={styles.cardHeaderInline}>
                   <View style={[styles.iconCircle, { backgroundColor: bucket.color + "20" }]}>
@@ -370,14 +374,14 @@ export default function FinancesScreen() {
                 </View>
                   <Text style={styles.cardLabelText}>{bucket.title}</Text>
                 </View>
-                <Text style={styles.cardMainValueText}>{percentage}%</Text>
+                <Text style={styles.cardMainValueText}>{savedPercent}%</Text>
                 <View style={styles.budgetMiniArcContainer}>
                   <View style={styles.miniArcTrack}>
-                    <View style={[styles.miniArcFill, { width: percentage + "%", backgroundColor: bucket.color }]} />
+                    <View style={[styles.miniArcFill, { width: savedPercent + "%", backgroundColor: bucket.color }]} />
                   </View>
                 </View>
                 <Text style={styles.cardFooterDisclaimer}>
-                  GH₵ {remaining.toFixed(0)} remaining
+                  GH₵ {savedAmount.toFixed(0)} saved
                 </Text>
               </TouchableOpacity>
             );
@@ -482,6 +486,19 @@ export default function FinancesScreen() {
             </View>
             <View style={styles.circleDownWrapper}>
               <Text style={{ color: "#ffffff", fontSize: 12 }}>+</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionExportBannerButton} activeOpacity={0.9} onPress={() => navigation.navigate("DeliveryHistory")}>
+            <View style={styles.bannerLeftFlexNode}>
+              <ClipboardList size={18} color="#94a3b8" style={{ marginRight: 12 }} />
+              <View>
+                <Text style={styles.bannerMainHeadingText}>Delivery History</Text>
+                <Text style={styles.bannerSubTextDesc}>Review past completed deliveries</Text>
+              </View>
+            </View>
+            <View style={styles.circleDownWrapper}>
+              <Text style={{ color: "#ffffff", fontSize: 12 }}>→</Text>
             </View>
           </TouchableOpacity>
 
