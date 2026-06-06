@@ -1,37 +1,61 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Linking, Platform } from 'react-native';
-import { X, Phone, CircleCheck,MessageSquare,Package } from 'lucide-react-native';
-import RiderOrderCard from './RiderOrderCard';
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Modal,
+  ScrollView,
+  Linking,
+  Platform,
+} from "react-native";
+import {
+  X,
+  Phone,
+  CircleCheck,
+  MessageSquare,
+  Package,
+} from "lucide-react-native";
+import RiderOrderCard from "./RiderOrderCard";
 
 const STAGES = [
-  { key: 'pending',    label: 'Order Request' },
-  { key: 'assigned',   label: 'Rider Confirmed' },
-  { key: 'picked_up',  label: 'Picked Up' },
-  { key: 'in_transit', label: 'In Transit' },
-  { key: 'delivered',  label: 'Delivered' },
-  { key: 'cancelled',  label: 'Cancelled' },
+  { key: "pending", label: "Request" },
+  { key: "assigned", label: "Confirmed" },
+  { key: "picked_up", label: "Picked Up" },
+  { key: "in_transit", label: "In Transit" },
+  { key: "delivered", label: "Delivered" },
+  { key: "cancelled", label: "Cancelled" },
 ];
 
-export default function DeliveryDetailsBottomSheet({ order, visible, onClose, onAction }) {
+export default function DeliveryDetailsBottomSheet({
+  order,
+  visible,
+  onClose,
+  onAction,
+}) {
+  const [contactMode, setContactMode] = useState("pickup");
+
   if (!order) return null;
 
-  const currentIdx = STAGES.findIndex(s => s.key === order.status);
-  const isCancelled = order.status === 'cancelled';
-  const isDone = order.status === 'delivered' || isCancelled;
-  const [contactMode, setContactMode] = useState('pickup');
+  const currentIdx = STAGES.findIndex((s) => s.key === order.status);
+  const isCancelled = order.status === "cancelled";
+  const isDone = order.status === "delivered" || isCancelled;
 
   const fmt = (d) => {
-    if (!d) return '---';
+    if (!d) return "---";
     const date = new Date(d);
-    if (isNaN(date)) return '---';
-    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    if (isNaN(date)) return "---";
+    return date.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
   };
 
-  const pickupPhone = order.sender_phone || '';
-  const deliveryPhone = order.customer_phone || order.sender_phone || '';
-  const activePhone = contactMode === 'pickup' ? pickupPhone : deliveryPhone;
-  const activeLabel = contactMode === 'pickup' ? 'Sender' : 'Recipient';
-  const activeName = contactMode === 'pickup' ? order.sender_name : order.customer_name;
+  const pickupPhone = order.sender_phone || "";
+  const deliveryPhone = order.customer_phone || order.sender_phone || "";
+  const activePhone = contactMode === "pickup" ? pickupPhone : deliveryPhone;
+  const activeName = contactMode === "pickup" ? order.sender_name : order.customer_name;
 
   const handleCall = () => {
     if (activePhone) Linking.openURL(`tel:${activePhone}`);
@@ -42,26 +66,39 @@ export default function DeliveryDetailsBottomSheet({ order, visible, onClose, on
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
       <View style={styles.overlay}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
+        <TouchableOpacity
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={onClose}
+        />
         <View style={styles.sheet}>
           <View style={styles.handle} />
 
           <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.topBar}>
               <Text style={styles.title}>Order Details</Text>
-              <TouchableOpacity onPress={onClose}><X size={22} color="#94a3b8" /></TouchableOpacity>
+              <TouchableOpacity onPress={onClose}>
+                <X size={22} color="#94a3b8" />
+              </TouchableOpacity>
             </View>
 
             <RiderOrderCard order={order} />
 
+            {/* Realigned Stepper Timeline Track */}
             <View style={styles.timelineWrap}>
               {STAGES.map((stage, i) => {
-                const isCancelledStage = order.status === 'cancelled' && i === STAGES.length - 1;
-                const completedBeforeCancel = order.status === 'cancelled' && i < STAGES.length - 1;
+                const isCancelledStage = order.status === "cancelled" && i === STAGES.length - 1;
+                const completedBeforeCancel = order.status === "cancelled" && i < STAGES.length - 1;
                 const done = (!isCancelled && i <= currentIdx) || completedBeforeCancel;
                 const last = i === STAGES.length - 1;
+                
                 return (
                   <React.Fragment key={stage.key}>
                     <View style={styles.stageNode}>
@@ -72,86 +109,132 @@ export default function DeliveryDetailsBottomSheet({ order, visible, onClose, on
                       ) : (
                         <View style={styles.circleEmpty} />
                       )}
-                      <Text style={[styles.stageLabel, done || isCancelledStage ? styles.stageLabelActive : null]}>
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.stageLabel,
+                          done || isCancelledStage ? styles.stageLabelActive : null,
+                        ]}
+                      >
                         {stage.label}
                       </Text>
                     </View>
                     {!last && (
-                      <View style={[styles.stageLine, done ? styles.stageLineActive : null]} />
+                      <View
+                        style={[
+                          styles.stageLine,
+                          done ? styles.stageLineActive : null,
+                        ]}
+                      />
                     )}
                   </React.Fragment>
                 );
               })}
             </View>
 
+            {/* Information Key Value Sheets */}
             <View style={styles.infoSection}>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Item</Text>
-                <Text style={styles.infoValue}>{order.item_description || '---'}</Text>
+                <Text style={styles.infoValue}>
+                  {order.item_description || "---"}
+                </Text>
               </View>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Fee</Text>
-                <Text style={styles.infoValueAccent}>GH¢ {(order.delivery_fee || 0).toFixed(2)}</Text>
+                <Text style={styles.infoValueAccent}>
+                  GH₵ {(order.delivery_fee || 0).toFixed(2)}
+                </Text>
               </View>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Customer</Text>
-                <Text style={styles.infoValue}>{order.customer_name || '---'}</Text>
+                <Text style={styles.infoValue}>
+                  {order.customer_name || "---"}
+                </Text>
               </View>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Pickup</Text>
-                <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                  <Text style={styles.infoValue}>{order.pickup_address || '---'}</Text>
+                <View style={styles.rightInfoBlock}>
+                  <Text style={styles.infoValue}>
+                    {order.pickup_address || "---"}
+                  </Text>
                   <Text style={styles.infoSub}>{fmt(order.created_at)}</Text>
                 </View>
               </View>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Drop-off</Text>
-                <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                  <Text style={styles.infoValue}>{order.delivery_address || '---'}</Text>
-                  <Text style={styles.infoSub}>{fmt(order.received_at || order.updated_at)}</Text>
+                <View style={styles.rightInfoBlock}>
+                  <Text style={styles.infoValue}>
+                    {order.delivery_address || "---"}
+                  </Text>
+                  <Text style={styles.infoSub}>
+                    {fmt(order.received_at || order.updated_at)}
+                  </Text>
                 </View>
               </View>
-              {order.received_by ? (
+              
+              {order.received_by && (
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Received By</Text>
                   <Text style={styles.infoValue}>{order.received_by}</Text>
                 </View>
-              ) : null}
-              {order.delivery_instructions ? (
+              )}
+              {order.delivery_instructions && (
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Instructions</Text>
-                  <Text style={styles.infoValue}>{order.delivery_instructions}</Text>
+                  <Text style={styles.infoValue}>
+                    {order.delivery_instructions}
+                  </Text>
                 </View>
-              ) : null}
-              {(order.customer_phone || order.sender_phone) ? (
+              )}
+              {activePhone ? (
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Phone</Text>
-                  <TouchableOpacity onPress={() => Linking.openURL(`tel:${order.customer_phone || order.sender_phone}`)}>
-                    <Text style={styles.phoneText}>{order.customer_phone || order.sender_phone}</Text>
+                  <TouchableOpacity onPress={handleCall}>
+                    <Text style={styles.phoneText}>{activePhone}</Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
 
+              {/* Dynamic Communication Unit Switcher */}
               <View style={styles.contactSwitcher}>
                 <View style={styles.contactToggle}>
                   <TouchableOpacity
-                    style={[styles.contactTab, contactMode === 'pickup' && styles.contactTabActive]}
-                    onPress={() => setContactMode('pickup')}
+                    style={[
+                      styles.contactTab,
+                      contactMode === "pickup" && styles.contactTabActive,
+                    ]}
+                    onPress={() => setContactMode("pickup")}
                   >
-                    <Text style={[styles.contactTabText, contactMode === 'pickup' && styles.contactTabTextActive]}>
+                    <Text
+                      style={[
+                        styles.contactTabText,
+                        contactMode === "pickup" && styles.contactTabTextActive,
+                      ]}
+                    >
                       Pickup
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.contactTab, contactMode === 'delivery' && styles.contactTabActive]}
-                    onPress={() => setContactMode('delivery')}
+                    style={[
+                      styles.contactTab,
+                      contactMode === "delivery" && styles.contactTabActive,
+                    ]}
+                    onPress={() => setContactMode("delivery")}
                   >
-                    <Text style={[styles.contactTabText, contactMode === 'delivery' && styles.contactTabTextActive]}>
+                    <Text
+                      style={[
+                        styles.contactTabText,
+                        contactMode === "delivery" && styles.contactTabTextActive,
+                      ]}
+                    >
                       Delivery
                     </Text>
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.contactName}>{activeName || 'Unknown'}</Text>
+                <Text style={styles.contactName}>
+                  {activeName || "Unknown Contact"}
+                </Text>
                 <View style={styles.contactActions}>
                   <TouchableOpacity style={styles.contactBtn} onPress={handleCall}>
                     <Phone size={18} color="#ffffff" />
@@ -165,16 +248,23 @@ export default function DeliveryDetailsBottomSheet({ order, visible, onClose, on
               </View>
             </View>
 
+            {/* Workflow Confirmation Trigger Area */}
             {!isDone ? (
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={() => onAction?.(order, order.status)}
+                activeOpacity={0.8}
               >
                 <Text style={styles.primaryBtnText}>
-                  {order.status === 'pending' ? 'Accept Job' :
-                   order.status === 'assigned' ? 'Confirm Pickup' :
-                   order.status === 'picked_up' ? 'Start Delivery' :
-                   order.status === 'in_transit' ? 'Confirm Drop-off' : 'Proceed'}
+                  {order.status === "pending"
+                    ? "Accept Job"
+                    : order.status === "assigned"
+                      ? "Confirm Pickup"
+                      : order.status === "picked_up"
+                        ? "Start Delivery"
+                        : order.status === "in_transit"
+                          ? "Confirm Drop-off"
+                          : "Proceed"}
                 </Text>
               </TouchableOpacity>
             ) : isCancelled ? (
@@ -195,56 +285,149 @@ export default function DeliveryDetailsBottomSheet({ order, visible, onClose, on
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: '#000000aa', justifyContent: 'flex-end' },
+  overlay: {
+    flex: 1,
+    backgroundColor: "#000000aa",
+    justifyContent: "flex-end",
+  },
   backdrop: { flex: 1 },
   sheet: {
-    backgroundColor: '#16191e',
+    backgroundColor: "#16191e",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    maxHeight: '88%',
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    maxHeight: "88%",
+    paddingBottom: Platform.OS === "ios" ? 36 : 24,
   },
   handle: {
-    width: 48, height: 5, borderRadius: 3, backgroundColor: '#475569',
-    alignSelf: 'center', marginTop: 12, marginBottom: 8,
+    width: 48,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#475569",
+    alignSelf: "center",
+    marginTop: 12,
+    marginBottom: 8,
   },
   topBar: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
   },
-  title: { fontSize: 18, fontWeight: '800', color: '#ffffff' },
+  title: { fontSize: 18, fontWeight: "800", color: "#ffffff" },
   timelineWrap: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#0f1115', marginHorizontal: 20, marginBottom: 20,
-    paddingVertical: 14, paddingHorizontal: 8, borderRadius: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#0f1115",
+    marginHorizontal: 20,
+    marginBottom: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderRadius: 14,
   },
-  stageNode: { alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-  circleEmpty: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#475569' },
-  circleCancelled: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#ef4444' },
-  stageLabel: { fontSize: 9, fontWeight: '800', color: '#475569', marginTop: 4 },
-  stageLabelActive: { color: '#ffffff' },
-  stageLine: { flex: 1, height: 2, backgroundColor: '#334155', marginHorizontal: -2, marginTop: -10, zIndex: 1 },
-  stageLineActive: { backgroundColor: '#115e59' },
+  stageNode: { 
+    alignItems: "center", 
+    justifyContent: "center", 
+    zIndex: 2,
+    width: 52,
+  },
+  circleEmpty: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: "#475569",
+    backgroundColor: "#0f1115",
+  },
+  circleCancelled: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#ef4444",
+  },
+  stageLabel: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#475569",
+    marginTop: 6,
+    textAlign: "center",
+  },
+  stageLabelActive: { color: "#ffffff" },
+  stageLine: {
+    flex: 1,
+    height: 2,
+    backgroundColor: "#334155",
+    marginHorizontal: -16,
+    transform: [{ translateY: -6 }],
+    zIndex: 1,
+  },
+  stageLineActive: { backgroundColor: "#115e59" },
   infoSection: {
-    backgroundColor: '#1e222b', borderRadius: 20, marginHorizontal: 20, padding: 16, marginBottom: 16,
-    borderWidth: 1, borderColor: '#33415530',
+    backgroundColor: "#1e222b",
+    borderRadius: 20,
+    marginHorizontal: 20,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#33415530",
   },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 12 },
-  infoLabel: { fontSize: 11, fontWeight: '600', color: '#94a3b8', textTransform: 'capitalize', width: 90 },
-  infoValue: { flex: 1, fontSize: 13, fontWeight: '700', color: '#e2e8f0', textAlign: 'right' },
-  infoValueAccent: { flex: 1, fontSize: 14, fontWeight: '800', color: '#f59e0b', textAlign: 'right' },
-  infoSub: { fontSize: 11, fontWeight: '500', color: '#64748b', textAlign: 'right', marginTop: 2 },
-  phoneText: { flex: 1, fontSize: 13, fontWeight: '700', color: '#38bdf8', textAlign: 'right' },
+  infoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 14,
+    gap: 12,
+  },
+  infoLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#94a3b8",
+    textTransform: "capitalize",
+    width: 80,
+    paddingTop: 1,
+  },
+  rightInfoBlock: { 
+    flex: 1, 
+    alignItems: "flex-end",
+  },
+  infoValue: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#e2e8f0",
+    textAlign: "right",
+  },
+  infoValueAccent: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#f59e0b",
+    textAlign: "right",
+  },
+  infoSub: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#64748b",
+    textAlign: "right",
+    marginTop: 2,
+  },
+  phoneText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#38bdf8",
+    textAlign: "right",
+  },
   contactSwitcher: {
-    backgroundColor: '#11151a',
+    backgroundColor: "#11151a",
     borderRadius: 14,
     padding: 12,
-    marginTop: 4,
+    marginTop: 6,
     gap: 10,
   },
   contactToggle: {
-    flexDirection: 'row',
-    backgroundColor: '#0f1115',
+    flexDirection: "row",
+    backgroundColor: "#0f1115",
     borderRadius: 10,
     padding: 3,
     gap: 3,
@@ -253,64 +436,81 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 8,
     borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   contactTabActive: {
-    backgroundColor: '#115e59',
+    backgroundColor: "#115e59",
   },
   contactTabText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#94a3b8',
-    textTransform: 'uppercase',
+    fontWeight: "700",
+    color: "#94a3b8",
+    textTransform: "uppercase",
     letterSpacing: 0.4,
   },
   contactTabTextActive: {
-    color: '#ffffff',
+    color: "#ffffff",
   },
   contactName: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#e2e8f0',
-    textAlign: 'center',
+    fontWeight: "700",
+    color: "#e2e8f0",
+    textAlign: "center",
   },
   contactActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
   },
   contactBtn: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
-    backgroundColor: '#115e59',
+    backgroundColor: "#115e59",
     paddingVertical: 12,
     borderRadius: 12,
   },
   contactBtnSMS: {
-    backgroundColor: '#0f766e',
+    backgroundColor: "#0f766e",
   },
   contactBtnText: {
     fontSize: 14,
-    fontWeight: '800',
-    color: '#ffffff',
-    textTransform: 'uppercase',
+    fontWeight: "800",
+    color: "#ffffff",
+    textTransform: "uppercase",
     letterSpacing: 0.3,
   },
   primaryBtn: {
-    backgroundColor: '#115e59', marginHorizontal: 20, height: 50, borderRadius: 14,
-    justifyContent: 'center', alignItems: 'center', marginBottom: 12,
+    backgroundColor: "#115e59",
+    marginHorizontal: 20,
+    height: 50,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
   },
-  primaryBtnText: { fontSize: 15, fontWeight: '800', color: '#ffffff', letterSpacing: -0.2 },
+  primaryBtnText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#ffffff",
+    letterSpacing: -0.2,
+  },
   doneChip: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 12, marginHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    marginHorizontal: 20,
   },
-  doneText: { fontSize: 13, fontWeight: '700', color: '#10b981' },
+  doneText: { fontSize: 13, fontWeight: "700", color: "#10b981" },
   doneChipCancelled: {
-    paddingVertical: 12, marginHorizontal: 20, alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 12,
+    marginHorizontal: 20,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  doneTextCancelled: { fontSize: 13, fontWeight: '700', color: '#ef4444' },
+  doneTextCancelled: { fontSize: 13, fontWeight: "700", color: "#ef4444" },
 });

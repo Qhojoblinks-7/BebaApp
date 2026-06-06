@@ -16,7 +16,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.beba.rider",
       "config": {
-        "googleSignIn": { "reservedClientId": "com.googleusercontent.apps.YOUR_CLIENT_ID" }
+        "googleSignIn": {
+          "reservedClientId": "com.googleusercontent.apps.YOUR_CLIENT_ID"
+        }
       },
       "infoPlist": {
         "NSCameraUsageDescription": "Camera access required for delivery signature capture",
@@ -24,7 +26,10 @@
         "NSLocationAlwaysUsageDescription": "Background location for continuous fleet telemetry",
         "NSLocationWhenInUseUsageDescription": "Location needed to navigate delivery addresses",
         "NSUserInterfaceStyle": "automatic",
-        "UIBackgroundModes": ["location", "fetch"]
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ]
       }
     },
     "android": {
@@ -33,8 +38,15 @@
         "backgroundColor": "#020617"
       },
       "edgeToEdgeEnabled": true,
-      "permissions": ["NOTIFICATIONS"],
-      "googleServicesFile": "./google-services.json"
+      "permissions": [
+        "NOTIFICATIONS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "NOTIFICATIONS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "package": "com.beba.rider"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -44,8 +56,8 @@
       "expo-notifications"
     ],
     "extra": {
-      "EXPO_PUBLIC_SUPABASE_URL": "YOUR_SUPABASE_URL",
-      "EXPO_PUBLIC_SUPABASE_ANON_KEY": "YOUR_SUPABASE_ANON_KEY"
+      "EXPO_PUBLIC_SUPABASE_URL": "https://tjgutznerztvegoyitex.supabase.co",
+      "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqZ3V0em5lcnp0dmVnb3lpdGV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwMDQ5ODAsImV4cCI6MjA5NDU4MDk4MH0.d1zLEuTHRNUOL3CE5eI4vk9thIGvdApQPTrc4nBTG34"
     }
   }
 }

@@ -1,14 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, ActivityIndicator, ScrollView, FlatList } from 'react-native';
-import { useAuth } from '../../context/AuthContext';
-import { supabase } from '../../services/supabaseClient';
-import { startTrackingEngine, stopTrackingEngine } from '../../services/locationManager';
-import DashboardHeader from '../../components/rider/DashboardHeader';
-import TabSelector from '../../components/rider/TabSelector';
-import DailySummaryCard from '../../components/rider/DailySummaryCard';
-import RiderOrderCard from '../../components/rider/RiderOrderCard';
+import React, { useState, useEffect } from "react";
+import {
+  StyleSheet,
+  View,
+  ActivityIndicator,
+  ScrollView,
+  Text,
+} from "react-native";
+import { useAuth } from "../../context/AuthContext";
+import { supabase } from "../../services/supabaseClient";
+import {
+  startTrackingEngine,
+  stopTrackingEngine,
+} from "../../services/locationManager";
+import DashboardHeader from "../../components/rider/DashboardHeader";
+import { ArrowUpRight, ArrowDownRight } from "lucide-react-native";
+import RiderOrderCard from "../../components/rider/RiderOrderCard";
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function getMonday(d) {
   const date = new Date(d);
@@ -26,7 +34,7 @@ function buildWeekDays(fromMonday) {
     return {
       day: DAYS[d.getDay()],
       num: d.getDate(),
-      date: d.toISOString().split('T')[0],
+      date: d.toISOString().split("T")[0],
     };
   });
 }
@@ -42,25 +50,30 @@ export default function DashboardScreen({ navigation }) {
     const dow = today.getDay();
     return dow === 0 ? 5 : dow - 1;
   });
-  const [activeTab, setActiveTab] = useState('deliveries');
   const [dailySummary, setDailySummary] = useState({
-    distanceKm: 0,
+    distanceKm: "0.0",
     earnings: 0,
     completedDrops: 0,
+    cancelledRate: 0,
   });
   const [deliveryOrders, setDeliveryOrders] = useState([]);
 
   const calendarDays = buildWeekDays(weekStart);
-  const monthLabel = weekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const selectedDate = calendarDays[selectedDayIndex]?.date || new Date().toISOString().split('T')[0];
+  const monthLabel = weekStart.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+  const selectedDate =
+    calendarDays[selectedDayIndex]?.date ||
+    new Date().toISOString().split("T")[0];
 
   async function fetchCurrentStatus() {
-    if (!user) return;
+    if (!user?.id) return;
     try {
       const { data, error } = await supabase
-        .from('rider_status')
-        .select('is_rider_online')
-        .eq('id', user.id)
+        .from("rider_status")
+        .select("is_rider_online")
+        .eq("id", user.id)
         .maybeSingle();
 
       if (error) throw error;
@@ -72,7 +85,10 @@ export default function DashboardScreen({ navigation }) {
         }
       }
     } catch (err) {
-      console.warn('[Dashboard] System fallback reading presence state:', err.message);
+      console.warn(
+        "[Dashboard] System fallback reading presence state:",
+        err.message,
+      );
     } finally {
       setSyncing(false);
     }
@@ -82,15 +98,18 @@ export default function DashboardScreen({ navigation }) {
     if (!user?.id) return;
     try {
       const { count, error } = await supabase
-        .from('notifications')
-        .select('*', { count: 'exact', head: true })
-        .eq('rider_id', user.id)
-        .eq('is_read', false);
+        .from("notifications")
+        .select("*", { count: "exact", head: true })
+        .eq("rider_id", user.id)
+        .eq("is_read", false);
 
       if (error) throw error;
       setUnreadCount(count || 0);
     } catch (err) {
-      console.warn('[Dashboard] Unread database counter lookup failure:', err.message);
+      console.warn(
+        "[Dashboard] Unread database counter lookup failure:",
+        err.message,
+      );
     }
   }
 
@@ -113,14 +132,14 @@ export default function DashboardScreen({ navigation }) {
     const channel = supabase
       .channel(`notifications-${user.id}`)
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
           filter: `rider_id=eq.${user.id}`,
         },
-        () => fetchUnreadCount()
+        () => fetchUnreadCount(),
       )
       .subscribe();
 
@@ -129,10 +148,11 @@ export default function DashboardScreen({ navigation }) {
     };
   }, [user?.id]);
 
-  const toggleAvailabilityState = async (value) => {
+  const toggleAvailabilityState = async () => {
+    const nextState = !isOnline;
     setSyncing(true);
     try {
-      if (value) {
+      if (nextState) {
         const trackingActive = await startTrackingEngine();
         if (!trackingActive) {
           setIsOnline(false);
@@ -143,25 +163,23 @@ export default function DashboardScreen({ navigation }) {
         await stopTrackingEngine();
       }
 
-      const { error } = await supabase
-        .from('rider_status')
-        .upsert({
-          id: user.id,
-          is_rider_online: value,
-          updated_at: new Date().toISOString()
-        });
+      const { error } = await supabase.from("rider_status").upsert({
+        id: user.id,
+        is_rider_online: nextState,
+        updated_at: new Date().toISOString(),
+      });
 
       if (error) throw error;
-      setIsOnline(value);
+      setIsOnline(nextState);
     } catch (err) {
-      console.warn('[Dashboard] State push sync layout error:', err.message);
+      console.warn("[Dashboard] State push sync layout error:", err.message);
     } finally {
       setSyncing(false);
     }
   };
 
   const handleMonthPrev = () => {
-    setWeekStart(prev => {
+    setWeekStart((prev) => {
       const d = new Date(prev);
       d.setDate(d.getDate() - 7);
       return d;
@@ -169,7 +187,7 @@ export default function DashboardScreen({ navigation }) {
   };
 
   const handleMonthNext = () => {
-    setWeekStart(prev => {
+    setWeekStart((prev) => {
       const d = new Date(prev);
       d.setDate(d.getDate() + 7);
       return d;
@@ -180,31 +198,43 @@ export default function DashboardScreen({ navigation }) {
     setSelectedDayIndex(index);
   };
 
-  async function fetchDailySummary() {
+  async function fetchDashboardMetrics() {
     if (!user?.id) return;
     try {
       const startOfDay = `${selectedDate}T00:00:00`;
       const endOfDay = `${selectedDate}T23:59:59`;
 
+      // Fetch day specific order manifest rows
       const { data: orders, error: ordersError } = await supabase
-         .from('orders')
-         .select('delivery_fee, received_at, status')
-         .eq('rider_id', user.id)
-         .in('status', ['delivered', 'picked_up', 'in_transit', 'assigned'])
-         .gte('received_at', startOfDay)
-         .lte('received_at', endOfDay);
+        .from("orders")
+        .select("*")
+        .eq("rider_id", user.id)
+        .gte("created_at", startOfDay)
+        .lte("created_at", endOfDay);
 
       if (ordersError) throw ordersError;
 
-      const deliveredOrders = orders?.filter(o => o.status === 'delivered') || [];
-      const completedDrops = orders?.length || 0;
+      const validOrders = orders?.filter((o) =>
+        ["assigned", "picked_up", "in_transit", "delivered"].includes(o.status)
+      ) || [];
+      
+      setDeliveryOrders(
+        validOrders.sort((a, b) => (a.route_sequence || 0) - (b.route_sequence || 0))
+      );
 
+      const completedDrops = orders?.filter((o) => o.status === "delivered").length || 0;
+      const cancelledCount = orders?.filter((o) => o.status === "cancelled").length || 0;
+      const totalBookings = orders?.length || 0;
+      
+      const cancelledRate = totalBookings > 0 ? Math.round((cancelledCount / totalBookings) * 100) : 0;
+
+      // Fetch transaction parameters
       const { data: revenue, error: revenueError } = await supabase
-        .from('revenue')
-        .select('amount, order_completed_at')
-        .eq('rider_id', user.id)
-        .gte('order_completed_at', startOfDay)
-        .lte('order_completed_at', endOfDay);
+        .from("revenue")
+        .select("amount")
+        .eq("rider_id", user.id)
+        .gte("order_completed_at", startOfDay)
+        .lte("order_completed_at", endOfDay);
 
       if (revenueError) throw revenueError;
 
@@ -214,54 +244,34 @@ export default function DashboardScreen({ navigation }) {
       setDailySummary({
         distanceKm: distanceKm.toFixed(1),
         earnings,
-        completedDrops,
+        completedDrops: totalBookings,
+        cancelledRate,
       });
     } catch (err) {
-      console.warn('[Dashboard] Failed to fetch daily summary:', err.message);
-    }
-  }
-
-  async function fetchDeliveryOrders() {
-    if (!user?.id) return;
-    try {
-      const startOfDay = `${selectedDate}T00:00:00`;
-      const endOfDay = `${selectedDate}T23:59:59`;
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('rider_id', user.id)
-        .in('status', ['assigned', 'picked_up', 'in_transit', 'delivered'])
-        .gte('created_at', startOfDay)
-        .lte('created_at', endOfDay)
-        .order('route_sequence', { ascending: true });
-
-      if (error) throw error;
-      setDeliveryOrders(data || []);
-    } catch (err) {
-      console.warn('[Dashboard] Failed to fetch delivery orders:', err.message);
+      console.warn("[Dashboard] Metrics parsing failed:", err.message);
     }
   }
 
   useEffect(() => {
-    fetchDailySummary();
-    fetchDeliveryOrders();
+    fetchDashboardMetrics();
   }, [user?.id, selectedDate]);
 
   if (syncing) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#115e59" />
+        <ActivityIndicator size="small" color="#facc15" />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      {/* Target UI layout header integration */}
       <DashboardHeader
         isOnline={isOnline}
         unreadCount={unreadCount}
-        onToggleOnline={() => toggleAvailabilityState(!isOnline)}
-        onNavigateNotifications={() => navigation.navigate('Notifications')}
+        onToggleOnline={toggleAvailabilityState}
+        onNavigateNotifications={() => navigation.navigate("Notifications")}
         onMonthPrev={handleMonthPrev}
         onMonthNext={handleMonthNext}
         calendarDays={calendarDays}
@@ -271,40 +281,210 @@ export default function DashboardScreen({ navigation }) {
       />
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <TabSelector activeTab={activeTab} onTabChange={setActiveTab} />
+        
+        {/* --- STATS SECTION --- */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitleText}>Your Stats</Text>
+        </View>
 
-        {activeTab === 'deliveries' && (
-          <View>
-            <DailySummaryCard
-              distanceKm={dailySummary.distanceKm}
-              earnings={dailySummary.earnings}
-              completedDrops={dailySummary.completedDrops}
-            />
-            {deliveryOrders.length > 0 && (
-              <View style={{ marginTop: 12 }}>
-                <Text style={styles.sectionTitle}>Today's Dispatches</Text>
-                <FlatList
-                  data={deliveryOrders}
-                  keyExtractor={(item) => item.id}
-                  scrollEnabled={false}
-                  renderItem={({ item }) => (
-                    <RiderOrderCard order={item} />
-                  )}
-                />
+        {/* Asymmetric Image Analytics Metrics Block */}
+        <View style={styles.statsGrid}>
+          {/* Accent Display Box */}
+          <View style={styles.accentMetricCard}>
+            <View>
+              <Text style={styles.accentCardTitle}>Total Bookings</Text>
+              <Text style={styles.accentCardSubtitle}>Today</Text>
+            </View>
+            <View style={styles.cardMetricsFooter}>
+              <Text style={styles.accentCardValue}>{dailySummary.completedDrops}</Text>
+              <View style={styles.lightArrowCircle}>
+                <ArrowUpRight size={18} color="#11151a" strokeWidth={2.5} />
               </View>
-            )}
+            </View>
           </View>
-        )}
 
-        <View style={{ height: 32 }} />
+           {/* Muted Display Box */}
+           <View style={styles.darkMetricCard}>
+             <View>
+               <Text style={styles.darkCardTitle}>Money Made</Text>
+               <Text style={styles.darkCardSubtitle}>Today</Text>
+             </View>
+             <View style={styles.cardMetricsFooter}>
+               <Text style={styles.darkCardValue}>₵ {dailySummary.earnings.toFixed(1)}</Text>
+               <View style={styles.darkArrowCircle}>
+                 <ArrowUpRight size={18} color="#115e59" strokeWidth={2.5} />
+               </View>
+             </View>
+           </View>
+        </View>
+
+        {/* --- BOOKINGS RUN-LIST SECTION --- */}
+        <View style={[styles.sectionHeader, { marginTop: 28 }]}>
+          <Text style={styles.sectionTitleText}>Todays Bookings</Text>
+          <View style={styles.pillCountBadge}>
+            <Text style={styles.pillCountText}>
+              {deliveryOrders.length < 10 ? `0${deliveryOrders.length}` : deliveryOrders.length}
+            </Text>
+          </View>
+        </View>
+
+        {/* Output Dispatch Mapping */}
+        <View style={styles.ordersListWrapper}>
+          {deliveryOrders.length === 0 ? (
+            <View style={styles.emptyContainerFallback}>
+              <Text style={styles.fallbackMessageText}>No bookings queued for this day.</Text>
+            </View>
+          ) : (
+            deliveryOrders.map((item) => (
+              <RiderOrderCard key={item.id} order={item} />
+            ))
+          )}
+        </View>
+
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
-  loadingContainer: { flex: 1, backgroundColor: '#f8fafc', justifyContent: 'center', alignItems: 'center' },
-  scrollContent: { flex: 1, paddingHorizontal: 16 },
-  sectionTitle: { fontSize: 13, fontWeight: '800', color: '#0f172a', marginHorizontal: 16, marginTop: 16, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  container: { flex: 1, backgroundColor: "#ffffff" },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: "#0b0d0f",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  scrollContent: { flex: 1, paddingHorizontal: 20 },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 24,
+    marginBottom: 16,
+    gap: 12,
+  },
+  sectionTitleText: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#16191e",
+    letterSpacing: -0.4,
+  },
+  pillCountBadge: {
+    backgroundColor: "#4b4d4f",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#ffffff0a",
+  },
+  pillCountText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "700",
+    opacity: 0.9,
+  },
+  statsGrid: {
+    flexDirection: "row",
+    gap: 14,
+    width: "100%",
+  },
+  accentMetricCard: {
+    flex: 1,
+    backgroundColor: "#115e59",
+    borderRadius: 28,
+    padding: 20,
+    minHeight: 155,
+    justifyContent: "space-between",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  accentCardTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+  accentCardSubtitle: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#ffffff",
+    opacity: 0.6,
+    marginTop: 2,
+  },
+  cardMetricsFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+  },
+  accentCardValue: {
+    fontSize: 38,
+    fontWeight: "700",
+    color: "#ffffff",
+    lineHeight: 42,
+  },
+  lightArrowCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#ffffff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  darkMetricCard: {
+    flex: 1,
+    backgroundColor: "#Fafafa",
+    borderRadius: 28,
+    padding: 20,
+    minHeight: 155,
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#ffffff0a",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  darkCardTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#16191e",
+  },
+  darkCardSubtitle: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#6c6e71",
+    marginTop: 2,
+  },
+  darkCardValue: {
+    fontSize: 34,
+    fontWeight: "700",
+    color: "#115e59",
+    lineHeight: 40,
+  },
+  darkArrowCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#d1e2d9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  ordersListWrapper: {
+    marginTop: 2,
+  },
+  emptyContainerFallback: {
+    padding: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#d1e2d9",
+    borderRadius: 24,
+  },
+  fallbackMessageText: {
+    color: "#64748b",
+    fontSize: 13,
+    fontWeight: "600",
+  },
 });

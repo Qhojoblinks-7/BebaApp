@@ -1,11 +1,11 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React from "react";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 
 const TABS = [
-  { key: 'requests',  label: 'Requests' },
-  { key: 'active',    label: 'Active' },
-  { key: 'completed', label: 'Completed' },
-  { key: 'cancelled', label: 'Cancelled' },
+  { key: "requests", label: "Requests" },
+  { key: "active", label: "Active" },
+  { key: "completed", label: "Completed" },
+  { key: "cancelled", label: "Cancelled" },
 ];
 
 function TabButton({ label, active, onPress }) {
@@ -14,14 +14,16 @@ function TabButton({ label, active, onPress }) {
       style={[styles.tabButton, active && styles.activeTabButton]}
       onPress={onPress}
     >
-      <Text style={[styles.tabButtonText, active && styles.activeTabButtonText]}>
+      <Text
+        style={[styles.tabButtonText, active && styles.activeTabButtonText]}
+      >
         {label}
       </Text>
     </TouchableOpacity>
   );
 }
 
-export default function RiderTabBar({ activeTab = 'requests', onTabChange }) {
+export default function RiderTabBar({ activeTab = "requests", onTabChange }) {
   return (
     <View style={styles.container}>
       {TABS.map((tab) => (
@@ -38,9 +40,9 @@ export default function RiderTabBar({ activeTab = 'requests', onTabChange }) {
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
+    flexDirection: "row",
     borderBottomWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: "#e2e8f0",
     marginTop: 20,
     marginBottom: 16,
     paddingHorizontal: 8,
@@ -48,19 +50,19 @@ const styles = StyleSheet.create({
   tabButton: {
     flex: 1,
     paddingVertical: 12,
-    alignItems: 'center',
+    alignItems: "center",
   },
   activeTabButton: {
     borderBottomWidth: 2,
-    borderColor: '#115e59',
+    borderColor: "#115e59",
   },
   tabButtonText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#94a3b8',
+    fontWeight: "700",
+    color: "#94a3b8",
   },
   activeTabButtonText: {
-    color: '#115e59',
-    fontWeight: '800',
+    color: "#115e59",
+    fontWeight: "800",
   },
 });

@@ -108,25 +108,39 @@ export default function RiderOrderCard({ order, onPress }) {
           </View>
         </View>
 
-{!!order.delivery_fee ? (
+        {!!order.delivery_fee ? (
           <View style={styles.footerRow}>
             <Text style={styles.feeLabel}>Fee</Text>
-            <Text style={styles.feeValue}>GH¢ {Number(order.delivery_fee).toFixed(2)}</Text>
+            <Text style={styles.feeValue}>
+              GH¢ {Number(order.delivery_fee).toFixed(2)}
+            </Text>
           </View>
         ) : null}
 
         {order.base_price && (
           <View style={styles.metaRow}>
-            <Text style={styles.metaLabel}>Base: GH¢ {Number(order.base_price).toFixed(2)}</Text>
-            {order.distance_fee > 0 && <Text style={styles.metaLabel}>Distance: GH¢ {Number(order.distance_fee).toFixed(2)}</Text>}
-            {order.surge_fee > 0 && <Text style={styles.metaLabel}>Surge: GH¢ {Number(order.surge_fee).toFixed(2)}</Text>}
+            <Text style={styles.metaLabel}>
+              Base: GH¢ {Number(order.base_price).toFixed(2)}
+            </Text>
+            {order.distance_fee > 0 && (
+              <Text style={styles.metaLabel}>
+                Distance: GH¢ {Number(order.distance_fee).toFixed(2)}
+              </Text>
+            )}
+            {order.surge_fee > 0 && (
+              <Text style={styles.metaLabel}>
+                Surge: GH¢ {Number(order.surge_fee).toFixed(2)}
+              </Text>
+            )}
           </View>
         )}
 
         {order.delivery_instructions ? (
           <View style={styles.instructionsRow}>
             <Text style={styles.instructionsLabel}>Note:</Text>
-            <Text style={styles.instructionsText}>{order.delivery_instructions}</Text>
+            <Text style={styles.instructionsText}>
+              {order.delivery_instructions}
+            </Text>
           </View>
         ) : null}
 
