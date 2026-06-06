@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Platform,
   StatusBar,
+  Image,
 } from "react-native";
 import {
   ChevronLeft,
@@ -59,12 +60,19 @@ function MonthSelector({ monthLabel, onPrev, onNext }) {
   );
 }
 
-function ProfileBadge({ onPress }) {
+function Avatar({ uri }) {
+  if (uri) {
+    return <Image source={{ uri }} style={styles.avatarImage} />;
+  }
+  return <View style={styles.avatarPlaceholder} />;
+}
+
+function ProfileBadge({ onPress, profileName, avatarUri }) {
   return (
     <TouchableOpacity style={styles.profileBadge} onPress={onPress} activeOpacity={0.8}>
-      <View style={styles.avatar} />
+      <Avatar uri={avatarUri} />
       <View style={styles.profileTextContainer}>
-        <Text style={styles.profileName}>Immanuel E.</Text>
+        <Text style={styles.profileName}>{profileName || "Rider"}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -125,6 +133,8 @@ export default function DashboardHeader({
   calendarDays = [],
   selectedDayIndex,
   onSelectDay,
+  profileName,
+  avatarUri,
 }) {
   const monthLabel = weekStart
     ? weekStart.toLocaleDateString("en-US", {
@@ -143,7 +153,7 @@ export default function DashboardHeader({
       <View style={styles.safeHeader}>
         {/* Profile Details & Fleet Availability Switch Strip */}
         <View style={styles.headerRow}>
-        <ProfileBadge onPress={onNavigateProfile} />
+        <ProfileBadge onPress={onNavigateProfile} profileName={profileName} avatarUri={avatarUri} />
         <ActionButtons
             isOnline={isOnline}
             unreadCount={unreadCount}
@@ -318,5 +328,16 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#115e59",
     marginTop: 2,
+  },
+  avatarImage: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+  avatarPlaceholder: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#cbd5e1",
   },
 });

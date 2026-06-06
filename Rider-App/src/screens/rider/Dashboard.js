@@ -57,6 +57,8 @@ export default function DashboardScreen({ navigation }) {
     cancelledRate: 0,
   });
   const [deliveryOrders, setDeliveryOrders] = useState([]);
+  const [profileName, setProfileName] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
 
   const calendarDays = buildWeekDays(weekStart);
   const monthLabel = weekStart.toLocaleDateString("en-US", {
@@ -94,6 +96,25 @@ export default function DashboardScreen({ navigation }) {
     }
   }
 
+  async function fetchProfileName() {
+    if (!user?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("full_name, avatar_url")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) {
+        if (data.full_name) setProfileName(data.full_name);
+        if (data.avatar_url) setAvatarUrl(data.avatar_url);
+      }
+    } catch (err) {
+      console.warn("[Dashboard] Failed to fetch profile:", err.message);
+    }
+  }
+
   async function fetchUnreadCount() {
     if (!user?.id) return;
     try {
@@ -120,6 +141,7 @@ export default function DashboardScreen({ navigation }) {
     }
     fetchCurrentStatus();
     fetchUnreadCount();
+    fetchProfileName();
 
     return () => {
       stopTrackingEngine();
@@ -273,11 +295,14 @@ export default function DashboardScreen({ navigation }) {
         onToggleOnline={toggleAvailabilityState}
         onNavigateNotifications={() => navigation.navigate("Notifications")}
         onNavigateProfile={() => navigation.navigate("Profile")}
+        weekStart={weekStart}
         onMonthPrev={handleMonthPrev}
         onMonthNext={handleMonthNext}
         calendarDays={calendarDays}
         selectedDayIndex={selectedDayIndex}
         onSelectDay={handleSelectDay}
+        profileName={profileName}
+        avatarUri={avatarUrl}
       />
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
