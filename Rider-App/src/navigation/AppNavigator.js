@@ -12,6 +12,11 @@ import DeliveryClosureScreen from "../screens/rider/DeliveryClosureScreen";
 import NotificationsScreen from "../screens/rider/NotificationsScreen";
 import FinancesScreen from "../screens/rider/FinancesScreen";
 import BudgetBreakdownScreen from "../screens/rider/BudgetBreakdownScreen";
+import SmartInsightsScreen from "../screens/rider/SmartInsightsScreen";
+import BudgetInsightDetailScreen from "../screens/rider/BudgetInsightDetailScreen";
+import ReportsScreen from "../screens/rider/ReportsScreen";
+import ManualCashFlowScreen from "../screens/rider/ManualCashFlowScreen";
+import QuickAddEntryScreen from "../screens/rider/QuickAddEntryScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -111,6 +116,41 @@ export default function AppNavigator() {
         <Stack.Screen
           name="BudgetBreakdown"
           component={BudgetBreakdownScreen}
+          options={{
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
+          name="SmartInsights"
+          component={SmartInsightsScreen}
+          options={{
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
+          name="BudgetInsightDetail"
+          component={BudgetInsightDetailScreen}
+          options={{
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
+          name="Reports"
+          component={ReportsScreen}
+          options={{
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
+          name="ManualCashFlow"
+          component={ManualCashFlowScreen}
+          options={{
+            animation: "slide_from_right",
+          }}
+        />
+        <Stack.Screen
+          name="QuickAddEntry"
+          component={QuickAddEntryScreen}
           options={{
             animation: "slide_from_right",
           }}

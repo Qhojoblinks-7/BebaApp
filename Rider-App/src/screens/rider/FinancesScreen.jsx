@@ -11,7 +11,7 @@ import {
   Platform,
 } from "react-native";
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from "react-native-svg";
-import { TrendingUp, Wallet, ArrowRight, Download, DollarSign, PieChart, Users, Home, ShoppingBag, PiggyBank } from "lucide-react-native";
+import { TrendingUp, Wallet, ArrowRight, Download, DollarSign, PieChart, Users, Home, ShoppingBag, PiggyBank, Fuel, CreditCard, Zap } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabaseClient";
 import { useNavigation } from "@react-navigation/native";
@@ -425,10 +425,17 @@ export default function FinancesScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScrollContent}>
           {["Overview", "Insights", "Direct", "Transactions"].map((tab) => {
             const isSelected = activeTab === tab;
+            const handlePress = () => {
+              if (tab === "Insights") {
+                navigation.navigate("SmartInsights");
+              } else {
+                setActiveTab(tab);
+              }
+            };
             return (
               <TouchableOpacity
                 key={tab}
-                onPress={() => setActiveTab(tab)}
+                onPress={handlePress}
                 style={[styles.tabButton, isSelected && styles.activeTabButton]}
                 activeOpacity={0.8}
               >
@@ -452,16 +459,29 @@ export default function FinancesScreen() {
           {activeTab === "Direct" && renderDirectTab()}
           {activeTab === "Transactions" && renderTransactionsTab()}
 
-          <TouchableOpacity style={styles.actionExportBannerButton} activeOpacity={0.9}>
+          <TouchableOpacity style={styles.actionExportBannerButton} activeOpacity={0.9} onPress={() => navigation.navigate("Reports")}>
             <View style={styles.bannerLeftFlexNode}>
-              <Download size={18} color="#94a3b8" style={{ marginRight: 12 }} />
+              <PieChart size={18} color="#94a3b8" style={{ marginRight: 12 }} />
               <View>
-                <Text style={styles.bannerMainHeadingText}>Download Statement</Text>
-                <Text style={styles.bannerSubTextDesc}>Export your earnings history</Text>
+                <Text style={styles.bannerMainHeadingText}>Detailed Reports</Text>
+                <Text style={styles.bannerSubTextDesc}>Daily, weekly & monthly breakdowns</Text>
               </View>
             </View>
             <View style={styles.circleDownWrapper}>
-              <Text style={{ color: "#ffffff", fontSize: 12 }}>↓</Text>
+              <Text style={{ color: "#ffffff", fontSize: 12 }}>→</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionExportBannerButton} activeOpacity={0.9} onPress={() => navigation.navigate("ManualCashFlow")}>
+            <View style={styles.bannerLeftFlexNode}>
+              <TrendingUp size={18} color="#facc15" style={{ marginRight: 12 }} />
+              <View>
+                <Text style={styles.bannerMainHeadingText}>Manual Cash Flow</Text>
+                <Text style={styles.bannerSubTextDesc}>Log inflows and outflows outside the system</Text>
+              </View>
+            </View>
+            <View style={styles.circleDownWrapper}>
+              <Text style={{ color: "#ffffff", fontSize: 12 }}>+</Text>
             </View>
           </TouchableOpacity>
 
@@ -480,7 +500,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 18,
-    paddingTop: Platform.OS === "ios" ? 16 : 12,
+    paddingTop: 44,
     paddingBottom: 14,
   },
   profileBadge: { flexDirection: "row", alignItems: "center" },
