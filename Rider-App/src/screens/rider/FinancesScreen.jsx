@@ -10,12 +10,24 @@ import {
   StatusBar,
   Platform,
 } from "react-native";
-import Svg, { Path, Circle, Defs, LinearGradient, Stop } from "react-native-svg";
-import { TrendingUp, Wallet, ArrowRight, Download, DollarSign, PieChart, Users, Home, ShoppingBag, PiggyBank, Fuel, CreditCard, Zap, ClipboardList } from "lucide-react-native";
+import Svg, { Path, Circle } from "react-native-svg";
+import { 
+  TrendingUp, 
+  Wallet, 
+  ArrowRight, 
+  PieChart, 
+  Users, 
+  Home, 
+  ShoppingBag, 
+  PiggyBank, 
+  DollarSign, 
+  ClipboardList 
+} from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabaseClient";
 import { useNavigation } from "@react-navigation/native";
 import { getLiveBudgetFromRevenue } from "../../services/budgetService";
+import { useThemeStore } from "../../store/themeStore";
 
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.44;
@@ -72,6 +84,7 @@ function buildDefaultBudget(totalEarnings) {
 export default function FinancesScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
+  const { colors, isDarkMode } = useThemeStore();
   const [activeTab, setActiveTab] = useState("Overview");
   const [syncing, setSyncing] = useState(true);
   const [financeSummary, setFinanceSummary] = useState({
@@ -96,7 +109,6 @@ export default function FinancesScreen() {
     if (user?.id && financeSummary.totalEarnings > 0) {
       loadBudgetData();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, financeSummary.totalEarnings]);
 
   const loadBudgetData = async () => {
@@ -214,10 +226,9 @@ export default function FinancesScreen() {
       return { x, y };
     });
     const pathD = chartPoints.map((p, i) => (i === 0 ? "M " + p.x + " " + p.y : "L " + p.x + " " + p.y)).join(" ");
-    const areaD = pathD + " L " + (chartPoints[chartPoints.length - 1]?.x || 110) + " 45 L 10 45 Z";
+    
     const avgNorm = Math.min((financeSummary.avgPerDelivery || 0) / 100, 1);
     const avgDash = (avgNorm * 100).toFixed(1) + " " + (100 - avgNorm * 100).toFixed(1);
-    const completionVal = parseInt(financeSummary.completionRate) || 0;
     const growthClean = parseFloat(financeSummary.weeklyGrowth) || 0;
     const growthDir = growthClean >= 0 ? 1 : -1;
     const growthAbs = Math.abs(growthClean);
@@ -227,43 +238,44 @@ export default function FinancesScreen() {
     const growthPathD = growthAbs === 0
       ? "M 0 28 L 30 28 L 75 28 L 120 28"
       : "M 0 28 L 30 " + midY + " L 75 " + peakY + " L 120 " + endY;
+
     return (
       <>
         <View style={styles.analyticsGrid}>
-          <View style={styles.metricCard}>
+          <View style={[styles.metricCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
             <View style={styles.cardHeaderInline}>
-              <Wallet size={14} color="#94a3b8" />
-              <Text style={styles.cardLabelText}>Total Earnings</Text>
+              <Wallet size={14} color={colors.textMuted} />
+              <Text style={[styles.cardLabelText, { color: colors.textMuted }]}>Total Earnings</Text>
             </View>
-            <Text style={styles.cardMainValueText}>GH₵ {financeSummary.totalEarnings.toFixed(2)}</Text>
+            <Text style={[styles.cardMainValueText, { color: colors.text }]}>GH₵ {financeSummary.totalEarnings.toFixed(2)}</Text>
             <View style={styles.vectorMapMockContainer}>
               <Svg height="50" width="130" viewBox="0 0 130 50">
                 <Path
-                  d={pathD.replace(/M /, "M10,40 ").replace(/L /g, "L").replace(/  /g, " ").replace(/(\d+\.?\d*)\s+(\d+\.?\d*)/g, (m, x, y) => x + "," + y)}
+                  d={pathD ? pathD.replace(/M /, "M10,40 ").replace(/L /g, "L").replace(/  /g, " ") : "M10,40 L120,40"}
                   fill="none"
-                  stroke="#334155"
+                  stroke={colors.borderLight}
                   strokeWidth="2"
                   strokeDasharray="4,4"
                 />
               </Svg>
             </View>
-            <Text style={styles.cardFooterDisclaimer}>All time delivery revenue</Text>
+            <Text style={[styles.cardFooterDisclaimer, { color: colors.textSecondary }]}>All time delivery revenue</Text>
           </View>
 
-          <View style={styles.metricCard}>
+          <View style={[styles.metricCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
             <View style={styles.cardHeaderInline}>
-              <PieChart size={14} color="#94a3b8" />
-              <Text style={styles.cardLabelText}>Avg Per Delivery</Text>
+              <PieChart size={14} color={colors.textMuted} />
+              <Text style={[styles.cardLabelText, { color: colors.textMuted }]}>Avg Per Delivery</Text>
             </View>
             <View style={styles.arcVisualContainer}>
               <Svg height="76" width="76" viewBox="0 0 40 40">
-                <Circle cx="20" cy="20" r="16" fill="none" stroke="#1e293b" strokeWidth="3" />
+                <Circle cx="20" cy="20" r="16" fill="none" stroke={colors.backgroundSecondary} strokeWidth="3" />
                 <Circle
                   cx="20"
                   cy="20"
                   r="16"
                   fill="none"
-                  stroke="#115e59"
+                  stroke={colors.primary}
                   strokeWidth="3.5"
                   strokeDasharray={avgDash}
                   strokeLinecap="round"
@@ -271,45 +283,45 @@ export default function FinancesScreen() {
                 />
               </Svg>
               <View style={styles.arcAbsoluteLabelCenter}>
-                <Text style={styles.arcCenterNumberText}>{financeSummary.avgPerDelivery}</Text>
-                <Text style={styles.arcCenterSubText}>GH₵ avg</Text>
+                <Text style={[styles.arcCenterNumberText, { color: colors.text }]}>{financeSummary.avgPerDelivery}</Text>
+                <Text style={[styles.arcCenterSubText, { color: colors.textSecondary }]}>GH₵ avg</Text>
               </View>
             </View>
             <View style={styles.arcBaseLabelsRow}>
-              <Text style={styles.arcMicroLabelText}>Low</Text>
-              <Text style={styles.arcMicroLabelText}>High</Text>
+              <Text style={[styles.arcMicroLabelText, { color: colors.textDisabled }]}>Low</Text>
+              <Text style={[styles.arcMicroLabelText, { color: colors.textDisabled }]}>High</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.analyticsGrid}>
-          <View style={styles.metricCard}>
+          <View style={[styles.metricCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
             <View style={styles.cardHeaderInline}>
-              <TrendingUp size={14} color="#94a3b8" />
-              <Text style={styles.cardLabelText}>Completion Rate</Text>
+              <TrendingUp size={14} color={colors.textMuted} />
+              <Text style={[styles.cardLabelText, { color: colors.textMuted }]}>Completion Rate</Text>
             </View>
-            <Text style={styles.cardMainValueText}>{financeSummary.completionRate}</Text>
+            <Text style={[styles.cardMainValueText, { color: colors.text }]}>{financeSummary.completionRate}</Text>
             <View style={styles.timelineVisualSliderRow}>
-              <View style={styles.timelineTrackLine}>
-                <View style={[styles.timelineProgressFill, { width: financeSummary.completionRate }]} />
-                <View style={[styles.timelineThumbDot, { left: financeSummary.completionRate }]} />
+              <View style={[styles.timelineTrackLine, { backgroundColor: colors.backgroundSecondary }]}>
+                <View style={[styles.timelineProgressFill, { width: financeSummary.completionRate, backgroundColor: colors.primary }]} />
+                <View style={[styles.timelineThumbDot, { left: financeSummary.completionRate, backgroundColor: colors.text }]} />
               </View>
             </View>
-            <Text style={styles.cardFooterDisclaimer}>Orders delivered successfully</Text>
+            <Text style={[styles.cardFooterDisclaimer, { color: colors.textSecondary }]}>Orders delivered successfully</Text>
           </View>
 
-          <View style={styles.metricCard}>
+          <View style={[styles.metricCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
             <View style={styles.cardHeaderInline}>
-              <Users size={14} color="#94a3b8" />
-              <Text style={styles.cardLabelText}>Weekly Growth</Text>
+              <Users size={14} color={colors.textMuted} />
+              <Text style={[styles.cardLabelText, { color: colors.textMuted }]}>Weekly Growth</Text>
             </View>
-            <Text style={styles.cardMainValueText}>{financeSummary.weeklyGrowth}</Text>
+            <Text style={[styles.cardMainValueText, { color: colors.text }]}>{financeSummary.weeklyGrowth}</Text>
             <View style={styles.splineGraphWrapper}>
               <Svg height="36" width="120" viewBox="0 0 120 36">
                 <Path
                   d={growthPathD}
                   fill="none"
-                  stroke="#115e59"
+                  stroke={colors.primary}
                   strokeWidth="3"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -320,29 +332,29 @@ export default function FinancesScreen() {
         </View>
 
         <View style={styles.sectionTitleRow}>
-          <Text style={styles.sectionHeadlineLabel}>Weekly Earnings</Text>
+          <Text style={[styles.sectionHeadlineLabel, { color: colors.text }]}>Weekly Earnings</Text>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.weeklyScrollContainer}>
           {loadingWeekly ? (
             <View style={styles.loadingWeeklyContainer}>
-              <ActivityIndicator size="small" color="#facc15" />
+              <ActivityIndicator size="small" color={colors.warning} />
             </View>
           ) : (
             weeklyData.map((day, index) => (
               <View key={index} style={styles.weeklyBarCard}>
-                <View style={styles.weeklyBarWrapper}>
-                  <View style={[styles.weeklyBarFill, { height: Math.max(day.earnings / 10, 20) }]} />
+                <View style={[styles.weeklyBarWrapper, { backgroundColor: colors.backgroundSecondary }]}>
+                  <View style={[styles.weeklyBarFill, { height: Math.max(day.earnings / 10, 20), backgroundColor: colors.primary }]} />
                 </View>
-                <Text style={styles.weeklyDayLabel}>{day.day}</Text>
-                <Text style={styles.weeklyAmountLabel}>GH₵ {day.earnings.toFixed(0)}</Text>
+                <Text style={[styles.weeklyDayLabel, { color: colors.textMuted }]}>{day.day}</Text>
+                <Text style={[styles.weeklyAmountLabel, { color: colors.text }]}>GH₵ {day.earnings.toFixed(0)}</Text>
               </View>
             ))
           )}
         </ScrollView>
 
         <View style={styles.sectionTitleRow}>
-          <Text style={styles.sectionHeadlineLabel}>50/30/20 Budget</Text>
+          <Text style={[styles.sectionHeadlineLabel, { color: colors.text }]}>50/30/20 Budget</Text>
           <TouchableOpacity
             style={styles.inlineHeaderLinkAction}
             activeOpacity={0.7}
@@ -351,7 +363,7 @@ export default function FinancesScreen() {
               navigation.navigate("BudgetBreakdown", { budgetData: data });
             }}
           >
-            <ArrowRight size={16} color="#94a3b8" />
+            <ArrowRight size={16} color={colors.textMuted} />
           </TouchableOpacity>
         </View>
 
@@ -364,23 +376,25 @@ export default function FinancesScreen() {
             const savedAmount = Math.max(bucket.allocated - bucket.spent, 0);
             const savedPercent = bucket.allocated > 0 ? Math.round((savedAmount / bucket.allocated) * 100) : 0;
             return (
-              <TouchableOpacity key={bucket.id} style={styles.budgetBucketCard} activeOpacity={0.8} onPress={() => {
-                const data = budgetData.length > 0 ? budgetData : buildDefaultBudget(financeSummary.totalEarnings);
-                navigation.navigate("BudgetBreakdown", { budgetData: data });
-              }}>
+              <TouchableOpacity 
+                key={bucket.id} 
+                style={[styles.budgetBucketCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]} 
+                activeOpacity={0.8} 
+                onPress={() => navigation.navigate("BudgetInsightDetail", { categoryId: bucket.id })}
+              >
                 <View style={styles.cardHeaderInline}>
                   <View style={[styles.iconCircle, { backgroundColor: bucket.color + "20" }]}>
-                  {bucket.icon && BUDGET_ICON_MAP[bucket.icon] && React.createElement(BUDGET_ICON_MAP[bucket.icon], { size: 16, color: bucket.color })}
+                    {bucket.icon && BUDGET_ICON_MAP[bucket.icon] && React.createElement(BUDGET_ICON_MAP[bucket.icon], { size: 16, color: bucket.color })}
+                  </View>
+                  <Text style={[styles.cardLabelText, { color: colors.textMuted }]}>{bucket.title}</Text>
                 </View>
-                  <Text style={styles.cardLabelText}>{bucket.title}</Text>
-                </View>
-                <Text style={styles.cardMainValueText}>{savedPercent}%</Text>
+                <Text style={[styles.cardMainValueText, { color: colors.text }]}>{savedPercent}%</Text>
                 <View style={styles.budgetMiniArcContainer}>
-                  <View style={styles.miniArcTrack}>
+                  <View style={[styles.miniArcTrack, { backgroundColor: colors.backgroundSecondary }]}>
                     <View style={[styles.miniArcFill, { width: savedPercent + "%", backgroundColor: bucket.color }]} />
                   </View>
                 </View>
-                <Text style={styles.cardFooterDisclaimer}>
+                <Text style={[styles.cardFooterDisclaimer, { color: colors.textSecondary }]}>
                   GH₵ {savedAmount.toFixed(0)} saved
                 </Text>
               </TouchableOpacity>
@@ -393,34 +407,32 @@ export default function FinancesScreen() {
 
   const renderTransactionsTab = () => (
     <View style={styles.transactionsContainer}>
-      <Text style={styles.transactionsPlaceholder}>Transaction history coming soon</Text>
+      <Text style={[styles.transactionsPlaceholder, { color: colors.textSecondary }]}>Transaction history coming soon</Text>
     </View>
   );
 
   const renderDirectTab = () => (
     <View style={styles.transactionsContainer}>
-      <Text style={styles.transactionsPlaceholder}>Direct payouts interface coming soon</Text>
+      <Text style={[styles.transactionsPlaceholder, { color: colors.textSecondary }]}>Direct payouts interface coming soon</Text>
     </View>
   );
 
-  const renderOverviewTab = () => renderInsightsTab();
-
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0b0d0f" />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={colors.background} />
 
       <View style={styles.headerRow}>
         <View style={styles.profileBadge}>
-          <View style={styles.avatarPlaceholder}>
-            <DollarSign size={16} color="#ffffff" />
+          <View style={[styles.avatarPlaceholder, { backgroundColor: colors.backgroundSecondary, borderColor: colors.borderLight }]}>
+            <DollarSign size={16} color={colors.primary} />
           </View>
           <View style={styles.profileSelectorWrapper}>
-            <Text style={styles.headerTitleText}>Finances</Text>
+            <Text style={[styles.headerTitleText, { color: colors.text }]}>Finances</Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.notificationTrigger} activeOpacity={0.7}>
-          <View style={styles.calendarIconMock}>
-            <Text style={styles.calendarDateText}>{new Date().getDate()}</Text>
+        <TouchableOpacity style={[styles.notificationTrigger, { backgroundColor: colors.backgroundSecondary }]} activeOpacity={0.7}>
+          <View style={[styles.calendarIconMock, { borderColor: colors.textMuted }]}>
+            <Text style={[styles.calendarDateText, { color: colors.textMuted }]}>{new Date().getDate()}</Text>
           </View>
         </TouchableOpacity>
       </View>
@@ -440,10 +452,10 @@ export default function FinancesScreen() {
               <TouchableOpacity
                 key={tab}
                 onPress={handlePress}
-                style={[styles.tabButton, isSelected && styles.activeTabButton]}
+                style={[styles.tabButton, isSelected && { backgroundColor: colors.backgroundSecondary }]}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.tabButtonText, isSelected && styles.activeTabButtonText]}>
+                <Text style={[styles.tabButtonText, { color: isSelected ? colors.text : colors.textMuted, fontWeight: isSelected ? "700" : "600" }]}>
                   {tab}
                 </Text>
               </TouchableOpacity>
@@ -453,52 +465,51 @@ export default function FinancesScreen() {
       </View>
 
       {syncing ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#facc15" />
+        <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+          <ActivityIndicator size="large" color={colors.warning} />
         </View>
       ) : (
-        <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {activeTab === "Overview" && renderOverviewTab()}
-          {activeTab === "Insights" && renderInsightsTab()}
+        <ScrollView style={[styles.scrollContent, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
+          {activeTab === "Overview" && renderInsightsTab()}
           {activeTab === "Direct" && renderDirectTab()}
           {activeTab === "Transactions" && renderTransactionsTab()}
 
-          <TouchableOpacity style={styles.actionExportBannerButton} activeOpacity={0.9} onPress={() => navigation.navigate("Reports")}>
+          <TouchableOpacity style={[styles.actionExportBannerButton, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]} activeOpacity={0.9} onPress={() => navigation.navigate("Reports")}>
             <View style={styles.bannerLeftFlexNode}>
-              <PieChart size={18} color="#94a3b8" style={{ marginRight: 12 }} />
+              <PieChart size={18} color={colors.textMuted} style={{ marginRight: 12 }} />
               <View>
-                <Text style={styles.bannerMainHeadingText}>Detailed Reports</Text>
-                <Text style={styles.bannerSubTextDesc}>Daily, weekly & monthly breakdowns</Text>
+                <Text style={[styles.bannerMainHeadingText, { color: colors.text }]}>Detailed Reports</Text>
+                <Text style={[styles.bannerSubTextDesc, { color: colors.textSecondary }]}>Daily, weekly & monthly breakdowns</Text>
               </View>
             </View>
-            <View style={styles.circleDownWrapper}>
-              <Text style={{ color: "#ffffff", fontSize: 12 }}>→</Text>
+            <View style={[styles.circleDownWrapper, { backgroundColor: colors.primaryAlpha }]}>
+              <Text style={{ color: colors.text, fontSize: 12 }}>→</Text>
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionExportBannerButton} activeOpacity={0.9} onPress={() => navigation.navigate("ManualCashFlow")}>
+          <TouchableOpacity style={[styles.actionExportBannerButton, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]} activeOpacity={0.9} onPress={() => navigation.navigate("ManualCashFlow")}>
             <View style={styles.bannerLeftFlexNode}>
-              <TrendingUp size={18} color="#facc15" style={{ marginRight: 12 }} />
+              <TrendingUp size={18} color={colors.warning} style={{ marginRight: 12 }} />
               <View>
-                <Text style={styles.bannerMainHeadingText}>Manual Cash Flow</Text>
-                <Text style={styles.bannerSubTextDesc}>Log inflows and outflows outside the system</Text>
+                <Text style={[styles.bannerMainHeadingText, { color: colors.text }]}>Manual Cash Flow</Text>
+                <Text style={[styles.bannerSubTextDesc, { color: colors.textSecondary }]}>Log inflows and outflows outside the system</Text>
               </View>
             </View>
-            <View style={styles.circleDownWrapper}>
-              <Text style={{ color: "#ffffff", fontSize: 12 }}>+</Text>
+            <View style={[styles.circleDownWrapper, { backgroundColor: colors.primaryAlpha }]}>
+              <Text style={{ color: colors.text, fontSize: 12 }}>+</Text>
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionExportBannerButton} activeOpacity={0.9} onPress={() => navigation.navigate("DeliveryHistory")}>
+          <TouchableOpacity style={[styles.actionExportBannerButton, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]} activeOpacity={0.9} onPress={() => navigation.navigate("DeliveryHistory")}>
             <View style={styles.bannerLeftFlexNode}>
-              <ClipboardList size={18} color="#94a3b8" style={{ marginRight: 12 }} />
+              <ClipboardList size={18} color={colors.textMuted} style={{ marginRight: 12 }} />
               <View>
-                <Text style={styles.bannerMainHeadingText}>Delivery History</Text>
-                <Text style={styles.bannerSubTextDesc}>Review past completed deliveries</Text>
+                <Text style={[styles.bannerMainHeadingText, { color: colors.text }]}>Delivery History</Text>
+                <Text style={[styles.bannerSubTextDesc, { color: colors.textSecondary }]}>Review past completed deliveries</Text>
               </View>
             </View>
-            <View style={styles.circleDownWrapper}>
-              <Text style={{ color: "#ffffff", fontSize: 12 }}>→</Text>
+            <View style={[styles.circleDownWrapper, { backgroundColor: colors.primaryAlpha }]}>
+              <Text style={{ color: colors.text, fontSize: 12 }}>→</Text>
             </View>
           </TouchableOpacity>
 
@@ -510,14 +521,14 @@ export default function FinancesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0b0d0f" },
-  loadingContainer: { flex: 1, backgroundColor: "#0b0d0f", justifyContent: "center", alignItems: "center" },
+  container: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 18,
-    paddingTop: 44,
+    paddingTop: Platform.OS === "ios" ? 54 : 24,
     paddingBottom: 14,
   },
   profileBadge: { flexDirection: "row", alignItems: "center" },
@@ -525,20 +536,17 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#1e293b",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 10,
     borderWidth: 1,
-    borderColor: "#334155",
   },
   profileSelectorWrapper: { flexDirection: "row", alignItems: "center" },
-  headerTitleText: { fontSize: 20, fontWeight: "800", color: "#ffffff", letterSpacing: -0.3 },
+  headerTitleText: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
   notificationTrigger: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#16191e",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -546,113 +554,105 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderWidth: 1.5,
-    borderColor: "#94a3b8",
     borderRadius: 6,
     justifyContent: "center",
     alignItems: "center",
   },
-  calendarDateText: { fontSize: 10, fontWeight: "800", color: "#94a3b8" },
+  calendarDateText: { fontSize: 10, fontWeight: "800" },
   tabContainer: { height: 40, marginBottom: 12 },
   tabScrollContent: { paddingHorizontal: 18, alignItems: "center", gap: 8 },
   tabButton: {
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: "transparent",
   },
-  activeTabButton: { backgroundColor: "#1e222b" },
-  tabButtonText: { fontSize: 14, fontWeight: "600", color: "#64748b" },
-  activeTabButtonText: { color: "#ffffff", fontWeight: "700" },
+  tabButtonText: { fontSize: 14 },
   scrollContent: { flex: 1, paddingHorizontal: 18 },
   analyticsGrid: {
     flexDirection: "row",
     gap: 12,
     marginBottom: 12,
   },
-  metricCard: {
-    flex: 1,
-    backgroundColor: "#16191e",
-    borderRadius: 24,
-    padding: 16,
-    minHeight: 160,
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: "#ffffff04",
-  },
+metricCard: {
+     flex: 1,
+     borderRadius: 24,
+     padding: 16,
+     minHeight: 160,
+     justifyContent: "space-between",
+     borderWidth: 1,
+     shadowColor: "#000000",
+     shadowOffset: { width: 0, height: 4 },
+     shadowOpacity: 0.1,
+     shadowRadius: 6,
+     elevation: 3,
+   },
   cardHeaderInline: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 },
   iconCircle: { width: 28, height: 28, borderRadius: 14, justifyContent: "center", alignItems: "center" },
-  cardLabelText: { fontSize: 13, fontWeight: "600", color: "#94a3b8" },
-  cardMainValueText: { fontSize: 28, fontWeight: "800", color: "#ffffff", letterSpacing: -0.5 },
-  cardFooterDisclaimer: { fontSize: 11, fontWeight: "500", color: "#64748b", marginTop: 4, lineHeight: 14 },
-  sparklineContainer: { height: 46, justifyContent: "center", alignItems: "center" },
+  cardLabelText: { fontSize: 13, fontWeight: "600" },
+  cardMainValueText: { fontSize: 24, fontWeight: "800", letterSpacing: -0.5 },
+  cardFooterDisclaimer: { fontSize: 11, fontWeight: "500", marginTop: 4, lineHeight: 14 },
+  vectorMapMockContainer: { height: 46, justifyContent: "center", alignItems: "center" },
   arcVisualContainer: { height: 80, justifyContent: "center", alignItems: "center", position: "relative" },
   arcAbsoluteLabelCenter: { position: "absolute", justifyContent: "center", alignItems: "center", top: 0, left: 0, right: 0, bottom: 0 },
-  arcCenterNumberText: { fontSize: 18, fontWeight: "800", color: "#ffffff" },
-  arcCenterSubText: { fontSize: 9, fontWeight: "600", color: "#64748b", marginTop: -2 },
+  arcCenterNumberText: { fontSize: 16, fontWeight: "800" },
+  arcCenterSubText: { fontSize: 9, fontWeight: "600", marginTop: -2 },
   arcBaseLabelsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 4, paddingHorizontal: 4 },
-  arcMicroLabelText: { fontSize: 11, fontWeight: "600", color: "#475569" },
+  arcMicroLabelText: { fontSize: 11, fontWeight: "600" },
   timelineVisualSliderRow: { height: 20, justifyContent: "center" },
-  timelineTrackLine: { height: 3, width: "100%", backgroundColor: "#1e293b", borderRadius: 2, position: "relative" },
-  timelineProgressFill: { height: "100%", backgroundColor: "#115e59", borderRadius: 2 },
-  timelineThumbDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#ffffff", position: "absolute", top: -3.5, marginLeft: -5 },
+  timelineTrackLine: { height: 3, width: "100%", borderRadius: 2, position: "relative" },
+  timelineProgressFill: { height: "100%", borderRadius: 2 },
+  timelineThumbDot: { width: 10, height: 10, borderRadius: 5, position: "absolute", top: -3.5, marginLeft: -5 },
   splineGraphWrapper: { height: 46, justifyContent: "flex-end", alignItems: "center" },
   sectionTitleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 24, marginBottom: 14 },
-  sectionHeadlineLabel: { fontSize: 16, fontWeight: "700", color: "#ffffff" },
+  sectionHeadlineLabel: { fontSize: 16, fontWeight: "700" },
   weeklyScrollContainer: { gap: 10, paddingRight: 20, paddingVertical: 12, paddingBottom: 16 },
   weeklyBarCard: { alignItems: "center", width: 50 },
-  weeklyBarWrapper: { width: 30, height: 100, backgroundColor: "#1e293b", borderRadius: 15, overflow: "hidden", justifyContent: "flex-end" },
-  weeklyBarFill: { width: "100%", backgroundColor: "#115e59", borderRadius: 15 },
-  weeklyDayLabel: { fontSize: 12, fontWeight: "600", color: "#94a3b8", marginTop: 8 },
-  weeklyAmountLabel: { fontSize: 11, fontWeight: "600", color: "#ffffff", marginTop: 2 },
+  weeklyBarWrapper: { width: 30, height: 100, borderRadius: 15, overflow: "hidden", justifyContent: "flex-end" },
+  weeklyBarFill: { width: "100%", borderRadius: 15 },
+  weeklyDayLabel: { fontSize: 12, fontWeight: "600", marginTop: 8 },
+  weeklyAmountLabel: { fontSize: 11, fontWeight: "600", marginTop: 2 },
   loadingWeeklyContainer: { minHeight: 120, justifyContent: "center", alignItems: "center" },
   transactionsContainer: { padding: 40, alignItems: "center" },
-  transactionsPlaceholder: { color: "#64748b", fontSize: 14, fontWeight: "500", textAlign: "center" },
-  bucketOverviewTitle: { fontSize: 15, fontWeight: "700", color: "#ffffff", marginBottom: 12 },
+  transactionsPlaceholder: { fontSize: 14, fontWeight: "500", textAlign: "center" },
   budgetMiniArcContainer: { height: 20, justifyContent: "center", alignItems: "center", marginVertical: 8 },
-  miniArcTrack: { height: 3, width: "100%", backgroundColor: "#1e293b", borderRadius: 2, overflow: "hidden" },
+  miniArcTrack: { height: 3, width: "100%", borderRadius: 2, overflow: "hidden" },
   miniArcFill: { height: "100%", borderRadius: 2 },
   inlineHeaderLinkAction: { width: 28, height: 28, justifyContent: "center", alignItems: "center" },
   budgetBucketsScrollWrapper: { gap: 12, paddingRight: 20, paddingBottom: 4 },
   budgetBucketCard: {
-    backgroundColor: "#16191e",
     width: CARD_WIDTH,
     borderRadius: 24,
     padding: 16,
     minHeight: 130,
     justifyContent: "space-between",
     borderWidth: 1,
-    borderColor: "#ffffff05",
+    shadowColor: "#000000",
+     shadowOffset: { width: 0, height: 4 },
+     shadowOpacity: 0.1,
+     shadowRadius: 6,
+     elevation: 3,
   },
-  bucketTopHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  bucketTitleText: { fontSize: 14, fontWeight: "700", color: "#ffffff" },
-  bucketIndicatorTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
-  bucketTagText: { fontSize: 10, fontWeight: "800" },
-  bucketMetricsDividersLayout: { flexDirection: "row", justifyContent: "space-between", marginTop: 12 },
-  bucketSublabelStatic: { fontSize: 10, fontWeight: "600", color: "#475569", textTransform: "uppercase" },
-  bucketDescriptionText: { fontSize: 12, color: "#64748b", fontWeight: "500", marginTop: 4, height: 32 },
-  bucketAmountValueMain: { fontSize: 13, fontWeight: "800", color: "#94a3b8", marginTop: 2 },
-  bucketLinearBarWrapper: { marginTop: 12 },
-  bucketLinearBarTrackBase: { height: 4, width: "100%", backgroundColor: "#1e293b", borderRadius: 2 },
-  bucketLinearBarProgressFill: { height: "100%", borderRadius: 2 },
   actionExportBannerButton: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#16191e",
     padding: 16,
     borderRadius: 24,
-    marginTop: 24,
+    marginTop: 12,
     borderWidth: 1,
-    borderColor: "#ffffff04",
+    shadowColor: "#000000",
+     shadowOffset: { width: 0, height: 4 },
+     shadowOpacity: 0.1,
+     shadowRadius: 6,
+     elevation: 3,
   },
   bannerLeftFlexNode: { flexDirection: "row", alignItems: "center" },
-  bannerMainHeadingText: { fontSize: 14, fontWeight: "700", color: "#ffffff" },
-  bannerSubTextDesc: { fontSize: 11, fontWeight: "500", color: "#64748b", marginTop: 2 },
+  bannerMainHeadingText: { fontSize: 14, fontWeight: "700" },
+  bannerSubTextDesc: { fontSize: 11, fontWeight: "500", marginTop: 2 },
   circleDownWrapper: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "#312e81",
     justifyContent: "center",
     alignItems: "center",
   },
