@@ -3,6 +3,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Home, Briefcase, Route, DollarSign, User } from "lucide-react-native";
+import { useThemeStore } from "../store/themeStore";
 
 // Core Screens
 import DashboardScreen from "../screens/rider/Dashboard";
@@ -44,16 +45,18 @@ function ActiveDeliveryStack() {
  * 2. Main Tab Layout
  */
 function TabNavigator() {
+  const { colors } = useThemeStore();
+
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#115e59",
-        tabBarInactiveTintColor: "#94a3b8",
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
-          backgroundColor: "#ffffff",
+          backgroundColor: colors.tabBar,
           borderTopWidth: 1,
-          borderTopColor: "#e2e8f0",
+          borderTopColor: colors.tabBorder,
           paddingBottom: 8,
           height: 60,
         },

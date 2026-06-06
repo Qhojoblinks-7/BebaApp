@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  StyleSheet,
   View,
   ActivityIndicator,
   ScrollView,
@@ -13,8 +12,9 @@ import {
   stopTrackingEngine,
 } from "../../services/locationManager";
 import DashboardHeader from "../../components/rider/DashboardHeader";
-import { ArrowUpRight, ArrowDownRight } from "lucide-react-native";
+import { ArrowUpRight } from "lucide-react-native";
 import RiderOrderCard from "../../components/rider/RiderOrderCard";
+import { useThemeStore } from "../../store/themeStore";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -41,6 +41,7 @@ function buildWeekDays(fromMonday) {
 
 export default function DashboardScreen({ navigation }) {
   const { user } = useAuth();
+  const { colors, isDarkMode } = useThemeStore();
   const [isOnline, setIsOnline] = useState(false);
   const [syncing, setSyncing] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -280,14 +281,92 @@ export default function DashboardScreen({ navigation }) {
 
   if (syncing) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="small" color="#facc15" />
+      <View style={{ flex: 1, backgroundColor: colors.backgroundSecondary, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="small" color={colors.warning} />
       </View>
     );
   }
 
+  const themedStyles = {
+    sectionTitleText: { fontSize: 22, fontWeight: "700", color: colors.text, letterSpacing: -0.4 },
+    pillCountBadge: { backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 16, borderWidth: 1, borderColor: colors.borderLight },
+    pillCountText: {
+      color: colors.textOnPrimary,
+      fontSize: 13,
+      fontWeight: "700",
+      opacity: 0.9,
+    },
+    darkMetricCard: { flex: 1, borderRadius: 28, padding: 20, minHeight: 155, justifyContent: "space-between", borderWidth: 1, borderColor: colors.borderLight, shadowColor: colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 3, backgroundColor: colors.backgroundCard },
+    darkCardTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
+    darkCardSubtitle: { fontSize: 13, fontWeight: "500", color: colors.textSecondary, marginTop: 2 },
+    darkCardValue: { fontSize: 34, fontWeight: "700", color: colors.primary, lineHeight: 40 },
+    darkArrowCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primaryLight, justifyContent: "center", alignItems: "center" },
+    emptyContainerFallback: { padding: 32, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryLight, borderRadius: 24 },
+    fallbackMessageText: { color: colors.textSecondary, fontSize: 13, fontWeight: "600" },
+    scrollContent: { flex: 1, paddingHorizontal: 20 },
+    sectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginTop: 24,
+      marginBottom: 16,
+      gap: 12,
+    },
+    statsGrid: {
+      flexDirection: "row",
+      gap: 14,
+      width: "100%",
+    },
+    accentMetricCard: {
+      flex: 1,
+      backgroundColor: colors.primary,
+      borderRadius: 28,
+      padding: 20,
+      minHeight: 155,
+      justifyContent: "space-between",
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.1,
+      shadowRadius: 6,
+      elevation: 3,
+    },
+    accentCardTitle: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: colors.textOnPrimary,
+    },
+    accentCardSubtitle: {
+      fontSize: 13,
+      fontWeight: "500",
+      color: colors.textOnPrimary,
+      opacity: 0.6,
+      marginTop: 2,
+    },
+    cardMetricsFooter: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-end",
+    },
+    accentCardValue: {
+      fontSize: 38,
+      fontWeight: "700",
+      color: colors.textOnPrimary,
+      lineHeight: 42,
+    },
+    lightArrowCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.textOnPrimary,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    ordersListWrapper: {
+      marginTop: 2,
+    },
+  };
+
   return (
-    <View style={styles.container}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Target UI layout header integration */}
       <DashboardHeader
         isOnline={isOnline}
@@ -305,59 +384,59 @@ export default function DashboardScreen({ navigation }) {
         avatarUri={avatarUrl}
       />
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
+      <ScrollView style={themedStyles.scrollContent} showsVerticalScrollIndicator={false}>
+          
         {/* --- STATS SECTION --- */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitleText}>Your Stats</Text>
+        <View style={themedStyles.sectionHeader}>
+          <Text style={themedStyles.sectionTitleText}>Your Stats</Text>
         </View>
 
         {/* Asymmetric Image Analytics Metrics Block */}
-        <View style={styles.statsGrid}>
+        <View style={themedStyles.statsGrid}>
           {/* Accent Display Box */}
-          <View style={styles.accentMetricCard}>
+          <View style={themedStyles.accentMetricCard}>
             <View>
-              <Text style={styles.accentCardTitle}>Total Bookings</Text>
-              <Text style={styles.accentCardSubtitle}>Today</Text>
+              <Text style={themedStyles.accentCardTitle}>Total Bookings</Text>
+              <Text style={themedStyles.accentCardSubtitle}>Today</Text>
             </View>
-            <View style={styles.cardMetricsFooter}>
-              <Text style={styles.accentCardValue}>{dailySummary.completedDrops}</Text>
-              <View style={styles.lightArrowCircle}>
-                <ArrowUpRight size={18} color="#11151a" strokeWidth={2.5} />
+            <View style={themedStyles.cardMetricsFooter}>
+              <Text style={themedStyles.accentCardValue}>{dailySummary.completedDrops}</Text>
+              <View style={themedStyles.lightArrowCircle}>
+                <ArrowUpRight size={18} color={colors.textOnPrimary} strokeWidth={2.5} />
               </View>
             </View>
           </View>
 
-           {/* Muted Display Box */}
-           <View style={styles.darkMetricCard}>
-             <View>
-               <Text style={styles.darkCardTitle}>Money Made</Text>
-               <Text style={styles.darkCardSubtitle}>Today</Text>
-             </View>
-             <View style={styles.cardMetricsFooter}>
-               <Text style={styles.darkCardValue}>₵ {dailySummary.earnings.toFixed(1)}</Text>
-               <View style={styles.darkArrowCircle}>
-                 <ArrowUpRight size={18} color="#115e59" strokeWidth={2.5} />
-               </View>
-             </View>
-           </View>
+          {/* Muted Display Box */}
+          <View style={themedStyles.darkMetricCard}>
+            <View>
+              <Text style={themedStyles.darkCardTitle}>Money Made</Text>
+              <Text style={themedStyles.darkCardSubtitle}>Today</Text>
+            </View>
+            <View style={themedStyles.cardMetricsFooter}>
+              <Text style={themedStyles.darkCardValue}>₵ {dailySummary.earnings.toFixed(1)}</Text>
+              <View style={themedStyles.darkArrowCircle}>
+                <ArrowUpRight size={18} color={colors.primary} strokeWidth={2.5} />
+              </View>
+            </View>
+          </View>
         </View>
 
         {/* --- BOOKINGS RUN-LIST SECTION --- */}
-        <View style={[styles.sectionHeader, { marginTop: 28 }]}>
-          <Text style={styles.sectionTitleText}>Todays Bookings</Text>
-          <View style={styles.pillCountBadge}>
-            <Text style={styles.pillCountText}>
+        <View style={[themedStyles.sectionHeader, { marginTop: 28 }]}>
+          <Text style={themedStyles.sectionTitleText}>Todays Bookings</Text>
+          <View style={themedStyles.pillCountBadge}>
+            <Text style={themedStyles.pillCountText}>
               {deliveryOrders.length < 10 ? `0${deliveryOrders.length}` : deliveryOrders.length}
             </Text>
           </View>
         </View>
 
         {/* Output Dispatch Mapping */}
-        <View style={styles.ordersListWrapper}>
+        <View style={themedStyles.ordersListWrapper}>
           {deliveryOrders.length === 0 ? (
-            <View style={styles.emptyContainerFallback}>
-              <Text style={styles.fallbackMessageText}>No bookings queued for this day.</Text>
+            <View style={themedStyles.emptyContainerFallback}>
+              <Text style={themedStyles.fallbackMessageText}>No bookings queued for this day.</Text>
             </View>
           ) : (
             deliveryOrders.map((item) => (
@@ -371,145 +450,3 @@ export default function DashboardScreen({ navigation }) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#ffffff" },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: "#0b0d0f",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  scrollContent: { flex: 1, paddingHorizontal: 20 },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 24,
-    marginBottom: 16,
-    gap: 12,
-  },
-  sectionTitleText: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#16191e",
-    letterSpacing: -0.4,
-  },
-  pillCountBadge: {
-    backgroundColor: "#4b4d4f",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#ffffff0a",
-  },
-  pillCountText: {
-    color: "#ffffff",
-    fontSize: 13,
-    fontWeight: "700",
-    opacity: 0.9,
-  },
-  statsGrid: {
-    flexDirection: "row",
-    gap: 14,
-    width: "100%",
-  },
-  accentMetricCard: {
-    flex: 1,
-    backgroundColor: "#115e59",
-    borderRadius: 28,
-    padding: 20,
-    minHeight: 155,
-    justifyContent: "space-between",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  accentCardTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#ffffff",
-  },
-  accentCardSubtitle: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#ffffff",
-    opacity: 0.6,
-    marginTop: 2,
-  },
-  cardMetricsFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-  },
-  accentCardValue: {
-    fontSize: 38,
-    fontWeight: "700",
-    color: "#ffffff",
-    lineHeight: 42,
-  },
-  lightArrowCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#ffffff",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  darkMetricCard: {
-    flex: 1,
-    backgroundColor: "#Fafafa",
-    borderRadius: 28,
-    padding: 20,
-    minHeight: 155,
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: "#ffffff0a",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  darkCardTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#16191e",
-  },
-  darkCardSubtitle: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#6c6e71",
-    marginTop: 2,
-  },
-  darkCardValue: {
-    fontSize: 34,
-    fontWeight: "700",
-    color: "#115e59",
-    lineHeight: 40,
-  },
-  darkArrowCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#d1e2d9",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  ordersListWrapper: {
-    marginTop: 2,
-  },
-  emptyContainerFallback: {
-    padding: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#d1e2d9",
-    borderRadius: 24,
-  },
-  fallbackMessageText: {
-    color: "#64748b",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-});

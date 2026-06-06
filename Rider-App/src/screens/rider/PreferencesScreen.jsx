@@ -18,6 +18,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ArrowLeft, Globe, Volume2, Palette, MapPin, Zap, Truck, ChevronRight } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabaseClient";
+import { useThemeStore } from "../../store/themeStore";
 
 const STORAGE_KEY = "rider_preferences";
 
@@ -32,9 +33,65 @@ const defaultPreferences = {
 
 export default function PreferencesScreen({ navigation }) {
   const { user } = useAuth();
+  const { colors, setTheme, isDarkMode } = useThemeStore();
   const [preferences, setPreferences] = useState(defaultPreferences);
   const [editingField, setEditingField] = useState(null);
   const [tempValue, setTempValue] = useState("");
+
+  const themedStyles = {
+    container: { flex: 1, backgroundColor: colors.background },
+    headerRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 18,
+      paddingTop: 24,
+      paddingBottom: 14,
+      backgroundColor: colors.background,
+    },
+    sectionCard: {
+      backgroundColor: colors.backgroundCard,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      overflow: "hidden",
+    },
+    modalCard: {
+      width: "100%",
+      backgroundColor: colors.backgroundCard,
+      borderRadius: 20,
+      padding: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    modalInput: {
+      backgroundColor: colors.backgroundInput,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      color: colors.text,
+      fontSize: 15,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: 24,
+    },
+    modalCancelBtn: {
+      flex: 1,
+      paddingVertical: 14,
+      borderRadius: 12,
+      backgroundColor: colors.backgroundInput,
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    modalSaveBtn: {
+      flex: 1,
+      paddingVertical: 14,
+      borderRadius: 12,
+      backgroundColor: colors.primary,
+      alignItems: "center",
+    },
+  };
 
   useEffect(() => {
     loadPreferences();
@@ -44,7 +101,9 @@ export default function PreferencesScreen({ navigation }) {
     try {
       const saved = await AsyncStorage.getItem(STORAGE_KEY);
       if (saved) {
-        setPreferences({ ...defaultPreferences, ...JSON.parse(saved) });
+        const parsed = JSON.parse(saved);
+        setPreferences({ ...defaultPreferences, ...parsed });
+        if (parsed.theme) setTheme(parsed.theme);
       }
     } catch (err) {
       console.warn("Failed to load local preferences:", err.message);
@@ -62,14 +121,16 @@ export default function PreferencesScreen({ navigation }) {
       if (error) throw error;
 
       if (data) {
-        setPreferences({
+        const loadedPrefs = {
           theme: data.theme ?? defaultPreferences.theme,
           language: data.language ?? defaultPreferences.language,
           volume: data.volume ?? defaultPreferences.volume,
           defaultVehicle: data.default_vehicle ?? defaultPreferences.defaultVehicle,
           maxDistance: data.max_distance ?? defaultPreferences.maxDistance,
           autoAccept: data.auto_accept ?? defaultPreferences.autoAccept,
-        });
+        };
+        setPreferences(loadedPrefs);
+        setTheme(loadedPrefs.theme);
       }
     } catch (err) {
       console.warn("Failed to load preferences from server:", err.message);
@@ -106,7 +167,7 @@ export default function PreferencesScreen({ navigation }) {
 
   const openEditor = (field, currentValue) => {
     setEditingField(field);
-    setTempValue(JSON.stringify(currentValue));
+    setTempValue(currentValue);
   };
 
   const applyEdit = async () => {
@@ -129,6 +190,10 @@ export default function PreferencesScreen({ navigation }) {
     setEditingField(null);
     setTempValue("");
     await savePreferences(newPrefs);
+
+    if (key === "theme") {
+      setTheme(value);
+    }
   };
 
   const dropDownOptions = (field) => {
@@ -190,17 +255,17 @@ export default function PreferencesScreen({ navigation }) {
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
-              <View style={styles.modalCard}>
+              <View style={themedStyles.modalCard}>
                 <Text style={styles.modalTitle}>{label}</Text>
 
                 {options.length > 0 ? (
                   options.map((opt) => {
-                    const selected = JSON.stringify(current) === JSON.stringify(opt);
+                    const selected = current === opt;
                     return (
                       <TouchableOpacity
-                        key={JSON.stringify(opt)}
+                        key={opt}
                         style={styles.optionRow}
-                        onPress={() => setTempValue(JSON.stringify(opt))}
+                        onPress={() => setTempValue(opt)}
                       >
                         <View style={[styles.radioOuter, selected && styles.radioOuterSelected]}>
                           {selected && <View style={styles.radioInner} />}
@@ -217,15 +282,16 @@ export default function PreferencesScreen({ navigation }) {
                     onChangeText={setTempValue}
                     autoFocus
                     keyboardType={editingField === "volume" || editingField === "maxDistance" ? "numeric" : "default"}
-                    style={styles.modalInput}
+                    style={themedStyles.modalInput}
+                    placeholderTextColor={colors.textSecondary}
                   />
                 )}
 
                 <View style={styles.modalActions}>
-                  <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setEditingField(null)}>
+                  <TouchableOpacity style={themedStyles.modalCancelBtn} onPress={() => setEditingField(null)}>
                     <Text style={styles.modalCancelText}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.modalSaveBtn} onPress={applyEdit}>
+                  <TouchableOpacity style={themedStyles.modalSaveBtn} onPress={applyEdit}>
                     <Text style={styles.modalSaveText}>Save</Text>
                   </TouchableOpacity>
                 </View>
@@ -238,15 +304,15 @@ export default function PreferencesScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0b0d0f" />
-      <View style={styles.headerRow}>
+    <View style={themedStyles.container}>
+      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={colors.background} />
+      <View style={themedStyles.headerRow}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation?.goBack()}
           activeOpacity={0.7}
         >
-          <ArrowLeft size={22} color="#ffffff" />
+          <ArrowLeft size={22} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitleText}>Preferences</Text>
         <View style={styles.headerRightSpacer} />
@@ -263,10 +329,10 @@ export default function PreferencesScreen({ navigation }) {
         {preferenceGroups.map((group) => (
           <View key={group.group} style={styles.sectionBlock}>
             <Text style={styles.sectionLabel}>{group.group}</Text>
-            <View style={styles.sectionCard}>
+            <View style={themedStyles.sectionCard}>
               {group.items.map((item, idx) => (
                 <React.Fragment key={item.id}>
-                  {idx > 0 && <View style={styles.rowDivider} />}
+                  {idx > 0 && <View style={[styles.rowDivider, { backgroundColor: colors.borderLight }]} />}
                   <TouchableOpacity
                     style={styles.preferenceRow}
                     activeOpacity={0.7}
@@ -301,7 +367,7 @@ export default function PreferencesScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0b0d0f" },
+  container: { flex: 1 },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -309,7 +375,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 24,
     paddingBottom: 14,
-    backgroundColor: "#0b0d0f",
   },
   backButton: { width: 40, height: 40, justifyContent: "center", alignItems: "flex-start" },
   headerTitleText: { fontSize: 18, fontWeight: "800", color: "#ffffff", letterSpacing: -0.3 },
@@ -319,10 +384,8 @@ const styles = StyleSheet.create({
   sectionBlock: { marginBottom: 20 },
   sectionLabel: { fontSize: 12, fontWeight: "700", color: "#64748b", letterSpacing: 0.4, marginBottom: 8, textTransform: "uppercase" },
   sectionCard: {
-    backgroundColor: "#16191e",
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#ffffff04",
     overflow: "hidden",
   },
   preferenceRow: {
@@ -346,7 +409,7 @@ const styles = StyleSheet.create({
   rowDesc: { fontSize: 11, fontWeight: "500", color: "#64748b" },
   rowValueWrap: { flexDirection: "row", alignItems: "center", gap: 4 },
   rowValue: { fontSize: 12, fontWeight: "700", color: "#94a3b8" },
-  rowDivider: { height: 1, backgroundColor: "#ffffff08", marginLeft: 56 },
+  rowDivider: { height: 1, marginLeft: 56 },
   modalOverlay: {
     flex: 1,
     justifyContent: "center",
@@ -356,11 +419,9 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: "100%",
-    backgroundColor: "#16191e",
     borderRadius: 20,
     padding: 24,
     borderWidth: 1,
-    borderColor: "#ffffff08",
   },
   modalTitle: {
     fontSize: 18,
@@ -370,14 +431,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   modalInput: {
-    backgroundColor: "#0b0d0f",
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    color: "#ffffff",
     fontSize: 15,
     borderWidth: 1,
-    borderColor: "#ffffff10",
     marginBottom: 24,
   },
   optionRow: {
@@ -421,10 +479,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    backgroundColor: "#0b0d0f",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#ffffff10",
   },
   modalCancelText: {
     fontSize: 14,
@@ -435,7 +491,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    backgroundColor: "#115e59",
     alignItems: "center",
   },
   modalSaveText: {

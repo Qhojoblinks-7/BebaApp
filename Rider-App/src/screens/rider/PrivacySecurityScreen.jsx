@@ -17,9 +17,10 @@ import {
   Keyboard,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ArrowLeft, Shield, Lock, Eye, EyeOff, Trash2, ChevronRight } from "lucide-react-native";
+import { ArrowLeft, Shield, Lock, Eye, EyeOff, Trash2, ChevronRight, Moon, Sun } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabaseClient";
+import { useThemeStore } from "../../store/themeStore";
 
 const STORAGE_KEY = "security_settings";
 
@@ -32,14 +33,23 @@ const defaultSettings = {
 
 export default function PrivacySecurityScreen({ navigation }) {
   const { user } = useAuth();
+  const { isDarkMode, setTheme } = useThemeStore();
   const [settings, setSettings] = useState(defaultSettings);
 
   useEffect(() => {
     loadSettings();
   }, [user?.id]);
 
+  useEffect(() => {
+    AsyncStorage.setItem("app_theme", isDarkMode ? "dark" : "light").catch(() => {});
+  }, [isDarkMode]);
+
   const loadSettings = async () => {
     try {
+      const themeSaved = await AsyncStorage.getItem("app_theme");
+      if (themeSaved === "light" || themeSaved === "dark") {
+        setTheme(themeSaved === "dark");
+      }
       const saved = await AsyncStorage.getItem(STORAGE_KEY);
       if (saved) {
         setSettings(JSON.parse(saved));
@@ -221,6 +231,30 @@ export default function PrivacySecurityScreen({ navigation }) {
               onValueChange={() => toggle("profileVisible")}
               trackColor={{ false: "#334155", true: "#115e5980" }}
               thumbColor={settings.profileVisible ? "#115e59" : "#64748b"}
+            />
+          </View>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Appearance</Text>
+
+          <View style={styles.settingRow}>
+            <View style={styles.settingLeft}>
+              <View style={[styles.iconBadge, { backgroundColor: "#6366f120" }]}>
+                {isDarkMode ? <Moon size={16} color="#6366f1" /> : <Sun size={16} color="#facc15" />}
+              </View>
+              <View style={styles.settingTexts}>
+                <Text style={styles.settingLabel}>Dark Mode</Text>
+                <Text style={styles.settingDesc}>
+                  {isDarkMode ? "Dark theme is enabled" : "Light theme is enabled"}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={isDarkMode}
+              onValueChange={() => setTheme(!isDarkMode)}
+              trackColor={{ false: "#334155", true: "#115e5980" }}
+              thumbColor={isDarkMode ? "#115e59" : "#64748b"}
             />
           </View>
         </View>

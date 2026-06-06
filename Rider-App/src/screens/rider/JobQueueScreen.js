@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { supabase } from "../../services/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
+import { useThemeStore } from "../../store/themeStore";
 import * as Notifications from "expo-notifications";
 import { Package, Layers } from "lucide-react-native";
 import RiderOrderCard from "../../components/rider/RiderOrderCard";
@@ -95,6 +96,7 @@ Notifications.setNotificationHandler({
 
 export default function JobQueueScreen() {
   const { user } = useAuth();
+  const { colors } = useThemeStore();
   const [orders, setOrders] = useState([]);
   const [zones, setZones] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -237,23 +239,34 @@ export default function JobQueueScreen() {
 
   if (loading && orders.length === 0) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="small" color="#38bdf8" />
+      <View style={[styles.center, { backgroundColor: colors.backgroundSecondary }]}>
+        <ActivityIndicator size="small" color={colors.secondary} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.backgroundSecondary }]}>
       <StatusBar
         barStyle="light-content"
-        backgroundColor="#115e59"
+        backgroundColor={colors.primary}
         translucent
       />
-      <View style={[styles.headerBackground, styles.safeHeader]}>
+      <View style={[styles.headerBackground, styles.safeHeader, { 
+        backgroundColor: colors.primary,
+        ...Platform.select({
+          ios: {
+            shadowColor: colors.shadow,
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.15,
+            shadowRadius: 12,
+          },
+          android: { elevation: 8 },
+        }),
+      }]}>
         <View style={styles.headerContent}>
-          <Text style={styles.headingOnBg}>New Orders Available</Text>
-          <Text style={styles.countText}>
+          <Text style={[styles.headingOnBg, { color: colors.textOnPrimary }]}>New Orders Available</Text>
+          <Text style={[styles.countText, { color: colors.textOnPrimary }]}>
             {orders.length} open request{orders.length !== 1 ? "s" : ""}
           </Text>
         </View>
@@ -267,8 +280,8 @@ export default function JobQueueScreen() {
         refreshing={refreshing}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Package size={32} color="#94a3b8" />
-            <Text style={styles.emptyText}>No open requests in your zone.</Text>
+            <Package size={32} color={colors.textSecondary} />
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No open requests in your zone.</Text>
           </View>
         }
         renderItem={({ item }) => (
@@ -280,8 +293,8 @@ export default function JobQueueScreen() {
         ListHeaderComponent={
           zones.length > 0 ? (
             <View style={styles.batchHeader}>
-              <Layers size={16} color="#38bdf8" />
-              <Text style={styles.batchHeaderText}>
+              <Layers size={16} color={colors.secondary} />
+              <Text style={[styles.batchHeaderText, { color: colors.textSecondary }]}>
                 {zones.length} zone{zones.length !== 1 ? "s" : ""} available
               </Text>
             </View>
@@ -290,8 +303,8 @@ export default function JobQueueScreen() {
       />
 
       {zones.length > 0 && (
-        <View style={styles.batchClaimBar}>
-          <Text style={styles.batchClaimText}>
+        <View style={[styles.batchClaimBar, { backgroundColor: colors.backgroundCard, borderTopColor: colors.border }]}>
+          <Text style={[styles.batchClaimText, { color: colors.textSecondary }]}>
             Tap a card to accept one, or claim its entire zone below:
           </Text>
           <FlatList
@@ -311,18 +324,18 @@ export default function JobQueueScreen() {
                 0,
               );
               return (
-                <TouchableOpacity
-                  key={zone}
-                  style={styles.batchClaimBtn}
-                  onPress={() => acceptEntireZone(zoneOrders)}
-                >
-                  <Text style={styles.batchClaimZone}>{zone}</Text>
-                  <Text style={styles.batchClaimMeta}>
-                    {zoneOrders.length} package
-                    {zoneOrders.length !== 1 ? "s" : ""} · GH¢{" "}
-                    {zoneFee.toFixed(2)}
-                  </Text>
-                </TouchableOpacity>
+<TouchableOpacity
+                   key={zone}
+                   style={[styles.batchClaimBtn, { backgroundColor: colors.primary }]}
+                   onPress={() => acceptEntireZone(zoneOrders)}
+                 >
+                   <Text style={[styles.batchClaimZone, { color: colors.textOnPrimary }]}>{zone}</Text>
+                   <Text style={[styles.batchClaimMeta, { color: colors.textOnPrimary }]}>
+                     {zoneOrders.length} package
+                     {zoneOrders.length !== 1 ? "s" : ""} · GH¢{" "}
+                     {zoneFee.toFixed(2)}
+                   </Text>
+                 </TouchableOpacity>
               );
             }}
           />
@@ -347,30 +360,18 @@ export default function JobQueueScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
   },
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f8fafc",
   },
   headerBackground: {
-    backgroundColor: "#115e59",
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
     paddingBottom: 24,
     paddingHorizontal: 16,
     marginBottom: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#0f172a",
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
-      },
-      android: { elevation: 8 },
-    }),
   },
   safeHeader: {
     paddingTop: Platform.OS === "android" ? StatusBar.currentHeight + 12 : 48,
@@ -380,14 +381,12 @@ const styles = StyleSheet.create({
   headingOnBg: {
     fontSize: 18,
     fontWeight: "900",
-    color: "#ffffff",
     marginBottom: 2,
   },
 
   countText: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#ffffff80",
   },
 
   empty: {
@@ -396,7 +395,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyText: {
-    color: "#64748b",
     fontSize: 13,
     fontWeight: "500",
   },
@@ -411,35 +409,29 @@ const styles = StyleSheet.create({
   batchHeaderText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#64748b",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   batchClaimBar: {
-    backgroundColor: "#ffffff",
     borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
     paddingVertical: 10,
   },
   batchClaimText: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#64748b",
     paddingHorizontal: 16,
     marginBottom: 4,
   },
   batchClaimBtn: {
-    backgroundColor: "#115e59",
     borderRadius: 12,
     padding: 12,
     minWidth: 140,
     maxWidth: 180,
   },
-  batchClaimZone: { fontSize: 13, fontWeight: "800", color: "#ffffff" },
+  batchClaimZone: { fontSize: 13, fontWeight: "800" },
   batchClaimMeta: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#ffffff80",
     marginTop: 2,
   },
 });

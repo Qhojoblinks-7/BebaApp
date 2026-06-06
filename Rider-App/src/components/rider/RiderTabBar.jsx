@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { useThemeStore } from "../../store/themeStore";
 
 const TABS = [
   { key: "requests", label: "Requests" },
@@ -8,61 +9,73 @@ const TABS = [
   { key: "cancelled", label: "Cancelled" },
 ];
 
-function TabButton({ label, active, onPress }) {
-  return (
-    <TouchableOpacity
-      style={[styles.tabButton, active && styles.activeTabButton]}
-      onPress={onPress}
-    >
-      <Text
-        style={[styles.tabButtonText, active && styles.activeTabButtonText]}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
 export default function RiderTabBar({ activeTab = "requests", onTabChange }) {
+  const { colors } = useThemeStore();
+
+  const staticStyles = StyleSheet.create({
+    container: {
+      flexDirection: "row",
+      borderBottomWidth: 1,
+      marginTop: 20,
+      marginBottom: 16,
+      paddingHorizontal: 8,
+    },
+    tabButton: {
+      flex: 1,
+      paddingVertical: 12,
+      alignItems: "center",
+    },
+    activeTabButton: {
+      borderBottomWidth: 2,
+    },
+    tabButtonText: {
+      fontSize: 13,
+      fontWeight: "700",
+    },
+    activeTabButtonText: {
+      fontWeight: "800",
+    },
+  });
+
+  const themedStyles = {
+    containerBorder: {
+      borderColor: colors.border,
+    },
+    activeTabBorder: {
+      borderColor: colors.primary,
+    },
+    tabButtonText: {
+      color: colors.textMuted,
+    },
+    activeTabButtonText: {
+      color: colors.primary,
+    },
+  };
+
   return (
-    <View style={styles.container}>
+    <View style={[staticStyles.container, themedStyles.containerBorder]}>
       {TABS.map((tab) => (
-        <TabButton
+        <TouchableOpacity
           key={tab.key}
-          label={tab.label}
-          active={activeTab === tab.key}
+          style={[
+            staticStyles.tabButton,
+            activeTab === tab.key && staticStyles.activeTabButton,
+            activeTab === tab.key && themedStyles.activeTabBorder,
+          ]}
           onPress={() => onTabChange?.(tab.key)}
-        />
+        >
+          <Text
+            style={[
+              staticStyles.tabButtonText,
+              themedStyles.tabButtonText,
+              activeTab === tab.key && staticStyles.activeTabButtonText,
+              activeTab === tab.key && themedStyles.activeTabButtonText,
+            ]}
+          >
+            {tab.label}
+          </Text>
+        </TouchableOpacity>
       ))}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    borderColor: "#e2e8f0",
-    marginTop: 20,
-    marginBottom: 16,
-    paddingHorizontal: 8,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  activeTabButton: {
-    borderBottomWidth: 2,
-    borderColor: "#115e59",
-  },
-  tabButtonText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#94a3b8",
-  },
-  activeTabButtonText: {
-    color: "#115e59",
-    fontWeight: "800",
-  },
-});

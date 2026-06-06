@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  StyleSheet,
   Text,
   View,
   ActivityIndicator,
@@ -13,9 +12,11 @@ import { useAuth } from "../../context/AuthContext";
 import { Package } from "lucide-react-native";
 import RiderOrderCard from "../../components/rider/RiderOrderCard";
 import DeliveryDetailsBottomSheet from "../../components/rider/DeliveryDetailsBottomSheet";
+import { useThemeStore } from "../../store/themeStore";
 
 export default function ActiveDeliveryScreen({ navigation }) {
   const { user } = useAuth();
+  const { colors } = useThemeStore();
   const [itinerary, setItinerary] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -84,41 +85,85 @@ export default function ActiveDeliveryScreen({ navigation }) {
         navigation.navigate("DeliveryClosure", { orderId: item.id });
         return;
       }
-      // Re-fetch manifest to re-render local order layout pipeline cards
       fetchActiveItinerary();
     } catch (err) {
       console.warn("[ActiveDelivery] Status advance failed:", err.message);
     }
   };
 
+  const themedStyles = {
+    center: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: colors.backgroundSecondary,
+    },
+    container: { flex: 1, backgroundColor: colors.background },
+    headerBackground: {
+      backgroundColor: colors.primary,
+      borderBottomLeftRadius: 24,
+      borderBottomRightRadius: 24,
+      paddingBottom: 24,
+      paddingHorizontal: 20,
+      ...Platform.select({
+        ios: {
+          shadowColor: colors.shadow,
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.3,
+          shadowRadius: 10,
+        },
+        android: { elevation: 6 },
+      }),
+    },
+    safeHeader: {
+      paddingTop: Platform.OS === "android" ? StatusBar.currentHeight + 16 : 60,
+    },
+    headerContent: { paddingTop: Platform.OS === "android" ? 8 : 0 },
+    titleTag: {
+      fontSize: 11,
+      fontWeight: "900",
+      color: "rgba(255, 255, 255, 0.7)",
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginBottom: 4,
+    },
+    countText: { fontSize: 20, fontWeight: "800", color: colors.textOnPrimary },
+    noJobText: {
+      color: colors.textDisabled,
+      fontSize: 14,
+      fontWeight: "700",
+      marginTop: 14,
+    },
+  };
+
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="small" color="#115e59" />
+      <View style={themedStyles.center}>
+        <ActivityIndicator size="small" color={colors.primary} />
       </View>
     );
   }
 
   if (itinerary.length === 0) {
     return (
-      <View style={styles.center}>
-        <Package size={36} color="#475569" />
-        <Text style={styles.noJobText}>No active manifest items right now.</Text>
+      <View style={themedStyles.center}>
+        <Package size={36} color={colors.textDisabled} />
+        <Text style={themedStyles.noJobText}>No active manifest items right now.</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={themedStyles.container}>
       <StatusBar
         barStyle="light-content"
-        backgroundColor="#115e59"
+        backgroundColor={colors.primary}
         translucent
       />
-      <View style={[styles.headerBackground, styles.safeHeader]}>
-        <View style={styles.headerContent}>
-          <Text style={styles.titleTag}>Active Run Manifest</Text>
-          <Text style={styles.countText}>
+      <View style={[themedStyles.headerBackground, themedStyles.safeHeader]}>
+        <View style={themedStyles.headerContent}>
+          <Text style={themedStyles.titleTag}>Active Run Manifest</Text>
+          <Text style={themedStyles.countText}>
             {itinerary.length} Waypoints Remaining
           </Text>
         </View>
@@ -149,55 +194,9 @@ export default function ActiveDeliveryScreen({ navigation }) {
         onAction={(order) => {
           if (!order) return;
           setSelectedOrder(null);
-          // Run status bump directly after state closure to prevent focus flashes
           setTimeout(() => advanceStatus(order), 200);
         }}
       />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#ffffff" },
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#16191e",
-  },
-  headerBackground: {
-    backgroundColor: "#115e59",
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    paddingBottom: 24,
-    paddingHorizontal: 20,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.3,
-        shadowRadius: 10,
-      },
-      android: { elevation: 6 },
-    }),
-  },
-  safeHeader: {
-    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight + 16 : 60,
-  },
-  headerContent: { paddingTop: Platform.OS === "android" ? 8 : 0 },
-  titleTag: {
-    fontSize: 11,
-    fontWeight: "900",
-    color: "rgba(255, 255, 255, 0.7)",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  countText: { fontSize: 20, fontWeight: "800", color: "#ffffff" },
-  noJobText: {
-    color: "#64748b",
-    fontSize: 14,
-    fontWeight: "700",
-    marginTop: 14,
-  },
-});

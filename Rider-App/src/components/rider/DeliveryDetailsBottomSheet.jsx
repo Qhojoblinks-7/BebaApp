@@ -16,6 +16,7 @@ import {
   MessageSquare,
   Package,
 } from "lucide-react-native";
+import { useThemeStore } from "../../store/themeStore";
 import RiderOrderCard from "./RiderOrderCard";
 
 const STAGES = [
@@ -34,6 +35,7 @@ export default function DeliveryDetailsBottomSheet({
   onAction,
 }) {
   const [contactMode, setContactMode] = useState("pickup");
+  const { colors } = useThemeStore();
 
   if (!order) return null;
 
@@ -65,6 +67,231 @@ export default function DeliveryDetailsBottomSheet({
     if (activePhone) Linking.openURL(`sms:${activePhone}`);
   };
 
+  const staticStyles = StyleSheet.create({
+    overlay: { flex: 1, justifyContent: "flex-end" },
+    backdrop: { flex: 1 },
+    sheet: {
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      maxHeight: "88%",
+      paddingBottom: Platform.OS === "ios" ? 36 : 24,
+    },
+    handle: {
+      width: 48,
+      height: 5,
+      borderRadius: 3,
+      alignSelf: "center",
+      marginTop: 12,
+      marginBottom: 8,
+    },
+    topBar: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+    },
+    title: { fontSize: 18, fontWeight: "800" },
+    timelineWrap: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginHorizontal: 20,
+      marginBottom: 20,
+      paddingVertical: 16,
+      paddingHorizontal: 12,
+      borderRadius: 14,
+    },
+    stageNode: {
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 2,
+      width: 52,
+    },
+    circleEmpty: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      borderWidth: 2,
+    },
+    circleCancelled: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+    },
+    stageLabel: {
+      fontSize: 9,
+      fontWeight: "800",
+      marginTop: 6,
+      textAlign: "center",
+    },
+    stageLine: {
+      flex: 1,
+      height: 2,
+      marginHorizontal: -16,
+      transform: [{ translateY: -6 }],
+      zIndex: 1,
+    },
+    infoSection: {
+      borderRadius: 20,
+      marginHorizontal: 20,
+      padding: 16,
+      marginBottom: 16,
+      borderWidth: 1,
+    },
+    infoRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginBottom: 14,
+      gap: 12,
+    },
+    infoLabel: {
+      fontSize: 11,
+      fontWeight: "600",
+      textTransform: "capitalize",
+      width: 80,
+      paddingTop: 1,
+    },
+    rightInfoBlock: { flex: 1, alignItems: "flex-end" },
+    infoValue: {
+      flex: 1,
+      fontSize: 13,
+      fontWeight: "700",
+      textAlign: "right",
+    },
+    infoValueAccent: {
+      flex: 1,
+      fontSize: 14,
+      fontWeight: "800",
+      textAlign: "right",
+    },
+    infoSub: {
+      fontSize: 11,
+      fontWeight: "500",
+      textAlign: "right",
+      marginTop: 2,
+    },
+    phoneText: {
+      fontSize: 13,
+      fontWeight: "700",
+      textAlign: "right",
+    },
+    contactSwitcher: {
+      borderRadius: 14,
+      padding: 12,
+      marginTop: 6,
+      gap: 10,
+    },
+    contactToggle: {
+      flexDirection: "row",
+      borderRadius: 10,
+      padding: 3,
+      gap: 3,
+    },
+    contactTab: {
+      flex: 1,
+      paddingVertical: 8,
+      borderRadius: 8,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    contactTabText: {
+      fontSize: 12,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+    },
+    contactName: {
+      fontSize: 13,
+      fontWeight: "700",
+      textAlign: "center",
+    },
+    contactActions: {
+      flexDirection: "row",
+      gap: 10,
+    },
+    contactBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingVertical: 12,
+      borderRadius: 12,
+    },
+    contactBtnText: {
+      fontSize: 14,
+      fontWeight: "800",
+      textTransform: "uppercase",
+      letterSpacing: 0.3,
+    },
+    primaryBtn: {
+      marginHorizontal: 20,
+      height: 50,
+      borderRadius: 14,
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    primaryBtnText: {
+      fontSize: 15,
+      fontWeight: "800",
+      letterSpacing: -0.2,
+    },
+    doneChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingVertical: 12,
+      marginHorizontal: 20,
+    },
+    doneChipCancelled: {
+      paddingVertical: 12,
+      marginHorizontal: 20,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+  });
+
+  const themedStyles = {
+    overlay: { backgroundColor: "#000000aa" },
+    sheet: { backgroundColor: colors.backgroundSecondary },
+    handle: { backgroundColor: colors.textMuted },
+    title: { color: colors.text },
+    timelineWrap: { backgroundColor: colors.backgroundSecondary },
+    circleEmpty: {
+      borderColor: colors.textMuted,
+      backgroundColor: colors.backgroundSecondary,
+    },
+    stageLabel: { color: colors.textMuted },
+    stageLabelActive: { color: colors.text },
+    stageLine: { backgroundColor: colors.border },
+    stageLineActive: { backgroundColor: colors.primary },
+    infoSection: {
+      backgroundColor: colors.backgroundCard,
+      borderColor: colors.borderLight,
+    },
+    infoLabel: { color: colors.textSecondary },
+    infoValue: { color: colors.text },
+    infoValueAccent: { color: "#f59e0b" },
+    infoSub: { color: colors.textSecondary },
+    phoneText: { color: "#38bdf8" },
+    contactSwitcher: { backgroundColor: colors.backgroundCard },
+    contactToggle: { backgroundColor: colors.backgroundSecondary },
+    contactTabActive: { backgroundColor: colors.primary },
+    contactTabText: { color: colors.textMuted },
+    contactTabTextActive: { color: colors.textOnPrimary },
+    contactName: { color: colors.text },
+    contactBtn: { backgroundColor: colors.primary },
+    contactBtnText: { color: colors.textOnPrimary },
+    primaryBtn: { backgroundColor: colors.primary },
+    primaryBtnText: { color: colors.textOnPrimary },
+    doneText: { color: "#10b981" },
+    doneTextCancelled: { color: colors.danger },
+  };
+
   return (
     <Modal
       visible={visible}
@@ -72,48 +299,49 @@ export default function DeliveryDetailsBottomSheet({
       transparent
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
+      <View style={staticStyles.overlay}>
         <TouchableOpacity
-          style={styles.backdrop}
+          style={staticStyles.backdrop}
           activeOpacity={1}
           onPress={onClose}
         />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+        <View style={staticStyles.sheet}>
+          <View style={staticStyles.handle} />
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            <View style={styles.topBar}>
-              <Text style={styles.title}>Order Details</Text>
+            <View style={staticStyles.topBar}>
+              <Text style={[staticStyles.title, themedStyles.title]}>Order Details</Text>
               <TouchableOpacity onPress={onClose}>
-                <X size={22} color="#94a3b8" />
+                <X size={22} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
             <RiderOrderCard order={order} />
 
             {/* Realigned Stepper Timeline Track */}
-            <View style={styles.timelineWrap}>
+            <View style={[staticStyles.timelineWrap, themedStyles.timelineWrap]}>
               {STAGES.map((stage, i) => {
                 const isCancelledStage = order.status === "cancelled" && i === STAGES.length - 1;
                 const completedBeforeCancel = order.status === "cancelled" && i < STAGES.length - 1;
                 const done = (!isCancelled && i <= currentIdx) || completedBeforeCancel;
                 const last = i === STAGES.length - 1;
-                
+
                 return (
                   <React.Fragment key={stage.key}>
-                    <View style={styles.stageNode}>
+                    <View style={staticStyles.stageNode}>
                       {done ? (
-                        <CircleCheck size={18} color="#ffffff" fill="#115e59" />
+                        <CircleCheck size={18} color="#ffffff" fill={colors.primary} />
                       ) : isCancelledStage ? (
-                        <View style={styles.circleCancelled} />
+                        <View style={staticStyles.circleCancelled} />
                       ) : (
-                        <View style={styles.circleEmpty} />
+                        <View style={[staticStyles.circleEmpty, themedStyles.circleEmpty]} />
                       )}
                       <Text
                         numberOfLines={1}
                         style={[
-                          styles.stageLabel,
-                          done || isCancelledStage ? styles.stageLabelActive : null,
+                          staticStyles.stageLabel,
+                          themedStyles.stageLabel,
+                          done || isCancelledStage ? themedStyles.stageLabelActive : null,
                         ]}
                       >
                         {stage.label}
@@ -122,8 +350,9 @@ export default function DeliveryDetailsBottomSheet({
                     {!last && (
                       <View
                         style={[
-                          styles.stageLine,
-                          done ? styles.stageLineActive : null,
+                          staticStyles.stageLine,
+                          themedStyles.stageLine,
+                          done ? themedStyles.stageLineActive : null,
                         ]}
                       />
                     )}
@@ -133,83 +362,85 @@ export default function DeliveryDetailsBottomSheet({
             </View>
 
             {/* Information Key Value Sheets */}
-            <View style={styles.infoSection}>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Item</Text>
-                <Text style={styles.infoValue}>
+            <View style={[staticStyles.infoSection, themedStyles.infoSection]}>
+              <View style={staticStyles.infoRow}>
+                <Text style={[staticStyles.infoLabel, themedStyles.infoLabel]}>Item</Text>
+                <Text style={[staticStyles.infoValue, themedStyles.infoValue]}>
                   {order.item_description || "---"}
                 </Text>
               </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Fee</Text>
-                <Text style={styles.infoValueAccent}>
+              <View style={staticStyles.infoRow}>
+                <Text style={[staticStyles.infoLabel, themedStyles.infoLabel]}>Fee</Text>
+                <Text style={[staticStyles.infoValueAccent, themedStyles.infoValueAccent]}>
                   GH₵ {(order.delivery_fee || 0).toFixed(2)}
                 </Text>
               </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Customer</Text>
-                <Text style={styles.infoValue}>
+              <View style={staticStyles.infoRow}>
+                <Text style={[staticStyles.infoLabel, themedStyles.infoLabel]}>Customer</Text>
+                <Text style={[staticStyles.infoValue, themedStyles.infoValue]}>
                   {order.customer_name || "---"}
                 </Text>
               </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Pickup</Text>
-                <View style={styles.rightInfoBlock}>
-                  <Text style={styles.infoValue}>
+              <View style={staticStyles.infoRow}>
+                <Text style={[staticStyles.infoLabel, themedStyles.infoLabel]}>Pickup</Text>
+                <View style={staticStyles.rightInfoBlock}>
+                  <Text style={[staticStyles.infoValue, themedStyles.infoValue]}>
                     {order.pickup_address || "---"}
                   </Text>
-                  <Text style={styles.infoSub}>{fmt(order.created_at)}</Text>
+                  <Text style={[staticStyles.infoSub, themedStyles.infoSub]}>{fmt(order.created_at)}</Text>
                 </View>
               </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Drop-off</Text>
-                <View style={styles.rightInfoBlock}>
-                  <Text style={styles.infoValue}>
+              <View style={staticStyles.infoRow}>
+                <Text style={[staticStyles.infoLabel, themedStyles.infoLabel]}>Drop-off</Text>
+                <View style={staticStyles.rightInfoBlock}>
+                  <Text style={[staticStyles.infoValue, themedStyles.infoValue]}>
                     {order.delivery_address || "---"}
                   </Text>
-                  <Text style={styles.infoSub}>
+                  <Text style={[staticStyles.infoSub, themedStyles.infoSub]}>
                     {fmt(order.received_at || order.updated_at)}
                   </Text>
                 </View>
               </View>
-              
+
               {order.received_by && (
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Received By</Text>
-                  <Text style={styles.infoValue}>{order.received_by}</Text>
+                <View style={staticStyles.infoRow}>
+                  <Text style={[staticStyles.infoLabel, themedStyles.infoLabel]}>Received By</Text>
+                  <Text style={[staticStyles.infoValue, themedStyles.infoValue]}>{order.received_by}</Text>
                 </View>
               )}
               {order.delivery_instructions && (
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Instructions</Text>
-                  <Text style={styles.infoValue}>
+                <View style={staticStyles.infoRow}>
+                  <Text style={[staticStyles.infoLabel, themedStyles.infoLabel]}>Instructions</Text>
+                  <Text style={[staticStyles.infoValue, themedStyles.infoValue]}>
                     {order.delivery_instructions}
                   </Text>
                 </View>
               )}
               {activePhone ? (
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Phone</Text>
+                <View style={staticStyles.infoRow}>
+                  <Text style={[staticStyles.infoLabel, themedStyles.infoLabel]}>Phone</Text>
                   <TouchableOpacity onPress={handleCall}>
-                    <Text style={styles.phoneText}>{activePhone}</Text>
+                    <Text style={[staticStyles.phoneText, themedStyles.phoneText]}>{activePhone}</Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
 
               {/* Dynamic Communication Unit Switcher */}
-              <View style={styles.contactSwitcher}>
-                <View style={styles.contactToggle}>
+              <View style={[staticStyles.contactSwitcher, themedStyles.contactSwitcher]}>
+                <View style={[staticStyles.contactToggle, themedStyles.contactToggle]}>
                   <TouchableOpacity
                     style={[
-                      styles.contactTab,
-                      contactMode === "pickup" && styles.contactTabActive,
+                      staticStyles.contactTab,
+                      contactMode === "pickup" && staticStyles.contactTab,
+                      contactMode === "pickup" && themedStyles.contactTabActive,
                     ]}
                     onPress={() => setContactMode("pickup")}
                   >
                     <Text
                       style={[
-                        styles.contactTabText,
-                        contactMode === "pickup" && styles.contactTabTextActive,
+                        staticStyles.contactTabText,
+                        themedStyles.contactTabText,
+                        contactMode === "pickup" && themedStyles.contactTabTextActive,
                       ]}
                     >
                       Pickup
@@ -217,32 +448,34 @@ export default function DeliveryDetailsBottomSheet({
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[
-                      styles.contactTab,
-                      contactMode === "delivery" && styles.contactTabActive,
+                      staticStyles.contactTab,
+                      contactMode === "delivery" && staticStyles.contactTab,
+                      contactMode === "delivery" && themedStyles.contactTabActive,
                     ]}
                     onPress={() => setContactMode("delivery")}
                   >
                     <Text
                       style={[
-                        styles.contactTabText,
-                        contactMode === "delivery" && styles.contactTabTextActive,
+                        staticStyles.contactTabText,
+                        themedStyles.contactTabText,
+                        contactMode === "delivery" && themedStyles.contactTabTextActive,
                       ]}
                     >
                       Delivery
                     </Text>
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.contactName}>
+                <Text style={[staticStyles.contactName, themedStyles.contactName]}>
                   {activeName || "Unknown Contact"}
                 </Text>
-                <View style={styles.contactActions}>
-                  <TouchableOpacity style={styles.contactBtn} onPress={handleCall}>
+                <View style={staticStyles.contactActions}>
+                  <TouchableOpacity style={[staticStyles.contactBtn, themedStyles.contactBtn]} onPress={handleCall}>
                     <Phone size={18} color="#ffffff" />
-                    <Text style={styles.contactBtnText}>Call</Text>
+                    <Text style={[staticStyles.contactBtnText, themedStyles.contactBtnText]}>Call</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.contactBtn, styles.contactBtnSMS]} onPress={handleSMS}>
+                  <TouchableOpacity style={[staticStyles.contactBtn, themedStyles.contactBtn]} onPress={handleSMS}>
                     <MessageSquare size={18} color="#ffffff" />
-                    <Text style={styles.contactBtnText}>SMS</Text>
+                    <Text style={[staticStyles.contactBtnText, themedStyles.contactBtnText]}>SMS</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -251,30 +484,30 @@ export default function DeliveryDetailsBottomSheet({
             {/* Workflow Confirmation Trigger Area */}
             {!isDone ? (
               <TouchableOpacity
-                style={styles.primaryBtn}
+                style={[staticStyles.primaryBtn, themedStyles.primaryBtn]}
                 onPress={() => onAction?.(order, order.status)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.primaryBtnText}>
+                <Text style={[staticStyles.primaryBtnText, themedStyles.primaryBtnText]}>
                   {order.status === "pending"
                     ? "Accept Job"
                     : order.status === "assigned"
-                      ? "Confirm Pickup"
-                      : order.status === "picked_up"
-                        ? "Start Delivery"
-                        : order.status === "in_transit"
-                          ? "Confirm Drop-off"
-                          : "Proceed"}
+                    ? "Confirm Pickup"
+                    : order.status === "picked_up"
+                    ? "Start Delivery"
+                    : order.status === "in_transit"
+                    ? "Confirm Drop-off"
+                    : "Proceed"}
                 </Text>
               </TouchableOpacity>
             ) : isCancelled ? (
-              <View style={styles.doneChipCancelled}>
-                <Text style={styles.doneTextCancelled}>Order cancelled</Text>
+              <View style={staticStyles.doneChipCancelled}>
+                <Text style={[staticStyles.doneTextCancelled, themedStyles.doneTextCancelled]}>Order cancelled</Text>
               </View>
             ) : (
-              <View style={styles.doneChip}>
+              <View style={staticStyles.doneChip}>
                 <Package size={16} color="#10b981" />
-                <Text style={styles.doneText}>Workflow complete</Text>
+                <Text style={[staticStyles.doneText, themedStyles.doneText]}>Workflow complete</Text>
               </View>
             )}
           </ScrollView>
@@ -283,234 +516,3 @@ export default function DeliveryDetailsBottomSheet({
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "#000000aa",
-    justifyContent: "flex-end",
-  },
-  backdrop: { flex: 1 },
-  sheet: {
-    backgroundColor: "#16191e",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    maxHeight: "88%",
-    paddingBottom: Platform.OS === "ios" ? 36 : 24,
-  },
-  handle: {
-    width: 48,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: "#475569",
-    alignSelf: "center",
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
-  title: { fontSize: 18, fontWeight: "800", color: "#ffffff" },
-  timelineWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#0f1115",
-    marginHorizontal: 20,
-    marginBottom: 20,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-  },
-  stageNode: { 
-    alignItems: "center", 
-    justifyContent: "center", 
-    zIndex: 2,
-    width: 52,
-  },
-  circleEmpty: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: "#475569",
-    backgroundColor: "#0f1115",
-  },
-  circleCancelled: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: "#ef4444",
-  },
-  stageLabel: {
-    fontSize: 9,
-    fontWeight: "800",
-    color: "#475569",
-    marginTop: 6,
-    textAlign: "center",
-  },
-  stageLabelActive: { color: "#ffffff" },
-  stageLine: {
-    flex: 1,
-    height: 2,
-    backgroundColor: "#334155",
-    marginHorizontal: -16,
-    transform: [{ translateY: -6 }],
-    zIndex: 1,
-  },
-  stageLineActive: { backgroundColor: "#115e59" },
-  infoSection: {
-    backgroundColor: "#1e222b",
-    borderRadius: 20,
-    marginHorizontal: 20,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#33415530",
-  },
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 14,
-    gap: 12,
-  },
-  infoLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#94a3b8",
-    textTransform: "capitalize",
-    width: 80,
-    paddingTop: 1,
-  },
-  rightInfoBlock: { 
-    flex: 1, 
-    alignItems: "flex-end",
-  },
-  infoValue: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#e2e8f0",
-    textAlign: "right",
-  },
-  infoValueAccent: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#f59e0b",
-    textAlign: "right",
-  },
-  infoSub: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: "#64748b",
-    textAlign: "right",
-    marginTop: 2,
-  },
-  phoneText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#38bdf8",
-    textAlign: "right",
-  },
-  contactSwitcher: {
-    backgroundColor: "#11151a",
-    borderRadius: 14,
-    padding: 12,
-    marginTop: 6,
-    gap: 10,
-  },
-  contactToggle: {
-    flexDirection: "row",
-    backgroundColor: "#0f1115",
-    borderRadius: 10,
-    padding: 3,
-    gap: 3,
-  },
-  contactTab: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  contactTabActive: {
-    backgroundColor: "#115e59",
-  },
-  contactTabText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#94a3b8",
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
-  contactTabTextActive: {
-    color: "#ffffff",
-  },
-  contactName: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#e2e8f0",
-    textAlign: "center",
-  },
-  contactActions: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  contactBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#115e59",
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  contactBtnSMS: {
-    backgroundColor: "#0f766e",
-  },
-  contactBtnText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#ffffff",
-    textTransform: "uppercase",
-    letterSpacing: 0.3,
-  },
-  primaryBtn: {
-    backgroundColor: "#115e59",
-    marginHorizontal: 20,
-    height: 50,
-    borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  primaryBtnText: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#ffffff",
-    letterSpacing: -0.2,
-  },
-  doneChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
-    marginHorizontal: 20,
-  },
-  doneText: { fontSize: 13, fontWeight: "700", color: "#10b981" },
-  doneChipCancelled: {
-    paddingVertical: 12,
-    marginHorizontal: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  doneTextCancelled: { fontSize: 13, fontWeight: "700", color: "#ef4444" },
-});
