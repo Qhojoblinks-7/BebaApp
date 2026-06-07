@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useForm } from '@tanstack/react-form'
 import { z } from 'zod'
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field, FieldLabel, FieldError } from '@/components/ui/field'
 import LocationSearch from '@/components/LocationSearch'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 
 const orderSchema = z.object({
   sender: z.string().min(2, 'Sender name must be at least 2 characters'),
@@ -51,96 +51,56 @@ export default function OrderScreen() {
 
   const form = useForm({
     defaultValues: {
-      sender: '',
-      recipient: '',
-      phone: '',
-      pickup: '',
-      drop: '',
-      item: '',
-      instructions: '',
-      distance: 2.0,
+      sender: '', recipient: '', phone: '', pickup: '', drop: '', item: '', instructions: '', distance: 2.0,
     },
-    validators: {
-      onSubmit: orderSchema,
-    },
+    validators: { onSubmit: orderSchema },
     onSubmit: async ({ value }) => {
       const orderId = `BBA-${Math.floor(1000 + Math.random() * 9000)}-XP`
       const normalizedPhone = normalizePhone(value.phone)
       const pricing = calculateDeliveryFee(Number(value.distance) || 0)
 
-      if (!pricing.allowed) {
-        alert(pricing.reason)
-        return
-      }
+      if (!pricing.allowed) { alert(pricing.reason); return }
 
       try {
         const { error } = await supabase.from('orders').insert({
-          order_id: orderId,
-          sender_name: value.sender,
-          sender_phone: normalizedPhone,
-          customer_name: value.recipient,
-          customer_phone: normalizedPhone,
-          pickup_address: value.pickup,
-          pickup_zone: value.pickup?.split(',').pop()?.trim() || 'General Accra',
-          delivery_address: value.drop,
-          delivery_zone: value.drop?.split(',').pop()?.trim() || 'General Accra',
-          item_description: value.item,
-          delivery_instructions: value.instructions || null,
-          status: 'pending',
-          delivery_fee: pricing.breakdown.totalFee,
-          base_price: pricing.breakdown.basePrice,
-          distance_fee: pricing.breakdown.distanceFee,
+          order_id: orderId, sender_name: value.sender, sender_phone: normalizedPhone,
+          customer_name: value.recipient, customer_phone: normalizedPhone,
+          pickup_address: value.pickup, pickup_zone: value.pickup?.split(',').pop()?.trim() || 'General Accra',
+          delivery_address: value.drop, delivery_zone: value.drop?.split(',').pop()?.trim() || 'General Accra',
+          item_description: value.item, delivery_instructions: value.instructions || null,
+          status: 'pending', delivery_fee: pricing.breakdown.totalFee,
+          base_price: pricing.breakdown.basePrice, distance_fee: pricing.breakdown.distanceFee,
           surge_fee: pricing.breakdown.surgeFee,
         })
 
         if (!error) {
-          try {
-            await supabase.functions.invoke('whatsapp-notify', {
-              body: { record: { order_id: orderId, customer_name: value.recipient, customer_phone: normalizedPhone, status: 'pending', id: null } }
-            })
-          } catch (fnErr) { console.error(fnErr) }
+          try { await supabase.functions.invoke('whatsapp-notify', { body: { record: { order_id: orderId, customer_name: value.recipient, customer_phone: normalizedPhone, status: 'pending' } } }) } catch (fnErr) { console.error(fnErr) }
           setSubmittedTotalFee(pricing.breakdown.totalFee)
           setSubmittedOrderId(orderId)
           setSubmitted(true)
-        } else {
-          alert('Failed to create order: ' + error.message)
-        }
-      } catch {
-        alert('Network error. Check connection and try again.')
-      }
+        } else { alert('Failed to create order: ' + error.message) }
+      } catch { alert('Network error. Check connection and try again.') }
     },
   })
 
+  const updateDistance = useCallback(async (pickup, drop) => {
+    if (pickup?.length < 5 || drop?.length < 5) return
+    setDistanceLoading(true)
+    setDistanceError('')
+    const result = await calculateDistance(pickup, drop)
+    if (result.allowed) { form.setFieldValue('distance', result.distanceKm) } 
+    else { setDistanceError(result.reason) }
+    setDistanceLoading(false)
+  }, [form])
+
   useEffect(() => {
-    const pickup = form.state.values.pickup
-    const drop = form.state.values.drop
-    if (pickup && drop && pickup.length >= 5 && drop.length >= 5) {
-      const calculateAndSetDistance = async () => {
-        setDistanceLoading(true)
-        setDistanceError('')
-        const result = await calculateDistance(pickup, drop)
-        if (result.allowed) {
-          form.setFieldValue('distance', result.distanceKm)
-        } else {
-          setDistanceError(result.reason)
-        }
-        setDistanceLoading(false)
-      }
-      calculateAndSetDistance()
-    }
-  }, [form.state.values.pickup, form.state.values.drop, form.setFieldValue])
+    const { pickup, drop } = form.state.values
+    const handler = setTimeout(() => { updateDistance(pickup, drop) }, 800)
+    return () => clearTimeout(handler)
+  }, [form.state.values.pickup, form.state.values.drop, updateDistance])
 
-  const canSubmitStep1 = (values) => {
-    return values.sender.length >= 2 && 
-           values.pickup.length >= 5 && 
-           values.phone.length >= 10
-  }
-
-  const canSubmitStep2 = (values) => {
-    return values.recipient.length >= 2 && 
-           values.drop.length >= 5 && 
-           values.item.length >= 2
-  }
+  const canSubmitStep1 = (values) => values.sender.length >= 2 && values.pickup.length >= 5 && values.phone.length >= 10
+  const canSubmitStep2 = (values) => values.recipient.length >= 2 && values.drop.length >= 5 && values.item.length >= 2
 
   if (submitted) {
     return (
@@ -148,16 +108,12 @@ export default function OrderScreen() {
         <Card className="w-full max-w-sm text-center">
           <CardContent className="pt-6 pb-4">
             <div className="mx-auto w-14 h-14 bg-yellow-400 rounded-full flex items-center justify-center mb-3 text-red-900">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
             </div>
-            <h2 className="text-lg font-black text-red-600 uppercase tracking-tight">Request Logged!</h2>
+            <h2 className="text-lg font-black text-red-600 uppercase">Request Logged!</h2>
             <p className="text-xs text-muted-foreground mt-1">Waybill: {submittedOrderId}</p>
             <p className="text-sm font-bold text-yellow-400 mt-2">Total: GH₵ {submittedTotalFee.toFixed(2)}</p>
-            <Button onClick={() => { setSubmitted(false); form.reset(); setStep(1); }} className="mt-4 bg-yellow-400 hover:bg-yellow-300 text-red-900 font-black uppercase text-sm active:scale-95">
-              Book Another
-            </Button>
+            <Button onClick={() => { setSubmitted(false); form.reset(); setStep(1); }} className="mt-4 bg-yellow-400 hover:bg-yellow-300 text-red-900 font-black uppercase text-sm">Book Another</Button>
           </CardContent>
         </Card>
       </div>
@@ -170,262 +126,53 @@ export default function OrderScreen() {
         <h1 className="text-2xl sm:text-3xl font-bold text-white italic uppercase">Beba Fleet</h1>
         <p className="text-yellow-300 font-bold uppercase text-xs mt-1">Rapid Delivery Service</p>
       </div>
-
       <Card className="w-full max-w-md mx-auto border-0 shadow-xl">
         <CardHeader>
-          <CardTitle className="text-red-600 uppercase italic">
-            {step === 1 ? 'Pickup Details' : 'Delivery Details'}
-          </CardTitle>
-          <CardDescription className="text-red-800 font-medium">
-            {step === 1 ? 'Who & where are we picking up from?' : 'Who & where are we delivering to?'}
-          </CardDescription>
+          <CardTitle className="text-red-600 uppercase italic">{step === 1 ? 'Pickup Details' : 'Delivery Details'}</CardTitle>
+          <CardDescription className="text-red-800 font-medium">{step === 1 ? 'Who & where are we picking up from?' : 'Who & where are we delivering to?'}</CardDescription>
         </CardHeader>
         <CardContent>
           <StepIndicator step={step} />
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-            }}
-            className="space-y-3 sm:space-y-4"
-          >
+          <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); }} className="space-y-4">
             {step === 1 && (
-              <form.Field
-                name="sender"
-                validators={{
-                  onChange: ({ value }) => value.length < 2 ? 'Sender name must be at least 2 characters' : undefined,
-                }}
-                children={(field) => (
-                  <Field data-invalid={field.state.meta.errors.length > 0}>
-                    <FieldLabel htmlFor="sender">Sender Name</FieldLabel>
-                    <Input
-                      id="sender"
-                      name="sender"
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Your full name"
-                    />
-                    <FieldError errors={field.state.meta.errors} />
-                  </Field>
-                )}
-              />
+              <>
+                <form.Field name="sender" children={(field) => (
+                  <Field><FieldLabel>Sender Name</FieldLabel><Input value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} placeholder="Your full name" /></Field>
+                )} />
+                <form.Field name="pickup" children={(field) => (
+                  <Field><FieldLabel>Pickup Address</FieldLabel><LocationSearch value={field.state.value} onChange={(val) => field.handleChange(val)} placeholder="Search pickup..." /></Field>
+                )} />
+                <form.Field name="phone" children={(field) => (
+                  <Field><FieldLabel>Contact Number</FieldLabel><Input type="tel" value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} placeholder="Mobile Number" /></Field>
+                )} />
+              </>
             )}
-
-            {step === 1 && (
-              <form.Field
-                name="pickup"
-                validators={{
-                  onChange: ({ value }) => value.length < 5 ? 'Pickup address is required' : undefined,
-                }}
-                children={(field) => (
-                  <Field data-invalid={field.state.meta.errors.length > 0}>
-                    <FieldLabel htmlFor="pickup">Pickup Address</FieldLabel>
-                    <LocationSearch
-                      value={field.state.value}
-                      onChange={(val) => field.handleChange(val)}
-                      placeholder="Search pickup location in Accra..."
-                    />
-                    <FieldError errors={field.state.meta.errors} />
-                  </Field>
-                )}
-              />
-            )}
-
-            {step === 1 && (
-              <form.Field
-                name="phone"
-                validators={{
-                  onChange: ({ value }) => value.length < 10 ? 'Enter a valid phone number' : undefined,
-                }}
-                children={(field) => (
-                  <Field data-invalid={field.state.meta.errors.length > 0}>
-                    <FieldLabel htmlFor="phone">Contact Number</FieldLabel>
-                    <Input
-                      id="phone"
-                      name="phone"
-                      type="tel"
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Mobile Number"
-                    />
-                    <FieldError errors={field.state.meta.errors} />
-                  </Field>
-                )}
-              />
-            )}
-
             {step === 2 && (
-              <form.Field
-                name="recipient"
-                validators={{
-                  onChange: ({ value }) => value.length < 2 ? 'Recipient name must be at least 2 characters' : undefined,
-                }}
-                children={(field) => (
-                  <Field data-invalid={field.state.meta.errors.length > 0}>
-                    <FieldLabel htmlFor="recipient">Recipient Name</FieldLabel>
-                    <Input
-                      id="recipient"
-                      name="recipient"
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Recipient Full Name"
-                    />
-                    <FieldError errors={field.state.meta.errors} />
-                  </Field>
-                )}
-              />
-            )}
-
-            {step === 2 && (
-              <form.Field
-                name="drop"
-                validators={{
-                  onChange: ({ value }) => value.length < 5 ? 'Destination address is required' : undefined,
-                }}
-                children={(field) => (
-                  <Field data-invalid={field.state.meta.errors.length > 0}>
-                    <FieldLabel htmlFor="drop">Destination</FieldLabel>
-                    <LocationSearch
-                      value={field.state.value}
-                      onChange={(val) => field.handleChange(val)}
-                      placeholder="Search delivery location in Accra..."
-                    />
-                    <FieldError errors={field.state.meta.errors} />
-                  </Field>
-                )}
-              />
-            )}
-
-            {step === 2 && (
-              <form.Field
-                name="item"
-                validators={{
-                  onChange: ({ value }) => value.length < 2 ? 'Item description is required' : undefined,
-                }}
-                children={(field) => (
-                  <Field data-invalid={field.state.meta.errors.length > 0}>
-                    <FieldLabel htmlFor="item">Cargo Details</FieldLabel>
-                    <Input
-                      id="item"
-                      name="item"
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="What are you sending?"
-                    />
-                    <FieldError errors={field.state.meta.errors} />
-                  </Field>
-                )}
-              />
-            )}
-
-            {step === 2 && (
-              <form.Field
-                name="instructions"
-                children={(field) => (
-                  <Field>
-                    <FieldLabel htmlFor="instructions">Delivery Instructions (Optional)</FieldLabel>
-                    <textarea
-                      id="instructions"
-                      name="instructions"
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="e.g., Call upon arrival, leave at gate, etc."
-                      className="w-full min-h-[80px] px-3 py-2 text-sm rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
-                    />
-                  </Field>
-                )}
-              />
-            )}
-
-            {step === 2 && (
-              <form.Subscribe
-                selector={(state) => state.values.distance}
-                children={(distance) => {
-                  const pricing = calculateDeliveryFee(Number(distance) || 0)
-                  if (distanceLoading) {
-                    return (
-                      <div className="mb-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                        <p className="text-xs font-bold text-red-800 uppercase">Calculating Distance...</p>
-                      </div>
-                    )
-                  }
-                  if (distanceError) {
-                    return (
-                      <div className="mb-3 p-2 bg-red-50 rounded-lg border border-red-200">
-                        <p className="text-xs text-red-600 mb-2">{distanceError}</p>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          min="0.1"
-                          max="8"
-                          value={distance}
-                          onChange={(e) => form.setFieldValue('distance', parseFloat(e.target.value) || 0)}
-                          placeholder="Enter distance manually (km)"
-                          className="h-10 text-sm"
-                        />
-                      </div>
-                    )
-                  }
-                  if (pricing.allowed && Number(distance) > 0) {
-                    return (
-                      <div className="mb-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                        <p className="text-xs font-bold text-red-800 uppercase">Estimated Fee</p>
-                        <p className="text-lg font-black text-red-600">GH₵ {pricing.breakdown.totalFee.toFixed(2)}</p>
-                        <p className="text-xs text-slate-600 mt-1">
-                          Base: GH₵ {pricing.breakdown.basePrice.toFixed(2)} + 
-                          Distance: GH₵ {pricing.breakdown.distanceFee.toFixed(2)} + 
-                          Surge: GH₵ {pricing.breakdown.surgeFee.toFixed(2)}
-                        </p>
-                        <p className="text-xs text-slate-500 mt-1">Distance: {distance} km (auto-calculated)</p>
-                      </div>
-                    )
-                  }
-                  return null
-                }}
-              />
+              <>
+                <form.Field name="recipient" children={(field) => (
+                  <Field><FieldLabel>Recipient Name</FieldLabel><Input value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} placeholder="Recipient Full Name" /></Field>
+                )} />
+                <form.Field name="drop" children={(field) => (
+                  <Field><FieldLabel>Destination</FieldLabel><LocationSearch value={field.state.value} onChange={(val) => field.handleChange(val)} placeholder="Search destination..." /></Field>
+                )} />
+                <form.Field name="item" children={(field) => (
+                  <Field><FieldLabel>Cargo Details</FieldLabel><Input value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} placeholder="What are you sending?" /></Field>
+                )} />
+                {distanceLoading && <div className="p-2 text-xs font-bold text-red-800 bg-yellow-50 rounded">Calculating distance...</div>}
+                {distanceError && <div className="p-2 text-xs text-red-600 bg-red-50 rounded">{distanceError}</div>}
+              </>
             )}
           </form>
         </CardContent>
         <div className="px-6 pb-6 pt-4">
-          <form.Subscribe
-            selector={(state) => [state.values, state.isSubmitting]}
-            children={([values, isSubmitting]) => {
-              const isStep1Valid = canSubmitStep1(values)
-              const isStep2Valid = canSubmitStep2(values)
-              const canProceed = step === 1 ? isStep1Valid : isStep2Valid
-              
-              return (
-                <div className="flex gap-3">
-                  {step === 2 && (
-                    <Button
-                      type="button"
-                      onClick={() => setStep(1)}
-                      className="flex-1 h-12 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold uppercase active:scale-95"
-                    >
-                      <ChevronLeft className="w-4 h-4 mr-1" />
-                      Back
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    disabled={isSubmitting || !canProceed}
-                    onClick={step === 1 ? () => setStep(2) : () => form.handleSubmit()}
-                    className={`${step === 2 ? 'flex-1' : 'w-full'} h-12 bg-yellow-400 hover:bg-yellow-300 text-red-900 font-black uppercase italic active:scale-95`}
-                  >
-                    {step === 1 ? (
-                      <>Next <ChevronRight className="w-4 h-4 ml-1" /></>
-                    ) : isSubmitting ? 'Processing...' : 'Confirm Request'}
-                  </Button>
-                </div>
-              )
-            }}
-          />
+          <form.Subscribe selector={(state) => [state.values, state.isSubmitting]} children={([values, isSubmitting]) => (
+            <div className="flex gap-3">
+              {step === 2 && <Button type="button" onClick={() => setStep(1)} className="flex-1 bg-slate-200 text-slate-800 font-bold uppercase"><ChevronLeft className="w-4 h-4 mr-1" /> Back</Button>}
+              <Button type="button" disabled={isSubmitting || distanceLoading || !(step === 1 ? canSubmitStep1(values) : canSubmitStep2(values))} onClick={step === 1 ? () => setStep(2) : () => form.handleSubmit()} className="flex-1 bg-yellow-400 text-red-900 font-black uppercase">
+                {isSubmitting ? <Loader2 className="animate-spin w-4 h-4" /> : step === 1 ? <>Next <ChevronRight className="w-4 h-4 ml-1" /></> : 'Confirm Request'}
+              </Button>
+            </div>
+          )} />
         </div>
       </Card>
     </div>
