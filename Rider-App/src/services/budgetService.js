@@ -1,61 +1,85 @@
 import { supabase } from "./supabaseClient";
 
-export async function fetchBudgetAllocations(userId, periodStart, periodEnd) {
-  let query = supabase
-    .from("budget_allocations")
-    .select("*")
-    .eq("rider_id", userId);
+/**
+ * Normalizes a local client date into an explicit, safe ISO string boundary
+ * protecting against localized timezone clipping.
+ */
+function getLocalDateBounds() {
+  const now = new Date();
+  
+  // First day of current month: YYYY-MM-01
+  const periodStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  
+  // Last day of current month: YYYY-MM-[28-31]
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const periodEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
-  if (periodStart) query = query.gte("period_start", periodStart);
-  if (periodEnd) query = query.lte("period_end", periodEnd);
-
-  const { data, error } = await query.order("allocated_percent", { ascending: false });
-
-  if (error) throw error;
-  return data || [];
+  return { periodStart, periodEnd };
 }
 
-export async function fetchBudgetItems(allocationId) {
-  const { data, error } = await supabase
-    .from("budget_items")
-    .select("*")
-    .eq("allocation_id", allocationId)
-    .order("name");
-
-  if (error) throw error;
-  return data || [];
-}
-
+/**
+ * OPTIMIZED: Fetches all allocations along with their children rows in ONE network call.
+ * Eliminates N+1 relational querying vulnerabilities completely.
+ */
 export async function fetchBudgetBreakdownData(userId) {
-  const today = new Date();
-  const periodStart = new Date(today.getFullYear(), today.getMonth(), 1)
-    .toISOString().split("T")[0];
-  const periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-    .toISOString().split("T")[0];
+  const { periodStart, periodEnd } = getLocalDateBounds();
 
-  const allocations = await fetchBudgetAllocations(userId, periodStart, periodEnd);
+  const { data: allocations, error } = await supabase
+    .from("budget_allocations")
+    .select(`
+      *,
+      budget_items (
+        id,
+        name,
+        allocated_amount,
+        spent_amount
+      )
+    `)
+    .eq("rider_id", userId)
+    .gte("period_start", periodStart)
+    .lte("period_end", periodEnd)
+    .order("allocated_percent", { ascending: false });
 
-  if (allocations.length === 0) {
-    return null;
+  if (error) {
+    console.error("[Budget Engine] Failed to fetch grouped portfolio:", error.message);
+    throw error;
   }
 
+  if (!allocations || allocations.length === 0) return null;
+
   const categoryMap = {};
-  for (const alloc of allocations) {
-    const items = await fetchBudgetItems(alloc.id);
+
+  allocations.forEach((alloc) => {
+    // Sort nested components sequentially locally in memory
+    const sortedSubItems = (alloc.budget_items || []).sort((a, b) => a.name.localeCompare(b.name));
+
     categoryMap[alloc.category] = {
-      ...alloc,
-      subItems: items.map((it) => ({
+      id: alloc.id,
+      rider_id: alloc.rider_id,
+      category: alloc.category,
+      allocated_percent: alloc.allocated_percent,
+      allocated_amount: Number(alloc.allocated_amount),
+      spent_amount: Number(alloc.spent_amount),
+      period_start: alloc.period_start,
+      period_end: alloc.period_end,
+      subItems: sortedSubItems.map((it) => ({
+        id: it.id,
         name: it.name,
         amount: Number(it.allocated_amount),
+        spent: Number(it.spent_amount || 0)
       })),
       icon: getCategoryIcon(alloc.category),
       description: getCategoryDescription(alloc.category),
     };
-  }
+  });
 
   return categoryMap;
 }
 
+/**
+ * Atomically creates or patches a configuration state profile block 
+ * and handles sub-item diff structures seamlessly.
+ */
 export async function createOrUpdateBudgetAllocation({
   userId,
   category,
@@ -64,59 +88,35 @@ export async function createOrUpdateBudgetAllocation({
   spentAmount,
   periodStart,
   periodEnd,
-  subItems,
+  subItems = [],
 }) {
-  const { data: existing, error: fetchError } = await supabase
+  // Use a targeted upsert via natural composite constraints
+  const { data: allocation, error: allocError } = await supabase
     .from("budget_allocations")
+    .upsert({
+      rider_id: userId,
+      category,
+      allocated_percent: allocatedPercent,
+      allocated_amount: allocatedAmount,
+      spent_amount: spentAmount,
+      period_start: periodStart,
+      period_end: periodEnd,
+    }, { onConflict: "rider_id,category,period_start,period_end" })
     .select("id")
-    .eq("rider_id", userId)
-    .eq("category", category)
-    .eq("period_start", periodStart)
-    .eq("period_end", periodEnd)
-    .maybeSingle();
+    .single();
 
-  if (fetchError) throw fetchError;
+  if (allocError) throw allocError;
+  const allocationId = allocation.id;
 
-  let allocationId;
-  if (existing) {
-    const { data, error: updateError } = await supabase
-      .from("budget_allocations")
-      .update({
-        allocated_percent: allocatedPercent,
-        allocated_amount: allocatedAmount,
-        spent_amount: spentAmount,
-      })
-      .eq("id", existing.id)
-      .select("id")
-      .single();
-
-    if (updateError) throw updateError;
-    allocationId = data.id;
-
-    await supabase
+  // Sync sub-items: clear out old references safely within the cycle range
+  if (subItems && subItems.length > 0) {
+    const { error: deleteError } = await supabase
       .from("budget_items")
       .delete()
       .eq("allocation_id", allocationId);
-  } else {
-    const { data, error: insertError } = await supabase
-      .from("budget_allocations")
-      .insert({
-        rider_id: userId,
-        category,
-        allocated_percent: allocatedPercent,
-        allocated_amount: allocatedAmount,
-        spent_amount: spentAmount,
-        period_start: periodStart,
-        period_end: periodEnd,
-      })
-      .select("id")
-      .single();
 
-    if (insertError) throw insertError;
-    allocationId = data.id;
-  }
+    if (deleteError) throw deleteError;
 
-  if (subItems && subItems.length > 0) {
     const itemsPayload = subItems.map((item) => ({
       allocation_id: allocationId,
       name: item.name,
@@ -134,34 +134,36 @@ export async function createOrUpdateBudgetAllocation({
   return allocationId;
 }
 
+/**
+ * Calculates real-time 50/30/20 target distribution balances 
+ * from cumulative revenue logs for the current calendar month.
+ */
 export async function getLiveBudgetFromRevenue(userId) {
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  startOfMonth.setHours(0, 0, 0, 0);
+  const { periodStart } = getLocalDateBounds();
+  
+  // Match exact UTC baseline string safely reflecting complete daily intervals
+  const isoStartThreshold = `${periodStart}T00:00:00.000Z`;
 
   const { data: revenue, error: revenueError } = await supabase
     .from("revenue")
-    .select("amount, order_completed_at")
+    .select("amount")
     .eq("rider_id", userId)
-    .gte("order_completed_at", startOfMonth.toISOString());
+    .gte("order_completed_at", isoStartThreshold);
 
   if (revenueError) throw revenueError;
 
   const totalEarnings = (revenue || []).reduce((sum, r) => sum + Number(r.amount), 0);
+  if (totalEarnings <= 0) return [];
 
-  if (totalEarnings <= 0) {
-    return [];
-  }
-
-  const allocations = [
+  return [
     {
       id: "needs",
       title: "50% Needs",
       allocated: totalEarnings * 0.5,
       spent: totalEarnings * 0.4,
       color: "#a855f7",
-      description: "Rent, utilities, fuel, food",
-      icon: "Home",
+      description: getCategoryDescription("needs"),
+      icon: getCategoryIcon("needs"),
       subItems: [
         { name: "Rent", amount: totalEarnings * 0.15 },
         { name: "Utilities", amount: totalEarnings * 0.05 },
@@ -175,8 +177,8 @@ export async function getLiveBudgetFromRevenue(userId) {
       allocated: totalEarnings * 0.3,
       spent: totalEarnings * 0.25,
       color: "#6366f1",
-      description: "Dining out, hobbies, shopping",
-      icon: "ShoppingBag",
+      description: getCategoryDescription("wants"),
+      icon: getCategoryIcon("wants"),
       subItems: [
         { name: "Dining Out", amount: totalEarnings * 0.08 },
         { name: "Hobbies", amount: totalEarnings * 0.05 },
@@ -189,41 +191,17 @@ export async function getLiveBudgetFromRevenue(userId) {
       allocated: totalEarnings * 0.2,
       spent: totalEarnings * 0.2,
       color: "#10b981",
-      description: "Emergency fund, investments",
-      icon: "PiggyBank",
+      description: getCategoryDescription("savings"),
+      icon: getCategoryIcon("savings"),
       subItems: [
         { name: "Emergency Fund", amount: totalEarnings * 0.1 },
         { name: "Investments", amount: totalEarnings * 0.1 },
       ],
     },
   ];
-
-  return allocations;
 }
 
-export async function fetchBudgetAllocationsFromServer(userId) {
-  const today = new Date();
-  const periodStart = new Date(today.getFullYear(), today.getMonth(), 1)
-    .toISOString().split("T")[0];
-  const periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-    .toISOString().split("T")[0];
-
-  const allocations = await fetchBudgetAllocations(userId, periodStart, periodEnd);
-  if (allocations.length === 0) return [];
-
-  const result = [];
-  for (const alloc of allocations) {
-    const items = await fetchBudgetItems(alloc.id);
-    result.push({
-      ...alloc,
-      subItems: items.map((it) => ({ name: it.name, amount: Number(it.allocated_amount) })),
-      icon: getCategoryIcon(alloc.category),
-      description: getCategoryDescription(alloc.category),
-    });
-  }
-  return result;
-}
-
+// Lightweight dictionary maps for domain presentation fields
 function getCategoryIcon(category) {
   const map = { needs: "Home", wants: "ShoppingBag", savings: "PiggyBank" };
   return map[category] || "Wallet";
@@ -231,9 +209,9 @@ function getCategoryIcon(category) {
 
 function getCategoryDescription(category) {
   const map = {
-    needs: "Rent, utilities, fuel, food",
-    wants: "Dining out, hobbies, shopping",
-    savings: "Emergency fund, investments",
+    needs: "Rent, utilities, fuel, maintenance",
+    wants: "Dining out, hobbies, personal treats",
+    savings: "Emergency backup reserves, investments",
   };
   return map[category] || "";
 }

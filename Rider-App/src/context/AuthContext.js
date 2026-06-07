@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { supabase } from "../services/supabaseClient";
 
 const AuthContext = createContext({
@@ -14,113 +14,102 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  // Track continuous runtime shifts to block out-of-order execution states
+  const ongoingFetchId = useRef(0);
 
   useEffect(() => {
-    async function bootstrapSession() {
-      try {
-        console.log("[AuthContext] Bootstrapping session...");
-        const {
-          data: { session: activeSession },
-        } = await supabase.auth.getSession();
-        setSession(activeSession);
-        setUser(activeSession?.user ?? null);
-        console.log("[AuthContext] Initial session:", {
-          userId: activeSession?.user?.id,
-          email: activeSession?.user?.email,
-        });
-
-        if (activeSession?.user) {
-          // Check users table for rider/customer profile
-          console.log(
-            "[AuthContext] Fetching user profile from users table for:",
-            activeSession.user.id,
-          );
-          const { data: userData } = await supabase
-            .from("users")
-            .select("user_type, full_name")
-            .eq("id", activeSession.user.id)
-            .maybeSingle();
-
-          console.log("[AuthContext] User profile result:", {
-            userData: JSON.stringify(userData),
-          });
-
-          if (userData) {
-            setRole(userData.user_type);
-            console.log("[AuthContext] User role set to:", userData.user_type);
-            // Ensure rider_status exists for riders
-            if (userData.user_type === "rider") {
-              console.log(
-                "[AuthContext] Ensuring rider_status for rider:",
-                activeSession.user.id,
-              );
-              await supabase.from("rider_status").upsert({
-                id: activeSession.user.id,
-                is_rider_online: false,
-              });
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("[Mobile Auth Bootstrap Error]:", err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    bootstrapSession();
+    console.log("[AuthContext] Initializing Supabase Auth Stream Listener...");
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-      console.log("[AuthContext] Auth state changed:", {
+      // Increment the current execution cycle ID to discard outdated async tasks
+      const localFetchId = ++ongoingFetchId.current;
+      
+      console.log("[AuthContext] Event intercept:", {
         event,
         userId: currentSession?.user?.id,
       });
+
+      // Instantly update basic identity values to keep UI responsive
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
 
-      if (currentSession?.user) {
-        const { data: userData } = await supabase
+      if (!currentSession?.user) {
+        setRole(null);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+
+        // Retrieve core user configuration details
+        const { data: userData, error } = await supabase
           .from("users")
           .select("user_type, full_name")
           .eq("id", currentSession.user.id)
           .maybeSingle();
 
-        console.log("[AuthContext] User data after state change:", {
-          userData: JSON.stringify(userData),
-        });
+        if (error) throw error;
+
+        // Abort state mutation updates if a newer auth change has already taken place
+        if (localFetchId !== ongoingFetchId.current) return;
 
         if (userData) {
           setRole(userData.user_type);
-          console.log("[AuthContext] Role set to:", userData.user_type);
-          // Ensure rider_status exists for riders
+          console.log("[AuthContext] Profile verification synchronized:", userData.user_type);
+
+          // Handle rider onboarding initialization profiles defensively
           if (userData.user_type === "rider") {
-            console.log(
-              "[AuthContext] Upserting rider_status for:",
-              currentSession.user.id,
-            );
-            await supabase.from("rider_status").upsert({
-              id: currentSession.user.id,
-              is_rider_online: false,
-            });
+            // Check if rider state record entry is already present to prevent overwriting active statuses
+            const { data: statusExists } = await supabase
+              .from("rider_status")
+              .select("id")
+              .eq("id", currentSession.user.id)
+              .maybeSingle();
+
+            if (!statusExists && localFetchId === ongoingFetchId.current) {
+              console.log("[AuthContext] Initializing missing state entry for rider ID:", currentSession.user.id);
+              await supabase.from("rider_status").insert({
+                id: currentSession.user.id,
+                is_rider_online: false,
+              });
+            }
           }
+        } else {
+          setRole(null);
         }
-      } else {
-        console.log("[AuthContext] No user after state change, clearing role");
-        setRole(null);
+      } catch (err) {
+        console.warn("[AuthContext Error]: Sync exception caught ->", err.message);
+      } finally {
+        if (localFetchId === ongoingFetchId.current) {
+          setLoading(false);
+        }
       }
-      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      console.log("[AuthContext] Cleaning up context resources...");
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setSession(null);
-    setUser(null);
-    setRole(null);
+    try {
+      setLoading(true);
+      // Increment execution counter to disregard downstream updates from the listener
+      ongoingFetchId.current++;
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn("[AuthContext SignOut Warning]:", err.message);
+    } finally {
+      setSession(null);
+      setUser(null);
+      setRole(null);
+      setLoading(false);
+    }
   };
 
   return (

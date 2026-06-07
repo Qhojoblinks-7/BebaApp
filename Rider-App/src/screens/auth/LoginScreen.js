@@ -17,143 +17,109 @@ export default function LoginScreen() {
   const [errorBanner, setErrorBanner] = useState("");
   const [isRegister, setIsRegister] = useState(false);
 
+  // Normalizes numbers to E.164 standard (e.g., +233592558160)
+  const formatPhoneNumber = (input) => {
+    const clean = input.trim().replace(/\s+/g, "");
+    if (!clean) return "";
+    return clean.startsWith("+") ? clean : `+${clean}`;
+  };
+
   const handleAuth = async () => {
-    if (!phone || !password) {
-      console.log("[Auth] Validation failed: phone or password empty", {
-        phone: !!phone,
-        password: !!password,
-      });
+    const normalizedPhone = formatPhoneNumber(phone);
+
+    if (!normalizedPhone || !password || (isRegister && !fullName.trim())) {
+      setErrorBanner("Please fill in all fields correctly.");
       return;
     }
+
     setAuthLock(true);
     setErrorBanner("");
-    console.log("[Auth] handleAuth started", { isRegister, phone });
 
-    // Normalize phone format
-    const normalizedPhone = phone.startsWith("+") ? phone : `+${phone}`;
-    console.log("[Auth] Normalized phone:", normalizedPhone);
+    const mockEmail = `${normalizedPhone}@beba.express`;
 
     try {
       if (isRegister) {
-        // Sign up new rider
-        console.log(
-          "[Auth] Attempting signUp with email:",
-          `${normalizedPhone}@beba.express`,
-        );
-        const { data: authData, error: signUpError } =
-          await supabase.auth.signUp({
-            email: `${normalizedPhone}@beba.express`,
-            password: password,
-          });
-        console.log("[Auth] signUp result:", {
-          authData: JSON.stringify(authData),
-          signUpError: JSON.stringify(signUpError),
-        });
-
-        if (signUpError) {
-          console.log("[Auth] signUp error details:", signUpError);
-          if (signUpError.message?.includes("already registered")) {
-            setErrorBanner("Phone already registered. Try signing in.");
-          } else {
-            setErrorBanner(signUpError.message || "Registration failed.");
-          }
-          setAuthLock(false);
-          return;
-        }
-
-        // If session exists, user is auto-confirmed; otherwise needs email confirmation
-        if (authData.session) {
-          console.log("[Auth] signUp session exists, inserting profile...");
-          // Insert rider profile
-          const { error: profileError } = await supabase.from("users").insert({
-            id: authData.user?.id,
-            phone: normalizedPhone,
-            full_name: fullName || "Rider",
-            email: `${normalizedPhone}@beba.express`,
-            user_type: "rider",
-            rider_password: password,
-          });
-          console.log("[Auth] Profile insert result:", {
-            profileError: JSON.stringify(profileError),
-            userId: authData.user?.id,
-          });
-
-          if (profileError) {
-            console.log("[Auth] Profile insertion failed:", profileError);
-            setErrorBanner("Profile creation failed. Contact support.");
-            setAuthLock(false);
-            return;
-          }
-
-          // Create rider_status record
-          console.log("[Auth] Creating rider_status for:", authData.user?.id);
-          await supabase.from("rider_status").insert({
-            id: authData.user?.id,
-            is_rider_online: false,
-          });
-        } else {
-          console.log(
-            "[Auth] No session after signUp, email confirmation required",
-          );
-          setErrorBanner(
-            "Check email for confirmation. Auto-confirm in Supabase Dashboard → Auth → Settings.",
-          );
-          setAuthLock(false);
-          return;
-        }
-      } else {
-        // Login existing rider
-        console.log(
-          "[Auth] Attempting signInWithPassword for:",
-          `${normalizedPhone}@beba.express`,
-        );
-        const { error } = await supabase.auth.signInWithPassword({
-          email: `${normalizedPhone}@beba.express`,
+        console.log("[Auth] Registering rider profile via email surrogate:", mockEmail);
+        
+        const { data: authData, error: signUpError } = await supabase.auth.signUp({
+          email: mockEmail,
           password: password,
         });
 
-        if (error) {
-          console.log("[Auth] signInWithPassword failed:", error);
-          if (error.message?.includes("Invalid login credentials")) {
-            setErrorBanner("Incorrect phone number or password.");
-          } else {
-            setErrorBanner(error.message || "Login failed. Please try again.");
+        if (signUpError) {
+          if (signUpError.message?.includes("already registered")) {
+            throw new Error("Phone number already registered. Try signing in.");
           }
-          setAuthLock(false);
-          return;
+          throw signUpError;
         }
 
-        console.log(
-          "[Auth] signInWithPassword succeeded, checking rider role...",
-        );
+        const registeredUser = authData?.user;
 
-        const {
-          data: { session: authSession },
-        } = await supabase.auth.getSession();
+        if (registeredUser) {
+          console.log("[Auth] Account created. Generating profile data fields...");
+
+          // Public user profile record setup
+          const { error: profileError } = await supabase.from("users").insert({
+            id: registeredUser.id,
+            phone: normalizedPhone,
+            full_name: fullName.trim(),
+            email: mockEmail,
+            user_type: "rider",
+            // REMOVED plaintext rider_password for security compliance
+          });
+
+          if (profileError) {
+            console.error("[Auth] Public profile link failure:", profileError);
+            throw new Error("Profile provisioning failed. Please contact tech support.");
+          }
+
+          // Initialize default rider configuration state
+          await supabase.from("rider_status").insert({
+            id: registeredUser.id,
+            is_rider_online: false,
+          });
+
+          console.log("[Auth] Rider onboarding registration complete.");
+        } else {
+          throw new Error("Server confirmation required. Please ensure Auto-Confirm is enabled in Supabase.");
+        }
+
+      } else {
+        console.log("[Auth] Logging in rider via email surrogate:", mockEmail);
+
+        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+          email: mockEmail,
+          password: password,
+        });
+
+        if (loginError) {
+          if (loginError.message?.includes("Invalid login credentials")) {
+            throw new Error("Incorrect phone number or password.");
+          }
+          throw loginError;
+        }
+
+        const authenticatedUser = loginData?.user;
+        console.log("[Auth] Account validated. Verifying rider privileges...");
+
+        // Role verification
         const { data: userData, error: profileError } = await supabase
           .from("users")
           .select("user_type")
-          .eq("id", authSession.user.id)
-          .single();
-
-        console.log("[Auth] User profile check:", {
-          userData: JSON.stringify(userData),
-          profileError: JSON.stringify(profileError),
-        });
+          .eq("id", authenticatedUser.id)
+          .maybeSingle();
 
         if (profileError || !userData || userData.user_type !== "rider") {
-          console.log("[Auth] User is not a rider, signing out");
+          console.warn("[Auth] Access denied: User account is not verified as a rider.");
           await supabase.auth.signOut();
-          setErrorBanner("This account is not registered as a rider.");
-          setAuthLock(false);
-          return;
+          throw new Error("This account is not registered as a rider.");
         }
 
-        console.log("[Auth] Login fully verified as rider!");
+        console.log("[Auth] Rider entry clearance granted.");
       }
     } catch (err) {
-      console.log("[Auth] Caught exception in handleAuth:", err);
-      setErrorBanner(err.message);
+      console.log("[Auth Exception Handler]:", err.message);
+      setErrorBanner(err.message || "An unexpected error occurred.");
       setAuthLock(false);
     }
   };
@@ -176,6 +142,7 @@ export default function LoginScreen() {
           placeholderTextColor="#94a3b8"
           value={fullName}
           onChangeText={setFullName}
+          autoCorrect={false}
         />
       )}
 
@@ -186,6 +153,8 @@ export default function LoginScreen() {
         value={phone}
         onChangeText={setPhone}
         keyboardType="phone-pad"
+        autoCapitalize="none"
+        autoCorrect={false}
       />
 
       <TextInput
@@ -195,15 +164,17 @@ export default function LoginScreen() {
         value={password}
         onChangeText={setPassword}
         secureTextEntry
+        autoCapitalize="none"
+        autoCorrect={false}
       />
 
       <TouchableOpacity
-        style={styles.btn}
+        style={[styles.btn, authLock && styles.btnDisabled]}
         onPress={handleAuth}
         disabled={authLock}
       >
         {authLock ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color="#020617" />
         ) : (
           <Text style={styles.btnText}>
             {isRegister ? "Register & Start Duty" : "Start Duty Shift"}
@@ -213,7 +184,10 @@ export default function LoginScreen() {
 
       <TouchableOpacity
         style={styles.toggleBtn}
-        onPress={() => setIsRegister(!isRegister)}
+        onPress={() => {
+          setIsRegister(!isRegister);
+          setErrorBanner("");
+        }}
       >
         <Text style={styles.toggleText}>
           {isRegister
@@ -264,6 +238,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 8,
   },
+  btnDisabled: {
+    opacity: 0.6,
+  },
   btnText: { color: "#020617", fontSize: 14, fontWeight: "800" },
   errorText: {
     color: "#ef4444",
@@ -274,6 +251,8 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginBottom: 16,
     textAlign: "center",
+    borderWidth: 1,
+    borderColor: "#991b1b",
   },
   toggleBtn: { marginTop: 24, alignItems: "center" },
   toggleText: { color: "#38bdf8", fontSize: 14, fontWeight: "600" },
