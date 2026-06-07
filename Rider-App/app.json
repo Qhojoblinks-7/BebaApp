@@ -1,5 +1,6 @@
 {
   "expo": {
+    "scheme": ["beba", "com.beba.rider"],
     "name": "Rider-App",
     "slug": "Rider-App",
     "version": "1.0.0",
@@ -15,11 +16,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.beba.rider",
-      "config": {
-        "googleSignIn": {
-          "reservedClientId": "com.googleusercontent.apps.YOUR_CLIENT_ID"
-        }
-      },
       "infoPlist": {
         "NSCameraUsageDescription": "Camera access required for delivery signature capture",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Location required for real-time fleet tracking and route optimization",
