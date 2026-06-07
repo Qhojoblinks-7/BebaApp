@@ -26,7 +26,7 @@ export default function DashboardScreen({ navigation }) {
   const { colors, isDarkMode } = useThemeStore();
   const insets = useSafeAreaInsets();
 
-  const [isOnline, setIsOnline] = useState(false);
+  const [riderStatus, setRiderStatus] = useState("offline");
   const [syncing, setSyncing] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
   const [deliveryOrders, setDeliveryOrders] = useState([]);
@@ -74,14 +74,15 @@ export default function DashboardScreen({ navigation }) {
     try {
       const { data, error } = await supabase
         .from("rider_status")
-        .select("is_rider_online")
+        .select("rider_status")
         .eq("id", user.id)
         .maybeSingle();
 
       if (error) throw error;
       if (data) {
-        setIsOnline(data.is_rider_online);
-        if (data.is_rider_online) {
+        const status = data.rider_status || "offline";
+        setRiderStatus(status);
+        if (status === "online") {
           await startTrackingEngine();
         }
       }
@@ -218,14 +219,21 @@ export default function DashboardScreen({ navigation }) {
     fetchDashboardMetrics();
   }, [fetchDashboardMetrics]);
 
+  const statusConfig = {
+    online:  { label: "Go Offline",  colorKey: "success",  icon: "online",  nextState: "in_class" },
+    in_class: { label: "In Class →",  colorKey: "warning",  icon: "class",   nextState: "offline" },
+    offline: { label: "Go Online",  colorKey: "textSecondary", icon: "offline", nextState: "online" },
+  };
+
   const toggleAvailabilityState = async () => {
-    const nextState = !isOnline;
+    const current = riderStatus;
+    const nextState = statusConfig[current]?.nextState || "online";
     setSyncing(true);
+
     try {
-      if (nextState) {
+      if (nextState === "online") {
         const trackingActive = await startTrackingEngine();
         if (!trackingActive) {
-          setIsOnline(false);
           setSyncing(false);
           return;
         }
@@ -235,12 +243,12 @@ export default function DashboardScreen({ navigation }) {
 
       const { error } = await supabase.from("rider_status").upsert({
         id: user.id,
-        is_rider_online: nextState,
+        rider_status: nextState,
         updated_at: new Date().toISOString(),
       });
 
       if (error) throw error;
-      setIsOnline(nextState);
+      setRiderStatus(nextState);
     } catch (err) {
       console.warn("[Dashboard] Presence sync pipeline failed:", err.message);
     } finally {
@@ -444,7 +452,7 @@ export default function DashboardScreen({ navigation }) {
       />
 
       <DashboardHeader
-        isOnline={isOnline}
+        riderStatus={riderStatus}
         unreadCount={unreadCount}
         onToggleOnline={toggleAvailabilityState}
         onNavigateNotifications={() => navigation.navigate("Notifications")}

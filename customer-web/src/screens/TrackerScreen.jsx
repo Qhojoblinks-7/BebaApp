@@ -3,13 +3,22 @@ import { supabase } from '../lib/supabaseClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MapPin, Box, Bike, ShieldCheck, HelpCircle, Ban, Search } from 'lucide-react';
+import { MapPin, Box, Bike, ShieldCheck, HelpCircle, Ban, Search, Users, UserX, BookOpen, Wifi } from 'lucide-react';
+
+const STATUS_CONFIG = {
+  online:    { label: 'Rider Available',     color: 'bg-emerald-500', textColor: 'text-emerald-700',  icon: Wifi },
+  in_class:  { label: 'Rider In Class',       color: 'bg-amber-500',  textColor: 'text-amber-700',   icon: BookOpen },
+  offline:   { label: 'Rider Offline',        color: 'bg-slate-400',  textColor: 'text-slate-600',   icon: UserX },
+  on_route:  { label: 'Rider On Route',       color: 'bg-blue-500',   textColor: 'text-blue-700',    icon: Bike },
+};
 
 export default function TrackerScreen() {
   const [waybill, setWaybill] = useState('');
   const [searching, setSearching] = useState(false);
   const [order, setOrder] = useState(null);
   const [error, setError] = useState('');
+  const [riderStatus, setRiderStatus] = useState(null);
+  const [riderStatusLoading, setRiderStatusLoading] = useState(false);
 
   // Centralized real-time listener for order status changes
   useEffect(() => {
@@ -41,6 +50,7 @@ export default function TrackerScreen() {
     
     setSearching(true);
     setError('');
+    setRiderStatus(null);
     
     try {
       const { data, error: supabaseError } = await supabase
@@ -52,16 +62,63 @@ export default function TrackerScreen() {
       if (supabaseError) throw supabaseError;
       if (data) {
         setOrder(data);
+
+        if (data.rider_id) {
+          setRiderStatusLoading(true);
+          const { data: statusData } = await supabase
+            .from('rider_status')
+            .select('rider_status')
+            .eq('id', data.rider_id)
+            .maybeSingle();
+          setRiderStatus(statusData?.rider_status || null);
+          setRiderStatusLoading(false);
+        }
       } else {
         setError('Waybill reference code not found.');
         setOrder(null);
       }
-    } catch (err) {
+    } catch {
       setError('System lookup interruption. Try again.');
     } finally {
       setSearching(false);
     }
   };
+
+  useEffect(() => {
+    if (!order?.rider_id) {
+      setRiderStatus(null);
+      return;
+    }
+
+    const fetchRiderStatus = async () => {
+      setRiderStatusLoading(true);
+      const { data } = await supabase
+        .from('rider_status')
+        .select('rider_status')
+        .eq('id', order.rider_id)
+        .maybeSingle();
+      setRiderStatus(data?.rider_status || null);
+      setRiderStatusLoading(false);
+    };
+
+    fetchRiderStatus();
+
+    const channelName = `rider_status_${order.rider_id}_${order.id}`;
+    const statusSubscription = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'rider_status', filter: `id=eq.${order.rider_id}` },
+        (payload) => {
+          setRiderStatus(payload.new.rider_status);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(statusSubscription);
+    };
+  }, [order?.rider_id, order?.id]);
 
   // Utility to handle formatting and status display logic consistently
   const statusHelpers = {
@@ -136,6 +193,29 @@ export default function TrackerScreen() {
               <p className="text-[10px] font-bold text-amber-950/60 uppercase">Waybill ID</p>
               <h2 className="text-xl font-mono font-black text-slate-950">#{order.order_id}</h2>
             </div>
+
+            {/* Rider Status */}
+            {riderStatus && !riderStatusLoading && (() => {
+              const conf = STATUS_CONFIG[riderStatus] || STATUS_CONFIG.offline;
+              const StatusIcon = conf.icon;
+              return (
+                <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full ${conf.color} bg-opacity-20`}>
+                  <StatusIcon className={`w-3.5 h-3.5 ${conf.textColor}`} />
+                  <span className={`text-xs font-bold uppercase tracking-wide ${conf.textColor}`}>
+                    {conf.label}
+                  </span>
+                </div>
+              );
+            })()}
+
+            {!order.rider_id && (
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-300/25">
+                <Users className="w-3.5 h-3.5 text-slate-600" />
+                <span className="text-xs font-bold uppercase tracking-wide text-slate-600">
+                  Awaiting Rider Assignment
+                </span>
+              </div>
+            )}
 
             <div className="flex items-start gap-2">
               <MapPin className="w-5 h-5 mt-0.5" />

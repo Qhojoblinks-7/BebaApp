@@ -51,7 +51,7 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
     // 1. Live Telemetry: Update the active coordinate on the live status board
     const statusUpdate = supabase.from("rider_status").upsert({
       id: activeUserId,
-      is_rider_online: true,
+      rider_status: 'online',
       last_latitude: latitude,
       last_longitude: longitude,
       last_accuracy: accuracy,

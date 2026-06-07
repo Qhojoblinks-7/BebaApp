@@ -76,7 +76,7 @@ export default function LoginScreen() {
           // Initialize default rider configuration state
           await supabase.from("rider_status").insert({
             id: registeredUser.id,
-            is_rider_online: false,
+             rider_status: 'offline',
           });
 
           console.log("[Auth] Rider onboarding registration complete.");

@@ -7,7 +7,7 @@ import { calculateDistance } from '../lib/distanceService'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Field, FieldLabel, FieldError } from '@/components/ui/field'
+import { Field, FieldLabel } from '@/components/ui/field'
 import LocationSearch from '@/components/LocationSearch'
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 
@@ -123,7 +123,7 @@ export default function OrderScreen() {
   return (
     <div className="min-h-dvh bg-red-600 p-3">
       <div className="pt-3 pb-5 text-center">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white italic uppercase">Beba Fleet</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-white italic uppercase">Beba Delivery</h1>
         <p className="text-yellow-300 font-bold uppercase text-xs mt-1">Rapid Delivery Service</p>
       </div>
       <Card className="w-full max-w-md mx-auto border-0 shadow-xl">

@@ -14,6 +14,7 @@ import {
   Wifi,
   WifiOff,
   Bell,
+  BookOpen,
 } from "lucide-react-native";
 import { useThemeStore } from "../../store/themeStore";
 
@@ -181,10 +182,38 @@ export function ProfileBadge({ onPress, profileName, avatarUri, colors }) {
   );
 }
 
-export function ActionButtons({ isOnline, unreadCount, onToggleOnline, onNavigateNotifications, colors, isDarkMode }) {
+export function ActionButtons({ riderStatus, unreadCount, onToggleOnline, onNavigateNotifications, colors, isDarkMode }) {
+  const statusStyles = {
+    online: {
+      bg: isDarkMode ? "rgba(16, 185, 129, 0.15)" : "#e6f4ea",
+      border: colors.success,
+      dot: colors.success,
+      text: colors.success,
+      label: "Go Offline",
+      Icon: Wifi,
+    },
+    in_class: {
+      bg: isDarkMode ? "rgba(250, 204, 21, 0.15)" : "#fef9e7",
+      border: "#facc15",
+      dot: "#facc15",
+      text: isDarkMode ? "#facc15" : "#92400e",
+      label: "In Class",
+      Icon: BookOpen,
+    },
+    offline: {
+      bg: colors.backgroundCard,
+      border: colors.borderLight,
+      dot: colors.textDisabled,
+      text: colors.textSecondary,
+      label: "Go Online",
+      Icon: WifiOff,
+    },
+  };
+
+  const style = statusStyles[riderStatus] || statusStyles.offline;
+
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-      {/* Sleek, Rounded Network Presence Pill */}
       <TouchableOpacity
         style={{
           height: 40,
@@ -193,11 +222,9 @@ export function ActionButtons({ isOnline, unreadCount, onToggleOnline, onNavigat
           alignItems: "center",
           paddingHorizontal: 14,
           gap: 8,
-          backgroundColor: isOnline 
-            ? (isDarkMode ? "rgba(16, 185, 129, 0.15)" : "#e6f4ea")
-            : colors.backgroundCard,
+          backgroundColor: style.bg,
           borderWidth: 1,
-          borderColor: isOnline ? colors.success : colors.borderLight,
+          borderColor: style.border,
         }}
         onPress={onToggleOnline}
         activeOpacity={0.8}
@@ -207,17 +234,17 @@ export function ActionButtons({ isOnline, unreadCount, onToggleOnline, onNavigat
             width: 6,
             height: 6,
             borderRadius: 3,
-            backgroundColor: isOnline ? colors.success : colors.textDisabled,
+            backgroundColor: style.dot,
           }}
         />
         <Text
           style={{
             fontSize: 13,
             fontWeight: "700",
-            color: isOnline ? colors.success : colors.textSecondary,
+            color: style.text,
           }}
         >
-          {isOnline ? "Go Offline" : "Go Online"}
+          {style.label}
         </Text>
       </TouchableOpacity>
 
@@ -257,7 +284,7 @@ export function ActionButtons({ isOnline, unreadCount, onToggleOnline, onNavigat
 }
 
 export default function DashboardHeader({
-  isOnline = false,
+  riderStatus = "offline",
   unreadCount = 0,
   onToggleOnline,
   onNavigateNotifications,
@@ -321,7 +348,7 @@ export default function DashboardHeader({
         >
           <ProfileBadge onPress={onNavigateProfile} profileName={profileName} avatarUri={avatarUri} colors={colors} />
           <ActionButtons
-            isOnline={isOnline}
+            riderStatus={riderStatus}
             unreadCount={unreadCount}
             onToggleOnline={onToggleOnline}
             onNavigateNotifications={onNavigateNotifications}

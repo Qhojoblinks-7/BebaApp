@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 -- Rider status table: tracks online/offline state and last known location
 CREATE TABLE IF NOT EXISTS rider_status (
   id UUID PRIMARY KEY REFERENCES users(id),
-  is_rider_online BOOLEAN NOT NULL DEFAULT false,
+  rider_status TEXT NOT NULL DEFAULT 'offline' CHECK (rider_status IN ('offline', 'online', 'in_class', 'on_route')),
   current_latitude DECIMAL(10,8),
   current_longitude DECIMAL(11,8),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -191,7 +191,7 @@ BEGIN
     'New Order Available',
     'Order ' || NEW.order_id || ' needs pickup from ' || NEW.pickup_address
   FROM rider_status rs
-  WHERE rs.is_rider_online = true;
+  WHERE rs.rider_status = 'online';
   RETURN NEW;
 END;
 $$ language 'plpgsql';

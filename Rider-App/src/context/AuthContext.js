@@ -74,7 +74,7 @@ export function AuthProvider({ children }) {
               console.log("[AuthContext] Initializing missing state entry for rider ID:", currentSession.user.id);
               await supabase.from("rider_status").insert({
                 id: currentSession.user.id,
-                is_rider_online: false,
+                 rider_status: 'offline',
               });
             }
           }

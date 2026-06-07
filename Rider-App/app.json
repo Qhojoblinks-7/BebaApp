@@ -4,13 +4,13 @@
     "slug": "Rider-App",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/adaptiveLogo2.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/notification-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#020617"
+      "backgroundColor": "#115e59"
     },
     "ios": {
       "supportsTablet": true,
@@ -26,16 +26,13 @@
         "NSLocationAlwaysUsageDescription": "Background location for continuous fleet telemetry",
         "NSLocationWhenInUseUsageDescription": "Location needed to navigate delivery addresses",
         "NSUserInterfaceStyle": "automatic",
-        "UIBackgroundModes": [
-          "location",
-          "fetch"
-        ]
+        "UIBackgroundModes": ["location", "fetch"]
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#020617"
+        "foregroundImage": "./assets/adaptiveLogo2.png",
+        "backgroundColor": "#115e59"
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
@@ -49,12 +46,9 @@
       "package": "com.beba.rider"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/notification-icon.png"
     },
-    "plugins": [
-      "expo-location",
-      "expo-notifications"
-    ],
+    "plugins": ["expo-location", "expo-notifications"],
     "extra": {
       "EXPO_PUBLIC_SUPABASE_URL": "https://tjgutznerztvegoyitex.supabase.co",
       "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqZ3V0em5lcnp0dmVnb3lpdGV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwMDQ5ODAsImV4cCI6MjA5NDU4MDk4MH0.d1zLEuTHRNUOL3CE5eI4vk9thIGvdApQPTrc4nBTG34"
