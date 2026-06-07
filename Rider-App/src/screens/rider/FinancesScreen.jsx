@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  StyleSheet,
   View,
   Text,
   ScrollView,
@@ -10,6 +9,7 @@ import {
   StatusBar,
   Platform,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path, Circle } from "react-native-svg";
 import { 
   TrendingUp, 
@@ -84,7 +84,9 @@ function buildDefaultBudget(totalEarnings) {
 export default function FinancesScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { colors, isDarkMode } = useThemeStore();
+  
   const [activeTab, setActiveTab] = useState("Overview");
   const [syncing, setSyncing] = useState(true);
   const [financeSummary, setFinanceSummary] = useState({
@@ -204,7 +206,7 @@ export default function FinancesScreen() {
         };
       });
 
-      const results = await Promise.all(weeklyPromises);
+    const results = await Promise.all(weeklyPromises);
       setWeeklyData(results);
     } catch (err) {
       console.warn("[Finances] Weekly data fetch failed:", err.message);
@@ -216,6 +218,376 @@ export default function FinancesScreen() {
   useEffect(() => {
     fetchWeeklyData();
   }, [user?.id]);
+
+  // --- Dynamic Style Matrix mapped direct to application theme context ---
+  const ui = {
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      paddingBottom: "5.25rem",
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: colors.background,
+    },
+    headerRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 18,
+      paddingTop: Platform.OS === "ios" ? Math.max(insets.top, 16) : StatusBar.currentHeight + 14,
+      paddingBottom: 14,
+    },
+    profileBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    avatarPlaceholder: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 10,
+      borderWidth: 1,
+      backgroundColor: colors.backgroundSecondary,
+      borderColor: colors.borderLight,
+    },
+    profileSelectorWrapper: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    headerTitleText: {
+      fontSize: 20,
+      fontWeight: "800",
+      letterSpacing: -0.3,
+      color: colors.text,
+    },
+    notificationTrigger: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: colors.backgroundSecondary,
+    },
+    calendarIconMock: {
+      width: 22,
+      height: 22,
+      borderWidth: 1.5,
+      borderRadius: 6,
+      justifyContent: "center",
+      alignItems: "center",
+      borderColor: colors.textMuted,
+    },
+    calendarDateText: {
+      fontSize: 10,
+      fontWeight: "800",
+      color: colors.textMuted,
+    },
+    tabContainer: {
+      height: 40,
+      marginBottom: 12,
+    },
+    tabScrollContent: {
+      paddingHorizontal: 18,
+      alignItems: "center",
+      gap: 8,
+    },
+    tabButton: {
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+      borderRadius: 20,
+    },
+    tabButtonText: {
+      fontSize: 14,
+    },
+    scrollContent: {
+      flex: 1,
+      paddingHorizontal: 18,
+    },
+    analyticsGrid: {
+      flexDirection: "row",
+      gap: 12,
+      marginBottom: 12,
+    },
+    metricCard: {
+      flex: 1,
+      borderRadius: 24,
+      padding: 16,
+      minHeight: 160,
+      justifyContent: "space-between",
+      borderWidth: 1,
+      backgroundColor: colors.backgroundCard,
+      borderColor: colors.borderLight,
+      ...Platform.select({
+        ios: {
+          shadowColor: colors.shadow || "#000000",
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: isDarkMode ? 0.2 : 0.06,
+          shadowRadius: 6,
+        },
+        android: { elevation: 2 },
+      }),
+    },
+    cardHeaderInline: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginBottom: 4,
+    },
+    iconCircle: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    cardLabelText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.textMuted,
+    },
+    cardMainValueText: {
+      fontSize: 24,
+      fontWeight: "800",
+      letterSpacing: -0.5,
+      color: colors.text,
+    },
+    cardFooterDisclaimer: {
+      fontSize: 11,
+      fontWeight: "500",
+      marginTop: 4,
+      lineHeight: 14,
+      color: colors.textSecondary,
+    },
+    vectorMapMockContainer: {
+      height: 46,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    arcVisualContainer: {
+      height: 80,
+      justifyContent: "center",
+      alignItems: "center",
+      position: "relative",
+    },
+    arcAbsoluteLabelCenter: {
+      position: "absolute",
+      justifyContent: "center",
+      alignItems: "center",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+    },
+    arcCenterNumberText: {
+      fontSize: 16,
+      fontWeight: "800",
+      color: colors.text,
+    },
+    arcCenterSubText: {
+      fontSize: 9,
+      fontWeight: "600",
+      marginTop: -2,
+      color: colors.textSecondary,
+    },
+    arcBaseLabelsRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: 4,
+      paddingHorizontal: 4,
+    },
+    arcMicroLabelText: {
+      fontSize: 11,
+      fontWeight: "600",
+      color: colors.textDisabled,
+    },
+    timelineVisualSliderRow: {
+      height: 20,
+      justifyContent: "center",
+    },
+    timelineTrackLine: {
+      height: 3,
+      width: "100%",
+      borderRadius: 2,
+      position: "relative",
+      backgroundColor: colors.backgroundSecondary,
+    },
+    timelineProgressFill: {
+      height: "100%",
+      borderRadius: 2,
+      backgroundColor: colors.primary,
+    },
+    timelineThumbDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      position: "absolute",
+      top: -3.5,
+      marginLeft: -5,
+      backgroundColor: colors.text,
+    },
+    splineGraphWrapper: {
+      height: 46,
+      justifyContent: "flex-end",
+      alignItems: "center",
+    },
+    sectionTitleRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 24,
+      marginBottom: 14,
+    },
+    sectionHeadlineLabel: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    weeklyScrollContainer: {
+      gap: 10,
+      paddingRight: 20,
+      paddingVertical: 12,
+      paddingBottom: 16,
+    },
+    weeklyBarCard: {
+      alignItems: "center",
+      width: 50,
+    },
+    weeklyBarWrapper: {
+      width: 30,
+      height: 100,
+      borderRadius: 15,
+      overflow: "hidden",
+      justifyContent: "flex-end",
+      backgroundColor: colors.backgroundSecondary,
+    },
+    weeklyBarFill: {
+      width: "100%",
+      borderRadius: 15,
+      backgroundColor: colors.primary,
+    },
+    weeklyDayLabel: {
+      fontSize: 12,
+      fontWeight: "600",
+      marginTop: 8,
+      color: colors.textMuted,
+    },
+    weeklyAmountLabel: {
+      fontSize: 11,
+      fontWeight: "600",
+      marginTop: 2,
+      color: colors.text,
+    },
+    loadingWeeklyContainer: {
+      minHeight: 120,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    transactionsContainer: {
+      padding: 40,
+      alignItems: "center",
+    },
+    transactionsPlaceholder: {
+      fontSize: 14,
+      fontWeight: "500",
+      textAlign: "center",
+      color: colors.textSecondary,
+    },
+    budgetMiniArcContainer: {
+      height: 20,
+      justifyContent: "center",
+      alignItems: "center",
+      marginVertical: 8,
+    },
+    miniArcTrack: {
+      height: 3,
+      width: "100%",
+      borderRadius: 2,
+      overflow: "hidden",
+      backgroundColor: colors.backgroundSecondary,
+    },
+    miniArcFill: {
+      height: "100%",
+      borderRadius: 2,
+    },
+    inlineHeaderLinkAction: {
+      width: 28,
+      height: 28,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    budgetBucketsScrollWrapper: {
+      gap: 12,
+      paddingRight: 20,
+      paddingBottom: 4,
+    },
+    budgetBucketCard: {
+      width: CARD_WIDTH,
+      borderRadius: 24,
+      padding: 16,
+      minHeight: 130,
+      justifyContent: "space-between",
+      borderWidth: 1,
+      backgroundColor: colors.backgroundCard,
+      borderColor: colors.borderLight,
+      ...Platform.select({
+        ios: {
+          shadowColor: colors.shadow || "#000000",
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: isDarkMode ? 0.2 : 0.06,
+          shadowRadius: 6,
+        },
+        android: { elevation: 2 },
+      }),
+    },
+    actionExportBannerButton: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: 16,
+      borderRadius: 24,
+      marginTop: 12,
+      borderWidth: 1,
+      backgroundColor: colors.backgroundCard,
+      borderColor: colors.borderLight,
+      ...Platform.select({
+        ios: {
+          shadowColor: colors.shadow || "#000000",
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: isDarkMode ? 0.2 : 0.06,
+          shadowRadius: 6,
+        },
+        android: { elevation: 2 },
+      }),
+    },
+    bannerLeftFlexNode: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    bannerMainHeadingText: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    bannerSubTextDesc: {
+      fontSize: 11,
+      fontWeight: "500",
+      marginTop: 2,
+      color: colors.textSecondary,
+    },
+    circleDownWrapper: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: colors.primaryAlpha || "rgba(17, 94, 89, 0.1)",
+    },
+  };
 
   const renderInsightsTab = () => {
     const earningsTrend = weeklyData.length > 0 ? weeklyData.map(d => d.earnings) : [0, 0, 0, 0, 0, 0];
@@ -241,14 +613,14 @@ export default function FinancesScreen() {
 
     return (
       <>
-        <View style={styles.analyticsGrid}>
-          <View style={[styles.metricCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
-            <View style={styles.cardHeaderInline}>
+        <View style={ui.analyticsGrid}>
+          <View style={ui.metricCard}>
+            <View style={ui.cardHeaderInline}>
               <Wallet size={14} color={colors.textMuted} />
-              <Text style={[styles.cardLabelText, { color: colors.textMuted }]}>Total Earnings</Text>
+              <Text style={ui.cardLabelText}>Total Earnings</Text>
             </View>
-            <Text style={[styles.cardMainValueText, { color: colors.text }]}>GH₵ {financeSummary.totalEarnings.toFixed(2)}</Text>
-            <View style={styles.vectorMapMockContainer}>
+            <Text style={ui.cardMainValueText}>GH₵ {financeSummary.totalEarnings.toFixed(2)}</Text>
+            <View style={ui.vectorMapMockContainer}>
               <Svg height="50" width="130" viewBox="0 0 130 50">
                 <Path
                   d={pathD ? pathD.replace(/M /, "M10,40 ").replace(/L /g, "L").replace(/  /g, " ") : "M10,40 L120,40"}
@@ -259,15 +631,15 @@ export default function FinancesScreen() {
                 />
               </Svg>
             </View>
-            <Text style={[styles.cardFooterDisclaimer, { color: colors.textSecondary }]}>All time delivery revenue</Text>
+            <Text style={ui.cardFooterDisclaimer}>All time delivery revenue</Text>
           </View>
 
-          <View style={[styles.metricCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
-            <View style={styles.cardHeaderInline}>
+          <View style={ui.metricCard}>
+            <View style={ui.cardHeaderInline}>
               <PieChart size={14} color={colors.textMuted} />
-              <Text style={[styles.cardLabelText, { color: colors.textMuted }]}>Avg Per Delivery</Text>
+              <Text style={ui.cardLabelText}>Avg Per Delivery</Text>
             </View>
-            <View style={styles.arcVisualContainer}>
+            <View style={ui.arcVisualContainer}>
               <Svg height="76" width="76" viewBox="0 0 40 40">
                 <Circle cx="20" cy="20" r="16" fill="none" stroke={colors.backgroundSecondary} strokeWidth="3" />
                 <Circle
@@ -282,41 +654,41 @@ export default function FinancesScreen() {
                   transform="rotate(-90 20 20)"
                 />
               </Svg>
-              <View style={styles.arcAbsoluteLabelCenter}>
-                <Text style={[styles.arcCenterNumberText, { color: colors.text }]}>{financeSummary.avgPerDelivery}</Text>
-                <Text style={[styles.arcCenterSubText, { color: colors.textSecondary }]}>GH₵ avg</Text>
+              <View style={ui.arcAbsoluteLabelCenter}>
+                <Text style={ui.arcCenterNumberText}>{financeSummary.avgPerDelivery}</Text>
+                <Text style={ui.arcCenterSubText}>GH₵ avg</Text>
               </View>
             </View>
-            <View style={styles.arcBaseLabelsRow}>
-              <Text style={[styles.arcMicroLabelText, { color: colors.textDisabled }]}>Low</Text>
-              <Text style={[styles.arcMicroLabelText, { color: colors.textDisabled }]}>High</Text>
+            <View style={ui.arcBaseLabelsRow}>
+              <Text style={ui.arcMicroLabelText}>Low</Text>
+              <Text style={ui.arcMicroLabelText}>High</Text>
             </View>
           </View>
         </View>
 
-        <View style={styles.analyticsGrid}>
-          <View style={[styles.metricCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
-            <View style={styles.cardHeaderInline}>
+        <View style={ui.analyticsGrid}>
+          <View style={ui.metricCard}>
+            <View style={ui.cardHeaderInline}>
               <TrendingUp size={14} color={colors.textMuted} />
-              <Text style={[styles.cardLabelText, { color: colors.textMuted }]}>Completion Rate</Text>
+              <Text style={ui.cardLabelText}>Completion Rate</Text>
             </View>
-            <Text style={[styles.cardMainValueText, { color: colors.text }]}>{financeSummary.completionRate}</Text>
-            <View style={styles.timelineVisualSliderRow}>
-              <View style={[styles.timelineTrackLine, { backgroundColor: colors.backgroundSecondary }]}>
-                <View style={[styles.timelineProgressFill, { width: financeSummary.completionRate, backgroundColor: colors.primary }]} />
-                <View style={[styles.timelineThumbDot, { left: financeSummary.completionRate, backgroundColor: colors.text }]} />
+            <Text style={ui.cardMainValueText}>{financeSummary.completionRate}</Text>
+            <View style={ui.timelineVisualSliderRow}>
+              <View style={ui.timelineTrackLine}>
+                <View style={[ui.timelineProgressFill, { width: financeSummary.completionRate }]} />
+                <View style={[ui.timelineThumbDot, { left: financeSummary.completionRate }]} />
               </View>
             </View>
-            <Text style={[styles.cardFooterDisclaimer, { color: colors.textSecondary }]}>Orders delivered successfully</Text>
+            <Text style={ui.cardFooterDisclaimer}>Orders delivered successfully</Text>
           </View>
 
-          <View style={[styles.metricCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
-            <View style={styles.cardHeaderInline}>
+          <View style={ui.metricCard}>
+            <View style={ui.cardHeaderInline}>
               <Users size={14} color={colors.textMuted} />
-              <Text style={[styles.cardLabelText, { color: colors.textMuted }]}>Weekly Growth</Text>
+              <Text style={ui.cardLabelText}>Weekly Growth</Text>
             </View>
-            <Text style={[styles.cardMainValueText, { color: colors.text }]}>{financeSummary.weeklyGrowth}</Text>
-            <View style={styles.splineGraphWrapper}>
+            <Text style={ui.cardMainValueText}>{financeSummary.weeklyGrowth}</Text>
+            <View style={ui.splineGraphWrapper}>
               <Svg height="36" width="120" viewBox="0 0 120 36">
                 <Path
                   d={growthPathD}
@@ -331,32 +703,32 @@ export default function FinancesScreen() {
           </View>
         </View>
 
-        <View style={styles.sectionTitleRow}>
-          <Text style={[styles.sectionHeadlineLabel, { color: colors.text }]}>Weekly Earnings</Text>
+        <View style={ui.sectionTitleRow}>
+          <Text style={ui.sectionHeadlineLabel}>Weekly Earnings</Text>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.weeklyScrollContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ui.weeklyScrollContainer}>
           {loadingWeekly ? (
-            <View style={styles.loadingWeeklyContainer}>
+            <View style={ui.loadingWeeklyContainer}>
               <ActivityIndicator size="small" color={colors.warning} />
             </View>
           ) : (
             weeklyData.map((day, index) => (
-              <View key={index} style={styles.weeklyBarCard}>
-                <View style={[styles.weeklyBarWrapper, { backgroundColor: colors.backgroundSecondary }]}>
-                  <View style={[styles.weeklyBarFill, { height: Math.max(day.earnings / 10, 20), backgroundColor: colors.primary }]} />
+              <View key={index} style={ui.weeklyBarCard}>
+                <View style={ui.weeklyBarWrapper}>
+                  <View style={[ui.weeklyBarFill, { height: Math.max(day.earnings / 10, 20) }]} />
                 </View>
-                <Text style={[styles.weeklyDayLabel, { color: colors.textMuted }]}>{day.day}</Text>
-                <Text style={[styles.weeklyAmountLabel, { color: colors.text }]}>GH₵ {day.earnings.toFixed(0)}</Text>
+                <Text style={ui.weeklyDayLabel}>{day.day}</Text>
+                <Text style={ui.weeklyAmountLabel}>GH₵{day.earnings.toFixed(0)}</Text>
               </View>
             ))
           )}
         </ScrollView>
 
-        <View style={styles.sectionTitleRow}>
-          <Text style={[styles.sectionHeadlineLabel, { color: colors.text }]}>50/30/20 Budget</Text>
+        <View style={ui.sectionTitleRow}>
+          <Text style={ui.sectionHeadlineLabel}>50/30/20 Budget</Text>
           <TouchableOpacity
-            style={styles.inlineHeaderLinkAction}
+            style={ui.inlineHeaderLinkAction}
             activeOpacity={0.7}
             onPress={() => {
               const data = budgetData.length > 0 ? budgetData : buildDefaultBudget(financeSummary.totalEarnings);
@@ -370,7 +742,7 @@ export default function FinancesScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.budgetBucketsScrollWrapper}
+          contentContainerStyle={ui.budgetBucketsScrollWrapper}
         >
           {(budgetData.length > 0 ? budgetData : buildDefaultBudget(financeSummary.totalEarnings)).map((bucket) => {
             const savedAmount = Math.max(bucket.allocated - bucket.spent, 0);
@@ -378,24 +750,24 @@ export default function FinancesScreen() {
             return (
               <TouchableOpacity 
                 key={bucket.id} 
-                style={[styles.budgetBucketCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]} 
+                style={ui.budgetBucketCard} 
                 activeOpacity={0.8} 
                 onPress={() => navigation.navigate("BudgetInsightDetail", { categoryId: bucket.id })}
               >
-                <View style={styles.cardHeaderInline}>
-                  <View style={[styles.iconCircle, { backgroundColor: bucket.color + "20" }]}>
+                <View style={ui.cardHeaderInline}>
+                  <View style={[ui.iconCircle, { backgroundColor: bucket.color + "20" }]}>
                     {bucket.icon && BUDGET_ICON_MAP[bucket.icon] && React.createElement(BUDGET_ICON_MAP[bucket.icon], { size: 16, color: bucket.color })}
                   </View>
-                  <Text style={[styles.cardLabelText, { color: colors.textMuted }]}>{bucket.title}</Text>
+                  <Text style={ui.cardLabelText}>{bucket.title}</Text>
                 </View>
-                <Text style={[styles.cardMainValueText, { color: colors.text }]}>{savedPercent}%</Text>
-                <View style={styles.budgetMiniArcContainer}>
-                  <View style={[styles.miniArcTrack, { backgroundColor: colors.backgroundSecondary }]}>
-                    <View style={[styles.miniArcFill, { width: savedPercent + "%", backgroundColor: bucket.color }]} />
+                <Text style={ui.cardMainValueText}>{savedPercent}%</Text>
+                <View style={ui.budgetMiniArcContainer}>
+                  <View style={ui.miniArcTrack}>
+                    <View style={[ui.miniArcFill, { width: savedPercent + "%", backgroundColor: bucket.color }]} />
                   </View>
                 </View>
-                <Text style={[styles.cardFooterDisclaimer, { color: colors.textSecondary }]}>
-                  GH₵ {savedAmount.toFixed(0)} saved
+                <Text style={ui.cardFooterDisclaimer}>
+                  GH₵{savedAmount.toFixed(0)} saved
                 </Text>
               </TouchableOpacity>
             );
@@ -406,39 +778,39 @@ export default function FinancesScreen() {
   };
 
   const renderTransactionsTab = () => (
-    <View style={styles.transactionsContainer}>
-      <Text style={[styles.transactionsPlaceholder, { color: colors.textSecondary }]}>Transaction history coming soon</Text>
+    <View style={ui.transactionsContainer}>
+      <Text style={ui.transactionsPlaceholder}>Transaction history coming soon</Text>
     </View>
   );
 
   const renderDirectTab = () => (
-    <View style={styles.transactionsContainer}>
-      <Text style={[styles.transactionsPlaceholder, { color: colors.textSecondary }]}>Direct payouts interface coming soon</Text>
+    <View style={ui.transactionsContainer}>
+      <Text style={ui.transactionsPlaceholder}>Direct payouts interface coming soon</Text>
     </View>
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={colors.background} />
+    <View style={ui.container}>
+      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor="transparent" translucent />
 
-      <View style={styles.headerRow}>
-        <View style={styles.profileBadge}>
-          <View style={[styles.avatarPlaceholder, { backgroundColor: colors.backgroundSecondary, borderColor: colors.borderLight }]}>
+      <View style={ui.headerRow}>
+        <View style={ui.profileBadge}>
+          <View style={ui.avatarPlaceholder}>
             <DollarSign size={16} color={colors.primary} />
           </View>
-          <View style={styles.profileSelectorWrapper}>
-            <Text style={[styles.headerTitleText, { color: colors.text }]}>Finances</Text>
+          <View style={ui.profileSelectorWrapper}>
+            <Text style={ui.headerTitleText}>Finances</Text>
           </View>
         </View>
-        <TouchableOpacity style={[styles.notificationTrigger, { backgroundColor: colors.backgroundSecondary }]} activeOpacity={0.7}>
-          <View style={[styles.calendarIconMock, { borderColor: colors.textMuted }]}>
-            <Text style={[styles.calendarDateText, { color: colors.textMuted }]}>{new Date().getDate()}</Text>
+        <TouchableOpacity style={ui.notificationTrigger} activeOpacity={0.7}>
+          <View style={ui.calendarIconMock}>
+            <Text style={ui.calendarDateText}>{new Date().getDate()}</Text>
           </View>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.tabContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScrollContent}>
+      <View style={ui.tabContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ui.tabScrollContent}>
           {["Overview", "Insights", "Direct", "Transactions"].map((tab) => {
             const isSelected = activeTab === tab;
             const handlePress = () => {
@@ -452,10 +824,10 @@ export default function FinancesScreen() {
               <TouchableOpacity
                 key={tab}
                 onPress={handlePress}
-                style={[styles.tabButton, isSelected && { backgroundColor: colors.backgroundSecondary }]}
+                style={[ui.tabButton, isSelected && { backgroundColor: colors.backgroundSecondary }]}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.tabButtonText, { color: isSelected ? colors.text : colors.textMuted, fontWeight: isSelected ? "700" : "600" }]}>
+                <Text style={[ui.tabButtonText, { color: isSelected ? colors.text : colors.textMuted, fontWeight: isSelected ? "700" : "600" }]}>
                   {tab}
                 </Text>
               </TouchableOpacity>
@@ -465,195 +837,57 @@ export default function FinancesScreen() {
       </View>
 
       {syncing ? (
-        <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <View style={ui.loadingContainer}>
           <ActivityIndicator size="large" color={colors.warning} />
         </View>
       ) : (
-        <ScrollView style={[styles.scrollContent, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
+        <ScrollView style={ui.scrollContent} showsVerticalScrollIndicator={false}>
           {activeTab === "Overview" && renderInsightsTab()}
           {activeTab === "Direct" && renderDirectTab()}
           {activeTab === "Transactions" && renderTransactionsTab()}
 
-          <TouchableOpacity style={[styles.actionExportBannerButton, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]} activeOpacity={0.9} onPress={() => navigation.navigate("Reports")}>
-            <View style={styles.bannerLeftFlexNode}>
+          <TouchableOpacity style={ui.actionExportBannerButton} activeOpacity={0.9} onPress={() => navigation.navigate("Reports")}>
+            <View style={ui.bannerLeftFlexNode}>
               <PieChart size={18} color={colors.textMuted} style={{ marginRight: 12 }} />
               <View>
-                <Text style={[styles.bannerMainHeadingText, { color: colors.text }]}>Detailed Reports</Text>
-                <Text style={[styles.bannerSubTextDesc, { color: colors.textSecondary }]}>Daily, weekly & monthly breakdowns</Text>
+                <Text style={ui.bannerMainHeadingText}>Detailed Reports</Text>
+                <Text style={ui.bannerSubTextDesc}>Daily, weekly & monthly breakdowns</Text>
               </View>
             </View>
-            <View style={[styles.circleDownWrapper, { backgroundColor: colors.primaryAlpha }]}>
+            <View style={ui.circleDownWrapper}>
               <Text style={{ color: colors.text, fontSize: 12 }}>→</Text>
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.actionExportBannerButton, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]} activeOpacity={0.9} onPress={() => navigation.navigate("ManualCashFlow")}>
-            <View style={styles.bannerLeftFlexNode}>
+          <TouchableOpacity style={ui.actionExportBannerButton} activeOpacity={0.9} onPress={() => navigation.navigate("ManualCashFlow")}>
+            <View style={ui.bannerLeftFlexNode}>
               <TrendingUp size={18} color={colors.warning} style={{ marginRight: 12 }} />
               <View>
-                <Text style={[styles.bannerMainHeadingText, { color: colors.text }]}>Manual Cash Flow</Text>
-                <Text style={[styles.bannerSubTextDesc, { color: colors.textSecondary }]}>Log inflows and outflows outside the system</Text>
+                <Text style={ui.bannerMainHeadingText}>Manual Cash Flow</Text>
+                <Text style={ui.bannerSubTextDesc}>Log inflows and outflows outside the system</Text>
               </View>
             </View>
-            <View style={[styles.circleDownWrapper, { backgroundColor: colors.primaryAlpha }]}>
+            <View style={ui.circleDownWrapper}>
               <Text style={{ color: colors.text, fontSize: 12 }}>+</Text>
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.actionExportBannerButton, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]} activeOpacity={0.9} onPress={() => navigation.navigate("DeliveryHistory")}>
-            <View style={styles.bannerLeftFlexNode}>
+          <TouchableOpacity style={ui.actionExportBannerButton} activeOpacity={0.9} onPress={() => navigation.navigate("DeliveryHistory")}>
+            <View style={ui.bannerLeftFlexNode}>
               <ClipboardList size={18} color={colors.textMuted} style={{ marginRight: 12 }} />
               <View>
-                <Text style={[styles.bannerMainHeadingText, { color: colors.text }]}>Delivery History</Text>
-                <Text style={[styles.bannerSubTextDesc, { color: colors.textSecondary }]}>Review past completed deliveries</Text>
+                <Text style={ui.bannerMainHeadingText}>Delivery History</Text>
+                <Text style={ui.bannerSubTextDesc}>Review past completed deliveries</Text>
               </View>
             </View>
-            <View style={[styles.circleDownWrapper, { backgroundColor: colors.primaryAlpha }]}>
+            <View style={ui.circleDownWrapper}>
               <Text style={{ color: colors.text, fontSize: 12 }}>→</Text>
             </View>
           </TouchableOpacity>
 
-          <View style={{ height: 100 }} />
+          <View style={{ height: Platform.OS === "ios" ? insets.bottom + 40 : 56 }} />
         </ScrollView>
       )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 18,
-    paddingTop: Platform.OS === "ios" ? 54 : 24,
-    paddingBottom: 14,
-  },
-  profileBadge: { flexDirection: "row", alignItems: "center" },
-  avatarPlaceholder: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-    borderWidth: 1,
-  },
-  profileSelectorWrapper: { flexDirection: "row", alignItems: "center" },
-  headerTitleText: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
-  notificationTrigger: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  calendarIconMock: {
-    width: 22,
-    height: 22,
-    borderWidth: 1.5,
-    borderRadius: 6,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  calendarDateText: { fontSize: 10, fontWeight: "800" },
-  tabContainer: { height: 40, marginBottom: 12 },
-  tabScrollContent: { paddingHorizontal: 18, alignItems: "center", gap: 8 },
-  tabButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  tabButtonText: { fontSize: 14 },
-  scrollContent: { flex: 1, paddingHorizontal: 18 },
-  analyticsGrid: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 12,
-  },
-metricCard: {
-     flex: 1,
-     borderRadius: 24,
-     padding: 16,
-     minHeight: 160,
-     justifyContent: "space-between",
-     borderWidth: 1,
-     shadowColor: "#000000",
-     shadowOffset: { width: 0, height: 4 },
-     shadowOpacity: 0.1,
-     shadowRadius: 6,
-     elevation: 3,
-   },
-  cardHeaderInline: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 },
-  iconCircle: { width: 28, height: 28, borderRadius: 14, justifyContent: "center", alignItems: "center" },
-  cardLabelText: { fontSize: 13, fontWeight: "600" },
-  cardMainValueText: { fontSize: 24, fontWeight: "800", letterSpacing: -0.5 },
-  cardFooterDisclaimer: { fontSize: 11, fontWeight: "500", marginTop: 4, lineHeight: 14 },
-  vectorMapMockContainer: { height: 46, justifyContent: "center", alignItems: "center" },
-  arcVisualContainer: { height: 80, justifyContent: "center", alignItems: "center", position: "relative" },
-  arcAbsoluteLabelCenter: { position: "absolute", justifyContent: "center", alignItems: "center", top: 0, left: 0, right: 0, bottom: 0 },
-  arcCenterNumberText: { fontSize: 16, fontWeight: "800" },
-  arcCenterSubText: { fontSize: 9, fontWeight: "600", marginTop: -2 },
-  arcBaseLabelsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 4, paddingHorizontal: 4 },
-  arcMicroLabelText: { fontSize: 11, fontWeight: "600" },
-  timelineVisualSliderRow: { height: 20, justifyContent: "center" },
-  timelineTrackLine: { height: 3, width: "100%", borderRadius: 2, position: "relative" },
-  timelineProgressFill: { height: "100%", borderRadius: 2 },
-  timelineThumbDot: { width: 10, height: 10, borderRadius: 5, position: "absolute", top: -3.5, marginLeft: -5 },
-  splineGraphWrapper: { height: 46, justifyContent: "flex-end", alignItems: "center" },
-  sectionTitleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 24, marginBottom: 14 },
-  sectionHeadlineLabel: { fontSize: 16, fontWeight: "700" },
-  weeklyScrollContainer: { gap: 10, paddingRight: 20, paddingVertical: 12, paddingBottom: 16 },
-  weeklyBarCard: { alignItems: "center", width: 50 },
-  weeklyBarWrapper: { width: 30, height: 100, borderRadius: 15, overflow: "hidden", justifyContent: "flex-end" },
-  weeklyBarFill: { width: "100%", borderRadius: 15 },
-  weeklyDayLabel: { fontSize: 12, fontWeight: "600", marginTop: 8 },
-  weeklyAmountLabel: { fontSize: 11, fontWeight: "600", marginTop: 2 },
-  loadingWeeklyContainer: { minHeight: 120, justifyContent: "center", alignItems: "center" },
-  transactionsContainer: { padding: 40, alignItems: "center" },
-  transactionsPlaceholder: { fontSize: 14, fontWeight: "500", textAlign: "center" },
-  budgetMiniArcContainer: { height: 20, justifyContent: "center", alignItems: "center", marginVertical: 8 },
-  miniArcTrack: { height: 3, width: "100%", borderRadius: 2, overflow: "hidden" },
-  miniArcFill: { height: "100%", borderRadius: 2 },
-  inlineHeaderLinkAction: { width: 28, height: 28, justifyContent: "center", alignItems: "center" },
-  budgetBucketsScrollWrapper: { gap: 12, paddingRight: 20, paddingBottom: 4 },
-  budgetBucketCard: {
-    width: CARD_WIDTH,
-    borderRadius: 24,
-    padding: 16,
-    minHeight: 130,
-    justifyContent: "space-between",
-    borderWidth: 1,
-    shadowColor: "#000000",
-     shadowOffset: { width: 0, height: 4 },
-     shadowOpacity: 0.1,
-     shadowRadius: 6,
-     elevation: 3,
-  },
-  actionExportBannerButton: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    borderRadius: 24,
-    marginTop: 12,
-    borderWidth: 1,
-    shadowColor: "#000000",
-     shadowOffset: { width: 0, height: 4 },
-     shadowOpacity: 0.1,
-     shadowRadius: 6,
-     elevation: 3,
-  },
-  bannerLeftFlexNode: { flexDirection: "row", alignItems: "center" },
-  bannerMainHeadingText: { fontSize: 14, fontWeight: "700" },
-  bannerSubTextDesc: { fontSize: 11, fontWeight: "500", marginTop: 2 },
-  circleDownWrapper: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-});

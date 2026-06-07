@@ -1,81 +1,119 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, Dimensions, Platform } from "react-native";
+import { FileDown, Clock, PackageCheck, FileX2 } from "lucide-react-native";
 import { useThemeStore } from "../../store/themeStore";
 
+// Tab Data Profile mapped with semantic tokens and contextual icon indicators
 const TABS = [
-  { key: "requests", label: "Requests" },
-  { key: "active", label: "Active" },
-  { key: "completed", label: "Completed" },
-  { key: "cancelled", label: "Cancelled" },
+  { key: "requests", label: "Requests", Icon: FileDown },
+  { key: "active", label: "Active", Icon: Clock },
+  { key: "completed", label: "Completed", Icon: PackageCheck },
+  { key: "cancelled", label: "Cancelled", Icon: FileX2 },
 ];
 
-export default function RiderTabBar({ activeTab = "requests", onTabChange }) {
-  const { colors } = useThemeStore();
+const { width } = Dimensions.get("window");
 
-  const staticStyles = StyleSheet.create({
+export default function RiderTabBar({ activeTab = "requests", onTabChange }) {
+  const { colors, isDarkMode } = useThemeStore();
+
+  // --- Dynamic Style Matrix mapped direct to application theme context ---
+  const ui = {
+    // Unifies the tabs into a single floating pill container
     container: {
       flexDirection: "row",
-      borderBottomWidth: 1,
       marginTop: 20,
       marginBottom: 16,
-      paddingHorizontal: 8,
+      marginHorizontal: 16,
+      padding: 6,
+      borderRadius: 100,
+      backgroundColor: colors.backgroundCard,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      ...Platform.select({
+        ios: {
+          shadowColor: colors.shadow,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: isDarkMode ? 0.25 : 0.03,
+          shadowRadius: 8,
+        },
+        android: { elevation: 3 },
+      }),
     },
+    
+    // Static base for the sliding pill
     tabButton: {
-      flex: 1,
-      paddingVertical: 12,
+      flexDirection: "row",
+      height: 40,
+      borderRadius: 100,
       alignItems: "center",
+      justifyContent: "center",
+      gap: 7,
+      paddingHorizontal: 10,
     },
+    
+    // Dynamic styles for the selected tab pill
     activeTabButton: {
-      borderBottomWidth: 2,
+      flex: 1.2, // Slightly expands active tab for emphasis
+      backgroundColor: colors.primary,
+      borderWidth: 1,
+      borderColor: isDarkMode ? colors.primary : colors.primaryAlpha,
     },
+    
+    // Dynamic styles for inactive tab nodes
+    inactiveTabButton: {
+      flex: 1,
+      backgroundColor: "transparent",
+    },
+
+    // Typography hierarchy mapping
     tabButtonText: {
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: "700",
+      letterSpacing: -0.2,
+      color: colors.textSecondary,
     },
+    
     activeTabButtonText: {
       fontWeight: "800",
-    },
-  });
-
-  const themedStyles = {
-    containerBorder: {
-      borderColor: colors.border,
-    },
-    activeTabBorder: {
-      borderColor: colors.primary,
-    },
-    tabButtonText: {
-      color: colors.textMuted,
-    },
-    activeTabButtonText: {
-      color: colors.primary,
+      color: colors.textOnPrimary,
     },
   };
 
   return (
-    <View style={[staticStyles.container, themedStyles.containerBorder]}>
-      {TABS.map((tab) => (
-        <TouchableOpacity
-          key={tab.key}
-          style={[
-            staticStyles.tabButton,
-            activeTab === tab.key && staticStyles.activeTabButton,
-            activeTab === tab.key && themedStyles.activeTabBorder,
-          ]}
-          onPress={() => onTabChange?.(tab.key)}
-        >
-          <Text
+    <View style={ui.container}>
+      {TABS.map((tab) => {
+        const isSelected = activeTab === tab.key;
+        const Icon = tab.Icon;
+
+        return (
+          <TouchableOpacity
+            key={tab.key}
             style={[
-              staticStyles.tabButtonText,
-              themedStyles.tabButtonText,
-              activeTab === tab.key && staticStyles.activeTabButtonText,
-              activeTab === tab.key && themedStyles.activeTabButtonText,
+              ui.tabButton,
+              isSelected ? ui.activeTabButton : ui.inactiveTabButton,
             ]}
+            onPress={() => onTabChange?.(tab.key)}
+            activeOpacity={0.85}
           >
-            {tab.label}
-          </Text>
-        </TouchableOpacity>
-      ))}
+            {Icon && (
+              <Icon
+                size={15}
+                strokeWidth={isSelected ? 2.5 : 2}
+                color={isSelected ? colors.textOnPrimary : colors.textMuted}
+              />
+            )}
+            <Text
+              style={[
+                ui.tabButtonText,
+                isSelected && ui.activeTabButtonText,
+              ]}
+              numberOfLines={1}
+            >
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }

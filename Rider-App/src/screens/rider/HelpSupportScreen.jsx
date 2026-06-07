@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  StyleSheet,
   View,
   Text,
   ScrollView,
@@ -8,10 +7,16 @@ import {
   StatusBar,
   Linking,
   Alert,
+  Platform,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowLeft, MessageSquare, Phone, Mail, FileQuestion, ChevronRight } from "lucide-react-native";
+import { useThemeStore } from "../../store/themeStore";
 
 export default function HelpSupportScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
+  const { colors, isDarkMode } = useThemeStore();
+
   const faqs = [
     { q: "How do I become an online rider?", a: "Toggle your availability from the dashboard using the Online/Offline button." },
     { q: "When do I get paid?", a: "Earnings are settled weekly to your registered mobile money account." },
@@ -24,153 +29,209 @@ export default function HelpSupportScreen({ navigation }) {
     Linking.openURL(url).catch(() => Alert.alert("Error", "Could not open link"));
   };
 
+  // --- Dynamic Style Matrix mapped directly to global layout store token constants ---
+  const ui = {
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    headerRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 18,
+      paddingTop: Platform.OS === "ios" ? Math.max(insets.top, 16) : StatusBar.currentHeight + 14,
+      paddingBottom: 14,
+      backgroundColor: colors.background,
+    },
+    backButton: {
+      width: 40,
+      height: 40,
+      justifyContent: "center",
+      alignItems: "flex-start",
+    },
+    headerTitleText: {
+      fontSize: 18,
+      fontWeight: "800",
+      color: colors.text,
+      letterSpacing: -0.3,
+    },
+    headerRightSpacer: {
+      width: 40,
+    },
+    scrollContent: {
+      flex: 1,
+      paddingHorizontal: 18,
+    },
+    infoCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      backgroundColor: colors.backgroundCard || colors.backgroundSecondary,
+      borderRadius: 16,
+      padding: 16,
+      marginTop: 8,
+      marginBottom: 20,
+      borderWidth: 1,
+      borderColor: colors.borderLight || "rgba(255,255,255,0.04)",
+    },
+    infoText: {
+      flex: 1,
+      fontSize: 13,
+      fontWeight: "500",
+      color: colors.textSecondary || colors.textMuted,
+      lineHeight: 18,
+    },
+    sectionCard: {
+      backgroundColor: colors.backgroundCard || colors.backgroundSecondary,
+      borderRadius: 20,
+      padding: 16,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.borderLight || "rgba(255,255,255,0.04)",
+      gap: 4,
+    },
+    sectionTitle: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: colors.text,
+      letterSpacing: -0.2,
+      marginBottom: 12,
+    },
+    contactRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 8,
+    },
+    contactIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    contactTexts: {
+      flex: 1,
+      gap: 2,
+    },
+    contactLabel: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    contactValue: {
+      fontSize: 12,
+      fontWeight: "500",
+      color: colors.textSecondary || colors.textMuted,
+    },
+    rowDivider: {
+      height: 1,
+      backgroundColor: colors.borderLight || "rgba(255,255,255,0.08)",
+      marginLeft: 36,
+    },
+    faqItem: {
+      paddingVertical: 10,
+      gap: 6,
+    },
+    faqHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    faqQuestion: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    faqAnswer: {
+      fontSize: 12,
+      fontWeight: "500",
+      color: colors.textMuted,
+      lineHeight: 16,
+      paddingLeft: 22,
+    },
+  };
+
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0b0d0f" />
-      <View style={styles.headerRow}>
+    <View style={ui.container}>
+      <StatusBar 
+        barStyle={isDarkMode ? "light-content" : "dark-content"} 
+        backgroundColor="transparent" 
+        translucent 
+      />
+      
+      <View style={ui.headerRow}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={ui.backButton}
           onPress={() => navigation?.goBack()}
           activeOpacity={0.7}
         >
-          <ArrowLeft size={22} color="#ffffff" />
+          <ArrowLeft size={22} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitleText}>Help & Support</Text>
-        <View style={styles.headerRightSpacer} />
+        <Text style={ui.headerTitleText}>Help & Support</Text>
+        <View style={ui.headerRightSpacer} />
       </View>
 
       <ScrollView
-        style={styles.scrollContent}
+        style={ui.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.infoCard}>
-          <MessageSquare size={20} color="#115e59" />
-          <Text style={styles.infoText}>
+        <View style={ui.infoCard}>
+          <MessageSquare size={20} color={colors.primary} />
+          <Text style={ui.infoText}>
             Need help? Browse our FAQs or get in touch with our support team.
           </Text>
         </View>
 
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Contact Us</Text>
+        <View style={ui.sectionCard}>
+          <Text style={ui.sectionTitle}>Contact Us</Text>
 
-          <TouchableOpacity style={styles.contactRow} activeOpacity={0.7} onPress={() => openLink("tel:+233500000000")}>
-            <View style={[styles.contactIcon, { backgroundColor: "#10b98120" }]}>
-              <Phone size={18} color="#10b981" />
+          <TouchableOpacity style={ui.contactRow} activeOpacity={0.7} onPress={() => openLink("tel:+233500000000")}>
+            <View style={[ui.contactIcon, { backgroundColor: colors.successAlpha || "#10b98120" }]}>
+              <Phone size={18} color={colors.success || "#10b981"} />
             </View>
-            <View style={styles.contactTexts}>
-              <Text style={styles.contactLabel}>Call Support</Text>
-              <Text style={styles.contactValue}>+233 50 000 0000</Text>
+            <View style={ui.contactTexts}>
+              <Text style={ui.contactLabel}>Call Support</Text>
+              <Text style={ui.contactValue}>+233 50 000 0000</Text>
             </View>
-            <ChevronRight size={16} color="#64748b" />
+            <ChevronRight size={16} color={colors.textMuted || "#64748b"} />
           </TouchableOpacity>
 
-          <View style={styles.rowDivider} />
+          <View style={ui.rowDivider} />
 
-          <TouchableOpacity style={styles.contactRow} activeOpacity={0.7} onPress={() => openLink("mailto:support@beba.express")}>
-            <View style={[styles.contactIcon, { backgroundColor: "#115e5920" }]}>
-              <Mail size={18} color="#115e59" />
+          <TouchableOpacity style={ui.contactRow} activeOpacity={0.7} onPress={() => openLink("mailto:support@beba.express")}>
+            <View style={[ui.contactIcon, { backgroundColor: colors.primaryAlpha || "#115e5920" }]}>
+              <Mail size={18} color={colors.primary} />
             </View>
-            <View style={styles.contactTexts}>
-              <Text style={styles.contactLabel}>Email Support</Text>
-              <Text style={styles.contactValue}>support@beba.express</Text>
+            <View style={ui.contactTexts}>
+              <Text style={ui.contactLabel}>Email Support</Text>
+              <Text style={ui.contactValue}>support@beba.express</Text>
             </View>
-            <ChevronRight size={16} color="#64748b" />
+            <ChevronRight size={16} color={colors.textMuted || "#64748b"} />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Frequently Asked Questions</Text>
+        <View style={ui.sectionCard}>
+          <Text style={ui.sectionTitle}>Frequently Asked Questions</Text>
 
           {faqs.map((item, idx) => (
             <React.Fragment key={idx}>
-              {idx > 0 && <View style={styles.rowDivider} />}
-              <View style={styles.faqItem}>
-                <View style={styles.faqHeader}>
-                  <FileQuestion size={14} color="#115e59" />
-                  <Text style={styles.faqQuestion}>{item.q}</Text>
+              {idx > 0 && <View style={ui.rowDivider} />}
+              <View style={ui.faqItem}>
+                <View style={ui.faqHeader}>
+                  <FileQuestion size={14} color={colors.primary} />
+                  <Text style={ui.faqQuestion}>{item.q}</Text>
                 </View>
-                <Text style={styles.faqAnswer}>{item.a}</Text>
+                <Text style={ui.faqAnswer}>{item.a}</Text>
               </View>
             </React.Fragment>
           ))}
         </View>
 
-        <View style={{ height: 40 }} />
+        {/* Dynamic platform bottom safe zone spacer */}
+        <View style={{ height: Platform.OS === "ios" ? insets.bottom + 20 : 40 }} />
       </ScrollView>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0b0d0f" },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 18,
-    paddingTop: 24,
-    paddingBottom: 14,
-    backgroundColor: "#0b0d0f",
-  },
-  backButton: { width: 40, height: 40, justifyContent: "center", alignItems: "flex-start" },
-  headerTitleText: { fontSize: 18, fontWeight: "800", color: "#ffffff", letterSpacing: -0.3 },
-  headerRightSpacer: { width: 40 },
-  scrollContent: { flex: 1, paddingHorizontal: 18 },
-  infoCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#16191e",
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 8,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#ffffff04",
-  },
-  infoText: { flex: 1, fontSize: 13, fontWeight: "500", color: "#94a3b8", lineHeight: 18 },
-  sectionCard: {
-    backgroundColor: "#16191e",
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#ffffff04",
-    gap: 4,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#ffffff",
-    letterSpacing: -0.2,
-    marginBottom: 12,
-  },
-  contactRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 8,
-  },
-  contactIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  contactTexts: { flex: 1, gap: 2 },
-  contactLabel: { fontSize: 14, fontWeight: "600", color: "#ffffff" },
-  contactValue: { fontSize: 12, fontWeight: "500", color: "#94a3b8" },
-  rowDivider: { height: 1, backgroundColor: "#ffffff08", marginLeft: 36 },
-  faqItem: {
-    paddingVertical: 10,
-    gap: 6,
-  },
-  faqHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  faqQuestion: { fontSize: 13, fontWeight: "700", color: "#ffffff" },
-  faqAnswer: { fontSize: 12, fontWeight: "500", color: "#64748b", lineHeight: 16, paddingLeft: 22 },
-});

@@ -5,23 +5,18 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   StatusBar,
-  Dimensions,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { 
   CheckCircle2, 
-  ArrowUpRight, 
   AlertTriangle, 
   ShieldCheck, 
-  Zap, 
   Loader2,
   ArrowLeft,
-  TrendingUp,
-  Sparkles,
 } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
+import { useThemeStore } from "../../store/themeStore";
 import { fetchInsightsByCategory, fetchActionPlans } from "../../services/insightsService";
 import { fetchBudgetBreakdownData } from "../../services/budgetService";
 
@@ -31,29 +26,27 @@ const INSIGHT_DATA_MAP = {
     accentColor: "#a855f7",
     subtitle: "Essential living & core operational overhead",
     burnRateText: "Optimal",
-    chartPath:
-      "M 0 35 Q 30 15 60 28 T 120 8 T 180 32 T 240 12 T 300 5",
+    chartPath: "M 10 35 Q 40 15 80 28 T 160 8 T 240 32 T 320 12 T 390 5",
   },
   wants: {
     title: "30% Wants deep dive",
     accentColor: "#6366f1",
     subtitle: "Lifestyle choices & discretionary outlays",
     burnRateText: "Accelerated",
-    chartPath:
-      "M 0 35 Q 40 38 80 20 T 160 5 T 240 2 T 300 1",
+    chartPath: "M 10 35 Q 50 38 100 20 T 200 5 T 300 2 T 390 1",
   },
   savings: {
     title: "20% Savings deep dive",
     accentColor: "#10b981",
     subtitle: "Wealth reserves & emergency runway assets",
     burnRateText: "Target Achieved",
-    chartPath:
-      "M 0 38 Q 50 35 100 25 T 200 15 T 300 8",
+    chartPath: "M 10 38 Q 60 35 120 25 T 240 15 T 390 8",
   },
 };
 
 export default function BudgetInsightDetailScreen({ route, navigation }) {
   const { user } = useAuth();
+  const { colors, isDarkMode } = useThemeStore();
   const { categoryId } = route.params || { categoryId: "needs" };
   const [categoryData, setCategoryData] = useState(null);
   const [insights, setInsights] = useState([]);
@@ -102,170 +95,148 @@ export default function BudgetInsightDetailScreen({ route, navigation }) {
     message: ins.body,
   }));
 
-  const optimizations = actions.map((action, idx) => ({
+  const optimizations = actions.map((action) => ({
     title: action.title,
     desc: action.description,
   }));
 
-  return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0b0d0f" />
+  // Memory optimized drop-shadow layout configs
+  const cardDepthShadow = {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: isDarkMode ? 0.28 : 0.06,
+    shadowRadius: 14,
+    elevation: 4, 
+  };
 
-      <View style={styles.headerRow}>
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={colors.background} />
+
+      <View style={[styles.headerRow, { borderColor: colors.border }]}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={[styles.backButton, { backgroundColor: colors.backgroundSecondary, borderColor: colors.borderLight }]}
           onPress={() => navigation?.goBack()}
           activeOpacity={0.7}
         >
-          <ArrowLeft size={20} color="#ffffff" />
+          <ArrowLeft size={20} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitleText}>Insight Analytics</Text>
+        <Text style={[styles.headerTitleText, { color: colors.text }]}>Insight Analytics</Text>
         <View style={styles.headerRightSpacer} />
       </View>
 
-      <ScrollView
-        style={styles.scrollContainer}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         {loading ? (
           <View style={styles.loadingWrap}>
-            <Loader2 size={24} color="#64748b" />
-            <Text style={styles.loadingText}>Loading insights...</Text>
+            <Loader2 size={24} color={colors.textMuted} />
+            <Text style={[styles.loadingText, { color: colors.textMuted }]}>Loading insights...</Text>
           </View>
         ) : noData ? (
           <View style={styles.emptyWrap}>
-            <AlertTriangle size={32} color="#334155" />
-            <Text style={styles.emptyText}>No budget data available yet for this category.</Text>
+            <AlertTriangle size={32} color={colors.textDisabled} />
+            <Text style={[styles.emptyText, { color: colors.textMuted }]}>No budget data available yet for this category.</Text>
             <Text style={styles.emptySubtext}>Deliveries and cash flow entries will generate insights.</Text>
           </View>
         ) : (
           <>
-            <View style={styles.heroSummaryCard}>
-              <Text
-                style={[
-                  styles.heroBadgeText,
-                  { color: currentInsight.accentColor },
-                ]}
-              >
+            {/* HERO SUMMARY CARD */}
+            <View style={[styles.heroSummaryCard, cardDepthShadow, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
+              <Text style={[styles.heroBadgeText, { color: currentInsight.accentColor }]}>
                 {currentInsight.title}
               </Text>
-              <Text style={styles.heroSubtitleText}>
+              <Text style={[styles.heroSubtitleText, { color: colors.textSecondary }]}>
                 {currentInsight.subtitle}
               </Text>
 
-            <View style={styles.heroStatsFooter}>
-              <View>
-                <Text style={styles.labelStaticText}>
-                  Monthly Exhaust Flow
-                </Text>
-                <Text style={styles.mainValueText}>
-                  {categoryData ? currentInsight.burnRateText : "No Data"}
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.statusIndicatorPill,
-                  { backgroundColor: currentInsight.accentColor + "15" },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.statusPillText,
-                    { color: currentInsight.accentColor },
-                  ]}
-                >
-                  {categoryData ? "Active Scan" : "Idle"}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {categoryData ? (
-            <>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitleText}>Velocity Trajectory (30 Days)</Text>
-              </View>
-
-              <View style={styles.chartContainerCard}>
-                <View style={styles.chartYAxisLegends}>
-                  <Text style={styles.axisLegendText}>Max</Text>
-                  <Text style={styles.axisLegendText}>Mid</Text>
-                  <Text style={styles.axisLegendText}>Min</Text>
+              <View style={styles.heroStatsFooter}>
+                <View>
+                  <Text style={[styles.labelStaticText, { color: colors.textDisabled }]}>Monthly Exhaust Flow</Text>
+                  <Text style={[styles.mainValueText, { color: colors.text }]}>
+                    {categoryData ? currentInsight.burnRateText : "No Data"}
+                  </Text>
                 </View>
-
-                <View style={styles.svgCanvasWrapper}>
-                  <Svg
-                    height="100"
-                    width={width - 80}
-                    viewBox={`0 0 ${width - 80} 40`}
-                  >
-                    <Path
-                      d={currentInsight.chartPath}
-                      fill="none"
-                      stroke={currentInsight.accentColor}
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                    />
-                  </Svg>
+                <View style={[styles.statusIndicatorPill, { backgroundColor: currentInsight.accentColor + "15" }]}>
+                  <Text style={[styles.statusPillText, { color: currentInsight.accentColor }]}>
+                    {categoryData ? "Active Scan" : "Idle"}
+                  </Text>
                 </View>
               </View>
-            </>
-          ) : (
-            <View style={styles.emptyWrap}>
-              <Text style={styles.emptyText}>No activity recorded yet.</Text>
-              <Text style={styles.emptySubtext}>Charts will appear once budget data exists.</Text>
             </View>
-          )}
 
+            {categoryData ? (
+              <>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitleText, { color: colors.textSecondary }]}>Velocity Trajectory (30 Days)</Text>
+                </View>
+
+                {/* CHART CONTAINER CARD */}
+                <View style={[styles.chartContainerCard, cardDepthShadow, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
+                  <View style={styles.chartYAxisLegends}>
+                    <Text style={[styles.axisLegendText, { color: colors.textDisabled }]}>Max</Text>
+                    <Text style={[styles.axisLegendText, { color: colors.textDisabled }]}>Mid</Text>
+                    <Text style={[styles.axisLegendText, { color: colors.textDisabled }]}>Min</Text>
+                  </View>
+
+                  <View style={styles.svgCanvasWrapper}>
+                    {/* Fixed aspect ratio scale map layout box container */}
+                    <Svg height="100%" width="100%" viewBox="0 0 400 40" preserveAspectRatio="none">
+                      <Path
+                        d={currentInsight.chartPath}
+                        fill="none"
+                        stroke={currentInsight.accentColor}
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                      />
+                    </Svg>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <View style={styles.emptyWrap}>
+                <Text style={[styles.emptyText, { color: colors.textMuted }]}>No activity recorded yet.</Text>
+                <Text style={styles.emptySubtext}>Charts will appear once budget data exists.</Text>
+              </View>
+            )}
+
+            {/* DETECTED LEAKS */}
             {leaks.length > 0 && (
               <>
                 <View style={styles.sectionHeader}>
-                  <AlertTriangle size={15} color="#facc15" />
-                  <Text style={styles.sectionTitleText}>
-                    Detected Outflow Flaws
-                  </Text>
+                  <AlertTriangle size={15} color={colors.warning} />
+                  <Text style={[styles.sectionTitleText, { color: colors.textSecondary }]}>Detected Outflow Flaws</Text>
                 </View>
 
                 {leaks.map((leak) => (
-                  <View key={leak.id} style={styles.leakNotificationBar}>
+                  <View key={leak.id} style={[styles.leakNotificationBar, { backgroundColor: colors.dangerLight, borderColor: colors.danger + "15" }]}>
                     <View style={styles.leakLeftNode}>
                       <View
                         style={[
                           styles.leakIndicatorDot,
-                          {
-                            backgroundColor:
-                              leak.type === "danger" || leak.type === "warning"
-                                ? "#ef4444"
-                                : "#10b981",
-                          },
+                          { backgroundColor: leak.type === "danger" || leak.type === "warning" ? colors.danger : colors.success }
                         ]}
                       />
-                      <Text style={styles.leakMessageText}>{leak.message}</Text>
+                      <Text style={[styles.leakMessageText, { color: colors.text }]}>{leak.message}</Text>
                     </View>
                   </View>
                 ))}
               </>
             )}
 
+            {/* STRATEGIC OPTIMIZATIONS */}
             {optimizations.length > 0 && (
               <>
                 <View style={[styles.sectionHeader, { marginTop: 24 }]}>
-                  <ShieldCheck size={15} color="#10b981" />
-                  <Text style={styles.sectionTitleText}>
-                    Strategic Action Blueprints
-                  </Text>
+                  <ShieldCheck size={15} color={colors.success} />
+                  <Text style={[styles.sectionTitleText, { color: colors.textSecondary }]}>Strategic Action Blueprints</Text>
                 </View>
 
                 {optimizations.map((opt, index) => (
-                  <View key={index} style={styles.optimizationStrategyCard}>
+                  <View key={index} style={[styles.optimizationStrategyCard, cardDepthShadow, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
                     <View style={styles.strategyHeaderRow}>
-                      <CheckCircle2
-                        size={16}
-                        color={currentInsight.accentColor}
-                      />
-                      <Text style={styles.strategyTitleText}>{opt.title}</Text>
+                      <CheckCircle2 size={16} color={currentInsight.accentColor} />
+                      <Text style={[styles.strategyTitleText, { color: colors.text }]}>{opt.title}</Text>
                     </View>
-                    <Text style={styles.strategyDescriptionText}>{opt.desc}</Text>
+                    <Text style={[styles.strategyDescriptionText, { color: colors.textMuted }]}>{opt.desc}</Text>
                   </View>
                 ))}
               </>
@@ -273,7 +244,7 @@ export default function BudgetInsightDetailScreen({ route, navigation }) {
 
             {leaks.length === 0 && optimizations.length === 0 && (
               <View style={styles.emptyWrap}>
-                <Text style={styles.emptyText}>No insights or actions available yet.</Text>
+                <Text style={[styles.emptyText, { color: colors.textMuted }]}>No insights or actions available yet.</Text>
                 <Text style={styles.emptySubtext}>Insights will appear as activity is recorded.</Text>
               </View>
             )}
@@ -286,10 +257,8 @@ export default function BudgetInsightDetailScreen({ route, navigation }) {
   );
 }
 
-const { width } = Dimensions.get("window");
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0b0d0f", paddingTop: 12 },
+  container: { flex: 1, paddingTop: 12 },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -298,35 +267,30 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     paddingBottom: 14,
     borderBottomWidth: 1,
-    borderColor: "#16191e",
   },
   backButton: {
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor: "#16191e",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#ffffff05",
   },
   headerTitleText: {
     fontSize: 18,
     fontWeight: "800",
-    color: "#ffffff",
     letterSpacing: -0.3,
   },
   headerRightSpacer: { width: 38 },
   scrollContainer: { flex: 1 },
   loadingWrap: { paddingTop: 40, alignItems: "center", gap: 12 },
-  loadingText: { color: "#64748b", fontSize: 13, fontWeight: "600" },
+  loadingText: { fontSize: 13, fontWeight: "600" },
   heroSummaryCard: {
-    backgroundColor: "#16191e",
     borderRadius: 28,
     padding: 20,
     marginTop: 16,
+    marginHorizontal: 16,
     borderWidth: 1,
-    borderColor: "#ffffff04",
   },
   heroBadgeText: {
     fontSize: 20,
@@ -336,7 +300,6 @@ const styles = StyleSheet.create({
   heroSubtitleText: {
     fontSize: 13,
     fontWeight: "500",
-    color: "#64748b",
     marginTop: 4,
     lineHeight: 18,
   },
@@ -349,13 +312,11 @@ const styles = StyleSheet.create({
   labelStaticText: {
     fontSize: 10,
     fontWeight: "600",
-    color: "#475569",
     textTransform: "uppercase",
   },
   mainValueText: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#ffffff",
     marginTop: 4,
   },
   statusIndicatorPill: {
@@ -367,25 +328,23 @@ const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 22,
+    marginTop: 24,
     marginBottom: 12,
     gap: 8,
-    paddingHorizontal: 4,
+    paddingHorizontal: 20,
   },
   sectionTitleText: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#94a3b8",
   },
   chartContainerCard: {
-    backgroundColor: "#16191e",
     borderRadius: 24,
     padding: 16,
+    marginHorizontal: 16,
     flexDirection: "row",
     height: 130,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#ffffff04",
   },
   chartYAxisLegends: {
     height: "100%",
@@ -396,7 +355,6 @@ const styles = StyleSheet.create({
   axisLegendText: {
     fontSize: 10,
     fontWeight: "600",
-    color: "#334155",
   },
   svgCanvasWrapper: {
     flex: 1,
@@ -404,12 +362,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   leakNotificationBar: {
-    backgroundColor: "#1c1212",
     borderRadius: 16,
     padding: 14,
     marginBottom: 8,
+    marginHorizontal: 16,
     borderWidth: 1,
-    borderColor: "#ef444415",
   },
   leakLeftNode: {
     flexDirection: "row",
@@ -426,16 +383,14 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontWeight: "500",
-    color: "#e2e8f0",
     lineHeight: 17,
   },
   optimizationStrategyCard: {
-    backgroundColor: "#16191e",
     borderRadius: 20,
     padding: 16,
     marginBottom: 10,
+    marginHorizontal: 16,
     borderWidth: 1,
-    borderColor: "#ffffff04",
   },
   strategyHeaderRow: {
     flexDirection: "row",
@@ -446,12 +401,10 @@ const styles = StyleSheet.create({
   strategyTitleText: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#ffffff",
   },
   strategyDescriptionText: {
     fontSize: 12,
     fontWeight: "500",
-    color: "#64748b",
     lineHeight: 17,
     paddingLeft: 26,
   },
@@ -459,7 +412,8 @@ const styles = StyleSheet.create({
     paddingTop: 40,
     alignItems: "center",
     gap: 12,
+    paddingHorizontal: 20,
   },
-  emptyText: { color: "#64748b", fontSize: 14, fontWeight: "600", textAlign: "center" },
-  emptySubtext: { color: "#475569", fontSize: 12, fontWeight: "500", textAlign: "center", marginTop: 4 },
+  emptyText: { fontSize: 14, fontWeight: "600", textAlign: "center" },
+  emptySubtext: { fontSize: 12, fontWeight: "500", textAlign: "center", marginTop: 4 },
 });

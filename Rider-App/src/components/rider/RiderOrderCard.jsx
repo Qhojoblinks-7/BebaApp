@@ -2,274 +2,295 @@ import React from "react";
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
   Platform,
 } from "react-native";
-import { Box, MapPin } from "lucide-react-native";
+import { Box, MapPin, ArrowRight, CornerDownRight } from "lucide-react-native";
 import { useThemeStore } from "../../store/themeStore";
 
-const STATUS_MAP = {
-  pending: {
-    label: "New Request",
-    color: "#64748b",
-    bg: "#f1f5f9",
-    border: "#e2e8f0",
-  },
-  assigned: {
-    label: "Rider Confirmed",
-    color: "#38bdf8",
-    bg: "#f0f9ff",
-    border: "#bae6fd",
-  },
-  picked_up: {
-    label: "Picked Up",
-    color: "#a78bfa",
-    bg: "#f5f3ff",
-    border: "#ddd6fe",
-  },
-  in_transit: {
-    label: "In Transit",
-    color: "#f59e0b",
-    bg: "#fffbeb",
-    border: "#fde68a",
-  },
-  delivered: {
-    label: "Delivered",
-    color: "#10b981",
-    bg: "#f0fdf4",
-    border: "#a7f3d0",
-  },
-  cancelled: {
-    label: "Cancelled",
-    color: "#ef4444",
-    bg: "#fef2f2",
-    border: "#fecaca",
-  },
+// Centered status map utilizing pure text tokens for real-time light/dark adaptation
+const STATUS_TOKENS = {
+  pending: { label: "New Request", color: "#64748b", bg: "rgba(100, 116, 139, 0.12)" },
+  assigned: { label: "Confirmed", color: "#0284c7", bg: "rgba(2, 132, 199, 0.12)" },
+  picked_up: { label: "Picked Up", color: "#7c3aed", bg: "rgba(124, 58, 237, 0.12)" },
+  in_transit: { label: "In Transit", color: "#d97706", bg: "rgba(217, 119, 6, 0.12)" },
+  delivered: { label: "Delivered", color: "#059669", bg: "rgba(5, 150, 105, 0.12)" },
+  cancelled: { label: "Cancelled", color: "#dc2626", bg: "rgba(220, 38, 38, 0.12)" },
 };
 
-const staticStyles = StyleSheet.create({
-  accentTop: { height: 4 },
-  body: { padding: 16 },
-  topRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 14,
-    gap: 10,
-  },
-  idBlock: { flex: 1 },
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 100,
-    borderWidth: 1,
-  },
-  badgeText: { fontSize: 11, fontWeight: "700" },
-  routeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  routeEnd: { flex: 1, flexDirection: "row", alignItems: "center", gap: 4 },
-  routeEndRight: { justifyContent: "flex-end" },
-  arrowCol: { paddingHorizontal: 4 },
-  footerRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    marginTop: 10,
-    gap: 6,
-  },
-  metaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    marginTop: 4,
-    gap: 4,
-  },
-  instructionsRow: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-  },
-  pinRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-  },
-});
-
 export default function RiderOrderCard({ order, onPress }) {
-  const { colors } = useThemeStore();
-  const status = STATUS_MAP[order.status] || STATUS_MAP.pending;
+  const { colors, isDarkMode } = useThemeStore();
+  
+  if (!order) return null;
+  const status = STATUS_TOKENS[order.status] || STATUS_TOKENS.pending;
 
-  const themedStyles = {
+  // Fully dynamic surface styles mapped direct to application theme state
+  const ui = {
     card: {
-      backgroundColor: colors.primary,
-      borderRadius: 20,
-      marginBottom: 12,
-      overflow: "hidden",
+      backgroundColor: colors.backgroundCard,
+      borderRadius: 24,
+      marginBottom: 14,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
       ...Platform.select({
         ios: {
-          shadowColor: colors.shadow,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.15,
-          shadowRadius: 8,
+          shadowColor: colors.shadow || "#000",
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: isDarkMode ? 0.25 : 0.04,
+          shadowRadius: 10,
         },
-        android: { elevation: 5 },
+        android: { elevation: 3 },
       }),
     },
-    iconBox: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: colors.textOnPrimary,
+    accentLine: {
+      height: 4,
+      width: "30%",
+      borderBottomLeftRadius: 4,
+      borderBottomRightRadius: 4,
+      marginLeft: 20,
+      backgroundColor: status.color,
+    },
+    body: {
+      padding: 20,
+    },
+    topRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 18,
+    },
+    metaLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    iconFrame: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      backgroundColor: isDarkMode ? "rgba(250, 100, 50, 0.1)" : "#fff0eb",
       justifyContent: "center",
       alignItems: "center",
+      borderWidth: isDarkMode ? 1 : 0,
+      borderColor: "rgba(250, 100, 50, 0.2)",
     },
     idLabel: {
-      fontSize: 10,
+      fontSize: 11,
       fontWeight: "600",
-      color: colors.textOnPrimary + "80",
-      letterSpacing: 0.5,
+      color: colors.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.3,
     },
     idText: {
-      fontSize: 18,
+      fontSize: 16,
       fontWeight: "800",
-      color: colors.textOnPrimary,
-      letterSpacing: -0.5,
+      color: colors.text,
+      letterSpacing: -0.3,
+      marginTop: 1,
     },
-    routeAddr: {
-      fontSize: 13,
+    badge: {
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 100,
+      backgroundColor: status.bg,
+    },
+    badgeText: {
+      fontSize: 11,
+      fontWeight: "800",
+      color: status.color,
+    },
+    
+    // Clean Vertical Route Layout Block
+    routeContainer: {
+      gap: 12,
+      marginBottom: 16,
+    },
+    routeNode: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    nodeText: {
+      fontSize: 14,
       fontWeight: "600",
-      color: colors.textOnPrimary,
-      maxWidth: 110,
+      color: colors.textSecondary,
+      flex: 1,
     },
-    arrow: { fontSize: 18, color: colors.textOnPrimary + "80", fontWeight: "300" },
-    feeLabel: { fontSize: 11, fontWeight: "600", color: colors.textOnPrimary + "80" },
-    feeValue: { fontSize: 14, fontWeight: "800", color: "#f59e0b" },
-    metaLabel: { fontSize: 9, fontWeight: "500", color: colors.textOnPrimary + "60" },
-    instructionsLabel: {
-      fontSize: 10,
+
+    // Expanded Pricing & Economics Footer
+    divider: {
+      height: 1,
+      backgroundColor: colors.borderLight,
+      marginVertical: 14,
+    },
+    footer: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-end",
+    },
+    breakdown: {
+      gap: 2,
+    },
+    breakdownText: {
+      fontSize: 11,
+      fontWeight: "500",
+      color: colors.textMuted,
+    },
+    payoutSection: {
+      alignItems: "flex-end",
+    },
+    payoutLabel: {
+      fontSize: 11,
       fontWeight: "700",
-      color: "#f59e0b",
+      color: colors.textMuted,
       textTransform: "uppercase",
       letterSpacing: 0.5,
       marginBottom: 2,
     },
-    instructionsText: {
+    payoutValue: {
+      fontSize: 20,
+      fontWeight: "900",
+      color: colors.warning,
+      letterSpacing: -0.5,
+    },
+
+    // Dynamic Context Blocks (Instructions & Security PIN)
+    instructionBox: {
+      marginTop: 14,
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: colors.backgroundSecondary,
+      borderLeftWidth: 3,
+      borderLeftColor: colors.warning,
+    },
+    instructionTitle: {
+      fontSize: 11,
+      fontWeight: "800",
+      color: colors.text,
+      textTransform: "uppercase",
+      letterSpacing: 0.3,
+      marginBottom: 2,
+    },
+    instructionBody: {
       fontSize: 12,
       fontWeight: "500",
-      color: colors.textOnPrimary + "90",
+      color: colors.textSecondary,
       lineHeight: 16,
     },
-    pinLabel: {
-      fontSize: 10,
-      fontWeight: "900",
-      color: colors.textOnPrimary + "80",
-      textTransform: "uppercase",
+    securePinBox: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 14,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderRadius: 14,
+      backgroundColor: "rgba(16, 185, 129, 0.08)",
+      borderWidth: 1,
+      borderColor: "rgba(16, 185, 129, 0.15)",
     },
-    pinValue: {
+    securePinLabel: {
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.success,
+    },
+    securePinValue: {
       fontSize: 18,
       fontWeight: "900",
-      color: "#34d399",
-      letterSpacing: 2,
-    },
-    instructionsBorder: {
-      borderTopColor: colors.textOnPrimary + "20",
-    },
-    pinBorder: {
-      borderTopColor: colors.border,
+      color: colors.success,
+      letterSpacing: 3,
     },
   };
 
   return (
     <TouchableOpacity
-      style={themedStyles.card}
+      style={ui.card}
       onPress={() => onPress?.(order)}
-      activeOpacity={0.9}
+      activeOpacity={0.85}
     >
-      <View style={[staticStyles.accentTop, { backgroundColor: status.color }]} />
+      <View style={ui.accentLine} />
 
-      <View style={staticStyles.body}>
-        <View style={staticStyles.topRow}>
-          <View style={themedStyles.iconBox}>
-            <Box size={22} color="#FA6432" fill="#FA6432" strokeWidth={1.5} />
+      <View style={ui.body}>
+        {/* Card Header metadata info */}
+        <View style={ui.topRow}>
+          <View style={ui.metaLeft}>
+            <View style={ui.iconFrame}>
+              <Box size={20} color="#FA6432" strokeWidth={2} />
+            </View>
+            <View>
+              <Text style={ui.idLabel}>Waybill ID</Text>
+              <Text style={ui.idText}>{order.order_id || "---"}</Text>
+            </View>
           </View>
-          <View style={staticStyles.idBlock}>
-            <Text style={themedStyles.idLabel}>Waybill</Text>
-            <Text style={themedStyles.idText}>{order.order_id || "---"}</Text>
+          <View style={ui.badge}>
+            <Text style={ui.badgeText}>{status.label}</Text>
           </View>
-          <View
-            style={[
-              staticStyles.badge,
-              { backgroundColor: status.bg, borderColor: status.border },
-            ]}
-          >
-            <Text style={[staticStyles.badgeText, { color: status.color }]}>
-              {status.label}
+        </View>
+
+        {/* Route Details Line Array */}
+        <View style={ui.routeContainer}>
+          <View style={ui.routeNode}>
+            <MapPin size={15} color={colors.primary} />
+            <Text style={ui.nodeText} numberOfLines={1}>
+              {order.pickup_address || "Pickup location unassigned"}
+            </Text>
+          </View>
+          
+          <View style={[ui.routeNode, { paddingLeft: 2 }]}>
+            <CornerDownRight size={14} color={colors.textDisabled} />
+            <Text style={[ui.nodeText, { color: colors.text }]} numberOfLines={1}>
+              {order.delivery_address || "Drop-off destination unassigned"}
             </Text>
           </View>
         </View>
 
-        <View style={staticStyles.routeRow}>
-          <View style={staticStyles.routeEnd}>
-            <MapPin size={12} color="#94a3b8" />
-            <Text style={themedStyles.routeAddr} numberOfLines={1}>
-              {order.pickup_address || "Pickup TBC"}
-            </Text>
-          </View>
-          <View style={staticStyles.arrowCol}>
-            <Text style={themedStyles.arrow}>→</Text>
-          </View>
-          <View style={[staticStyles.routeEnd, staticStyles.routeEndRight]}>
-            <MapPin size={12} color="#94a3b8" />
-            <Text style={themedStyles.routeAddr} numberOfLines={1}>
-              {order.delivery_address || "Drop-off TBC"}
-            </Text>
-          </View>
-        </View>
+        {/* Financial Breakdown Section */}
+        {order.base_price || order.delivery_fee ? (
+          <>
+            <View style={ui.divider} />
+            <View style={ui.footer}>
+              <View style={ui.breakdown}>
+                {!!order.base_price && (
+                  <Text style={ui.breakdownText}>
+                    Base: GH¢ {Number(order.base_price).toFixed(2)}
+                  </Text>
+                )}
+                {Number(order.distance_fee) > 0 && (
+                  <Text style={ui.breakdownText}>
+                    Distance: +GH¢ {Number(order.distance_fee).toFixed(2)}
+                  </Text>
+                )}
+                {Number(order.surge_fee) > 0 && (
+                  <Text style={ui.breakdownText}>
+                    Surge: +GH¢ {Number(order.surge_fee).toFixed(2)}
+                  </Text>
+                )}
+              </View>
 
-        {!!order.delivery_fee ? (
-          <View style={staticStyles.footerRow}>
-            <Text style={themedStyles.feeLabel}>Fee</Text>
-            <Text style={themedStyles.feeValue}>
-              GH¢ {Number(order.delivery_fee).toFixed(2)}
-            </Text>
-          </View>
+              {!!order.delivery_fee && (
+                <View style={ui.payoutSection}>
+                  <Text style={ui.payoutLabel}>Payout</Text>
+                  <Text style={ui.payoutValue}>
+                    GH¢ {Number(order.delivery_fee).toFixed(2)}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </>
         ) : null}
 
-        {order.base_price && (
-          <View style={staticStyles.metaRow}>
-            <Text style={themedStyles.metaLabel}>
-              Base: GH¢ {Number(order.base_price).toFixed(2)}
-            </Text>
-            {order.distance_fee > 0 && (
-              <Text style={themedStyles.metaLabel}>
-                Distance: GH¢ {Number(order.distance_fee).toFixed(2)}
-              </Text>
-            )}
-            {order.surge_fee > 0 && (
-              <Text style={themedStyles.metaLabel}>
-                Surge: GH¢ {Number(order.surge_fee).toFixed(2)}
-              </Text>
-            )}
-          </View>
-        )}
-
+        {/* Conditional Contextual Insets */}
         {order.delivery_instructions ? (
-          <View style={[staticStyles.instructionsRow, themedStyles.instructionsBorder]}>
-            <Text style={themedStyles.instructionsLabel}>Note:</Text>
-            <Text style={themedStyles.instructionsText}>
-              {order.delivery_instructions}
-            </Text>
+          <View style={ui.instructionBox}>
+            <Text style={ui.instructionTitle}>Rider Instructions</Text>
+            <Text style={ui.instructionBody}>{order.delivery_instructions}</Text>
           </View>
         ) : null}
 
         {order.status === "in_transit" && order.delivery_pin ? (
-          <View style={[staticStyles.pinRow, themedStyles.pinBorder]}>
-            <Text style={themedStyles.pinLabel}>Delivery PIN</Text>
-            <Text style={themedStyles.pinValue}>{order.delivery_pin}</Text>
+          <View style={ui.securePinBox}>
+            <Text style={ui.securePinLabel}>Required Release PIN</Text>
+            <Text style={ui.securePinValue}>{order.delivery_pin}</Text>
           </View>
         ) : null}
       </View>

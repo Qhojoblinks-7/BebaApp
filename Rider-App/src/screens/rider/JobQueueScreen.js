@@ -6,10 +6,10 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  RefreshControl,
   StatusBar,
   Platform,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../services/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
@@ -28,7 +28,6 @@ const GEOFENCE_ZONES = [
   "General Accra",
 ];
 
-// Polygon boundaries [lng, lat] - accurate bounding boxes
 const GEOFENCE_POLYGONS = {
   Dansoman: [
     [-0.284, 5.5645],
@@ -60,14 +59,13 @@ const GEOFENCE_POLYGONS = {
   ],
 };
 
+// Ray-casting algorithm for checking coordinate containment
 const pointInPolygon = (lng, lat, polygon) => {
   if (!polygon || polygon.length < 4) return false;
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length - 1; j = i++) {
-    const xi = polygon[i][0],
-      yi = polygon[i][1];
-    const xj = polygon[j][0],
-      yj = polygon[j][1];
+    const xi = polygon[i][0], yi = polygon[i][1];
+    const xj = polygon[j][0], yj = polygon[j][1];
     const intersect =
       yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
     if (intersect) inside = !inside;
@@ -75,14 +73,29 @@ const pointInPolygon = (lng, lat, polygon) => {
   return inside;
 };
 
-const getZoneFromAddress = (address) => {
-  if (!address) return "General Accra";
-  const lower = address.toLowerCase();
-  for (const zone of GEOFENCE_ZONES) {
-    if (zone !== "General Accra" && lower.includes(zone.toLowerCase())) {
-      return zone;
+// Active Geofencing Resolution Pipeline
+const resolveOrderZone = (order) => {
+  const { delivery_lng, delivery_lat, delivery_address } = order;
+
+  // Priority 1: Check precise geospatial telemetry data if available
+  if (delivery_lng && delivery_lat) {
+    for (const [zoneName, polygon] of Object.entries(GEOFENCE_POLYGONS)) {
+      if (pointInPolygon(Number(delivery_lng), Number(delivery_lat), polygon)) {
+        return zoneName;
+      }
     }
   }
+
+  // Priority 2: Text matching fallback for explicit local target addresses
+  if (delivery_address) {
+    const lowerAddress = delivery_address.toLowerCase();
+    for (const zone of GEOFENCE_ZONES) {
+      if (zone !== "General Accra" && lowerAddress.includes(zone.toLowerCase())) {
+        return zone;
+      }
+    }
+  }
+
   return "General Accra";
 };
 
@@ -97,6 +110,8 @@ Notifications.setNotificationHandler({
 export default function JobQueueScreen() {
   const { user } = useAuth();
   const { colors } = useThemeStore();
+  const insets = useSafeAreaInsets();
+  
   const [orders, setOrders] = useState([]);
   const [zones, setZones] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -104,36 +119,35 @@ export default function JobQueueScreen() {
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   const fetchAvailable = useCallback(async () => {
-    console.log("[JobQueue] Fetching available orders...");
-    const { data, error } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("status", "pending")
-      .is("rider_id", null)
-      .order("created_at", { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("status", "pending")
+        .is("rider_id", null)
+        .order("created_at", { ascending: true });
 
-    if (!error && data) {
-      const withZones = data.map((order) => ({
-        ...order,
-        zone: getZoneFromAddress(order.delivery_address),
-      }));
+      if (error) throw error;
 
-      const groups = withZones.reduce((acc, order) => {
-        const zone = order.zone;
-        if (!acc[zone]) acc[zone] = [];
-        acc[zone].push(order);
-        return acc;
-      }, {});
+      if (data) {
+        // Group orders into zones dynamically using our resolution pipeline
+        const groups = data.reduce((acc, currentOrder) => {
+          const zone = resolveOrderZone(currentOrder);
+          if (!acc[zone]) acc[zone] = [];
+          acc[zone].push({ ...currentOrder, zone });
+          return acc;
+        }, {});
 
-      setOrders(
-        Object.entries(groups).flatMap(([zone, zoneOrders]) =>
-          zoneOrders.map((o) => ({ ...o, zone })),
-        ),
-      );
-      setZones(GEOFENCE_ZONES.filter((z) => groups[z]));
+        const flattenedOrders = Object.values(groups).flat();
+        setOrders(flattenedOrders);
+        setZones(GEOFENCE_ZONES.filter((z) => groups[z] && groups[z].length > 0));
+      }
+    } catch (err) {
+      console.error("[JobQueue] Fetch failed:", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    setLoading(false);
-    setRefreshing(false);
   }, []);
 
   useEffect(() => {
@@ -145,11 +159,11 @@ export default function JobQueueScreen() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "orders" },
         async (payload) => {
-          if (payload.new.status === "pending") {
-            Notifications.scheduleNotificationAsync({
+          if (payload.new && payload.new.status === "pending") {
+            await Notifications.scheduleNotificationAsync({
               content: {
                 title: "New Order Available",
-                body: `Order ${payload.new.order_id} needs pickup`,
+                body: `Order #${payload.new.order_id || payload.new.id} is ready for pickup`,
               },
             });
             fetchAvailable();
@@ -158,18 +172,19 @@ export default function JobQueueScreen() {
       )
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
-  }, [fetchAvailable, user?.id]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchAvailable]);
 
-  const generateDeliveryPin = () => {
-    return Math.floor(1000 + Math.random() * 9000).toString();
-  };
+  const generateDeliveryPin = () => Math.floor(1000 + Math.random() * 9000).toString();
 
   const acceptOrder = async (order) => {
     if (!user?.id || !order?.id) return;
     try {
       setLoading(true);
       const deliveryPin = generateDeliveryPin();
+      
       const { count } = await supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
@@ -198,9 +213,10 @@ export default function JobQueueScreen() {
   };
 
   const acceptEntireZone = async (zoneOrders) => {
-    if (!user?.id) return;
+    if (!user?.id || !zoneOrders.length) return;
     try {
       setLoading(true);
+      
       const { count } = await supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
@@ -222,16 +238,15 @@ export default function JobQueueScreen() {
       );
 
       const results = await Promise.all(updates);
-      const hasError = results.some((r) => r.error);
-      if (hasError) {
-        alert("Failed to claim some orders. Please retry.");
+      if (results.some((r) => r.error)) {
+        alert("Failed to claim some orders. Please refresh and retry.");
       } else {
-        alert(`Zone batch locked! ${zoneOrders.length} dispatches assigned.`);
+        alert(`Zone locked! ${zoneOrders.length} dispatches assigned.`);
         fetchAvailable();
       }
     } catch (err) {
       console.error("[JobQueue] Batch claim failed:", err);
-      alert("Error claiming batch. Check logs.");
+      alert("Error claiming batch.");
     } finally {
       setLoading(false);
     }
@@ -247,23 +262,25 @@ export default function JobQueueScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.backgroundSecondary }]}>
-      <StatusBar
-        barStyle="light-content"
-        backgroundColor={colors.primary}
-        translucent
-      />
-      <View style={[styles.headerBackground, styles.safeHeader, { 
-        backgroundColor: colors.primary,
-        ...Platform.select({
-          ios: {
-            shadowColor: colors.shadow,
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: 0.15,
-            shadowRadius: 12,
-          },
-          android: { elevation: 8 },
-        }),
-      }]}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} translucent />
+      
+      {/* Notch-Aware Structural Header Container */}
+      <View style={[
+        styles.headerBackground, 
+        { 
+          backgroundColor: colors.primary,
+          paddingTop: Platform.OS === "ios" ? Math.max(insets.top, 16) : StatusBar.currentHeight + 14,
+          ...Platform.select({
+            ios: {
+              shadowColor: colors.shadow || "#000",
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+            },
+            android: { elevation: 8 },
+          }),
+        }
+      ]}>
         <View style={styles.headerContent}>
           <Text style={[styles.headingOnBg, { color: colors.textOnPrimary }]}>New Orders Available</Text>
           <Text style={[styles.countText, { color: colors.textOnPrimary }]}>
@@ -273,10 +290,13 @@ export default function JobQueueScreen() {
       </View>
 
       <FlatList
-        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: zones.length > 0 ? 140 : 40 }}
         data={orders}
         keyExtractor={(item) => item.id}
-        onRefresh={fetchAvailable}
+        onRefresh={() => {
+          setRefreshing(true);
+          fetchAvailable();
+        }}
         refreshing={refreshing}
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -302,8 +322,16 @@ export default function JobQueueScreen() {
         }
       />
 
+      {/* Floating Bottom Batch Bar */}
       {zones.length > 0 && (
-        <View style={[styles.batchClaimBar, { backgroundColor: colors.backgroundCard, borderTopColor: colors.border }]}>
+        <View style={[
+          styles.batchClaimBar, 
+          { 
+            backgroundColor: colors.backgroundCard, 
+            borderTopColor: colors.border,
+            paddingBottom: Platform.OS === "ios" ? Math.max(insets.bottom, 12) : 16 
+          }
+        ]}>
           <Text style={[styles.batchClaimText, { color: colors.textSecondary }]}>
             Tap a card to accept one, or claim its entire zone below:
           </Text>
@@ -312,30 +340,21 @@ export default function JobQueueScreen() {
             data={zones}
             keyExtractor={(zone) => zone}
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{
-              gap: 8,
-              paddingHorizontal: 16,
-              paddingVertical: 8,
-            }}
+            contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingVertical: 4 }}
             renderItem={({ item: zone }) => {
               const zoneOrders = orders.filter((o) => o.zone === zone);
-              const zoneFee = zoneOrders.reduce(
-                (s, o) => s + (o.delivery_fee || 0),
-                0,
-              );
+              const zoneFee = zoneOrders.reduce((sum, o) => sum + (o.delivery_fee || 0), 0);
+              
               return (
-<TouchableOpacity
-                   key={zone}
-                   style={[styles.batchClaimBtn, { backgroundColor: colors.primary }]}
-                   onPress={() => acceptEntireZone(zoneOrders)}
-                 >
-                   <Text style={[styles.batchClaimZone, { color: colors.textOnPrimary }]}>{zone}</Text>
-                   <Text style={[styles.batchClaimMeta, { color: colors.textOnPrimary }]}>
-                     {zoneOrders.length} package
-                     {zoneOrders.length !== 1 ? "s" : ""} · GH¢{" "}
-                     {zoneFee.toFixed(2)}
-                   </Text>
-                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.batchClaimBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => acceptEntireZone(zoneOrders)}
+                >
+                  <Text style={[styles.batchClaimZone, { color: colors.textOnPrimary }]}>{zone}</Text>
+                  <Text style={[styles.batchClaimMeta, { color: colors.textOnPrimary }]}>
+                    {zoneOrders.length} pkg{zoneOrders.length !== 1 ? "s" : ""} · GH¢ {zoneFee.toFixed(2)}
+                  </Text>
+                </TouchableOpacity>
               );
             }}
           />
@@ -358,80 +377,25 @@ export default function JobQueueScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  container: { flex: 1 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
   headerBackground: {
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
     paddingBottom: 24,
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  safeHeader: {
-    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight + 12 : 48,
-  },
-  headerContent: { paddingTop: Platform.OS === "android" ? 16 : 16 },
-
-  headingOnBg: {
-    fontSize: 18,
-    fontWeight: "900",
-    marginBottom: 2,
-  },
-
-  countText: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
-
-  empty: {
-    alignItems: "center",
-    marginTop: 60,
-    gap: 8,
-  },
-  emptyText: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
-
-  batchHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-    paddingHorizontal: 4,
-  },
-  batchHeaderText: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  batchClaimBar: {
-    borderTopWidth: 1,
-    paddingVertical: 10,
-  },
-  batchClaimText: {
-    fontSize: 11,
-    fontWeight: "600",
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     marginBottom: 4,
   },
-  batchClaimBtn: {
-    borderRadius: 12,
-    padding: 12,
-    minWidth: 140,
-    maxWidth: 180,
-  },
-  batchClaimZone: { fontSize: 13, fontWeight: "800" },
-  batchClaimMeta: {
-    fontSize: 11,
-    fontWeight: "600",
-    marginTop: 2,
-  },
+  headerContent: { marginTop: 4 },
+  headingOnBg: { fontSize: 19, fontWeight: "900", marginBottom: 2, letterSpacing: -0.4 },
+  countText: { fontSize: 13, fontWeight: "600", opacity: 0.9 },
+  empty: { alignItems: "center", marginTop: 80, gap: 8 },
+  emptyText: { fontSize: 13, fontWeight: "500" },
+  batchHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12, paddingHorizontal: 4 },
+  batchHeaderText: { fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.6 },
+  batchClaimBar: { position: "absolute", bottom: 0, left: 0, right: 0, borderTopWidth: 1, paddingTop: 12, elevation: 16 },
+  batchClaimText: { fontSize: 11, fontWeight: "600", paddingHorizontal: 16, marginBottom: 6 },
+  batchClaimBtn: { borderRadius: 12, padding: 12, minWidth: 135, justifyContent: "center" },
+  batchClaimZone: { fontSize: 13, fontWeight: "800", letterSpacing: -0.2 },
+  batchClaimMeta: { fontSize: 11, fontWeight: "600", marginTop: 1, opacity: 0.95 },
 });

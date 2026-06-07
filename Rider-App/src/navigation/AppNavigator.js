@@ -1,7 +1,9 @@
 import React from "react";
+import { Platform, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Home, Briefcase, Route, DollarSign, User } from "lucide-react-native";
 import { useThemeStore } from "../store/themeStore";
 
@@ -42,10 +44,14 @@ function ActiveDeliveryStack() {
 }
 
 /**
- * 2. Main Tab Layout
+ * 2. Main Premium Floating Tab Layout
  */
 function TabNavigator() {
-  const { colors } = useThemeStore();
+  const { colors, isDarkMode } = useThemeStore();
+  const insets = useSafeAreaInsets();
+
+  // Compute total safe height padding to isolate device native home indicators
+  const bottomBarHeight = Platform.OS === "ios" ? 64 + Math.max(insets.bottom - 8, 0) : 68;
 
   return (
     <Tab.Navigator
@@ -53,16 +59,33 @@ function TabNavigator() {
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          backgroundColor: colors.tabBar,
+          position: "absolute",
+          bottom: Platform.OS === "ios" ? Math.max(insets.bottom, 12) : 16,
+          left: 16,
+          right: 16,
+          backgroundColor: colors.backgroundCard,
           borderTopWidth: 1,
-          borderTopColor: colors.tabBorder,
-          paddingBottom: 8,
-          height: 60,
+          borderWidth: 1,
+          borderColor: colors.borderLight,
+          borderTopColor: colors.borderLight,
+          borderRadius: 24,
+          height: bottomBarHeight,
+          paddingBottom: Platform.OS === "ios" ? Math.max(insets.bottom / 2, 8) : 12,
+          paddingTop: 10,
+          elevation: 8,
+          shadowColor: colors.shadow || "#000",
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: isDarkMode ? 0.35 : 0.06,
+          shadowRadius: 16,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: "700",
+          fontSize: 10,
+          fontWeight: "800",
+          textTransform: "uppercase",
+          letterSpacing: 0.3,
+          marginTop: 4,
         },
       }}
     >
@@ -71,7 +94,9 @@ function TabNavigator() {
         component={DashboardScreen}
         options={{
           tabBarLabel: "Home",
-          tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <Home size={20} color={color} strokeWidth={focused ? 2.5 : 1.8} />
+          ),
         }}
       />
 
@@ -79,9 +104,9 @@ function TabNavigator() {
         name="JobQueueTab"
         component={JobQueueScreen}
         options={{
-          tabBarLabel: "Job Board",
-          tabBarIcon: ({ color, size }) => (
-            <Briefcase size={size} color={color} />
+          tabBarLabel: "Hub",
+          tabBarIcon: ({ color, focused }) => (
+            <Briefcase size={20} color={color} strokeWidth={focused ? 2.5 : 1.8} />
           ),
         }}
       />
@@ -91,20 +116,22 @@ function TabNavigator() {
         component={ActiveDeliveryStack}
         options={{
           tabBarLabel: "Manifest",
-          tabBarIcon: ({ color, size }) => <Route size={size} color={color} />,
-        }}
-      />
-      <Tab.Screen
-        name="FinancesTab"
-        component={FinancesScreen}
-        options={{
-          tabBarLabel: "Finances",
-          tabBarIcon: ({ color, size }) => (
-            <DollarSign size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Route size={20} color={color} strokeWidth={focused ? 2.5 : 1.8} />
           ),
         }}
       />
 
+      <Tab.Screen
+        name="FinancesTab"
+        component={FinancesScreen}
+        options={{
+          tabBarLabel: "Ledger",
+          tabBarIcon: ({ color, focused }) => (
+            <DollarSign size={20} color={color} strokeWidth={focused ? 2.5 : 1.8} />
+          ),
+        }}
+      />
     </Tab.Navigator>
   );
 }
@@ -115,106 +142,34 @@ function TabNavigator() {
 export default function AppNavigator() {
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator 
+        screenOptions={{ 
+          headerShown: false,
+          animation: "slide_from_right",
+          animationDuration: 220
+        }}
+      >
         <Stack.Screen name="MainTabs" component={TabNavigator} />
+        
         <Stack.Screen
           name="Notifications"
           component={NotificationsScreen}
-          options={{
-            animation: "slide_from_bottom",
-          }}
+          options={{ animation: "slide_from_bottom" }}
         />
-        <Stack.Screen
-          name="BudgetBreakdown"
-          component={BudgetBreakdownScreen}
-          options={{
-            animation: "slide_from_right",
-          }}
-        />
-        <Stack.Screen
-          name="SmartInsights"
-          component={SmartInsightsScreen}
-          options={{
-            animation: "slide_from_right",
-          }}
-        />
-        <Stack.Screen
-          name="BudgetInsightDetail"
-          component={BudgetInsightDetailScreen}
-          options={{
-            animation: "slide_from_right",
-          }}
-        />
-        <Stack.Screen
-          name="Reports"
-          component={ReportsScreen}
-          options={{
-            animation: "slide_from_right",
-          }}
-        />
-        <Stack.Screen
-          name="ManualCashFlow"
-          component={ManualCashFlowScreen}
-          options={{
-            animation: "slide_from_right",
-          }}
-        />
-        <Stack.Screen
-          name="QuickAddEntry"
-          component={QuickAddEntryScreen}
-          options={{
-            animation: "slide_from_right",
-          }}
-        />
-        <Stack.Screen
-          name="DeliveryHistory"
-          component={DeliveryHistoryScreen}
-          options={{
-            animation: "slide_from_right",
-          }}
-        />
-        <Stack.Screen
-          name="NotificationsSettings"
-          component={NotificationsSettingsScreen}
-          options={{
-            animation: "slide_from_right",
-          }}
-        />
-        <Stack.Screen
-          name="PrivacySecurity"
-          component={PrivacySecurityScreen}
-          options={{
-            animation: "slide_from_right",
-          }}
-        />
-        <Stack.Screen
-          name="Preferences"
-          component={PreferencesScreen}
-          options={{
-            animation: "slide_from_right",
-          }}
-        />
-        <Stack.Screen
-          name="HelpSupport"
-          component={HelpSupportScreen}
-          options={{
-            animation: "slide_from_right",
-          }}
-        />
-        <Stack.Screen
-          name="TermsPrivacyPolicy"
-          component={TermsPrivacyPolicyScreen}
-          options={{
-            animation: "slide_from_right",
-          }}
-        />
-        <Stack.Screen
-          name="Profile"
-          component={ProfileScreen}
-          options={{
-            animation: "slide_from_right",
-          }}
-        />
+        
+        <Stack.Screen name="BudgetBreakdown" component={BudgetBreakdownScreen} />
+        <Stack.Screen name="SmartInsights" component={SmartInsightsScreen} />
+        <Stack.Screen name="BudgetInsightDetail" component={BudgetInsightDetailScreen} />
+        <Stack.Screen name="Reports" component={ReportsScreen} />
+        <Stack.Screen name="ManualCashFlow" component={ManualCashFlowScreen} />
+        <Stack.Screen name="QuickAddEntry" component={QuickAddEntryScreen} />
+        <Stack.Screen name="DeliveryHistory" component={DeliveryHistoryScreen} />
+        <Stack.Screen name="NotificationsSettings" component={NotificationsSettingsScreen} />
+        <Stack.Screen name="PrivacySecurity" component={PrivacySecurityScreen} />
+        <Stack.Screen name="Preferences" component={PreferencesScreen} />
+        <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
+        <Stack.Screen name="TermsPrivacyPolicy" component={TermsPrivacyPolicyScreen} />
+        <Stack.Screen name="Profile" component={ProfileScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

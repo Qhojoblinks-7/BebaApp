@@ -1,17 +1,18 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Zap, MessageSquare } from "lucide-react-native";
+import { useThemeStore } from "../../store/themeStore";
 
-function MetricRow({ value, unit, target, targetValue, isLast }) {
+function MetricRow({ value, unit, target, targetValue, isLast, colors }) {
   return (
     <View style={[styles.metricItemRow, isLast && styles.lastMetricItemRow]}>
       <View>
-        <Text style={styles.metricMainValue}>{value}</Text>
-        <Text style={styles.metricSubLabelText}>{unit}</Text>
+        <Text style={[styles.metricMainValue, { color: colors.text }]}>{value}</Text>
+        <Text style={[styles.metricSubLabelText, { color: colors.textMuted }]}>{unit}</Text>
       </View>
       <View style={styles.targetBlock}>
-        <Text style={styles.targetIndicatorText}>{target}</Text>
-        <Text style={styles.targetValueText}>{targetValue}</Text>
+        <Text style={[styles.targetIndicatorText, { color: colors.warning || "#f59e0b" }]}>{target}</Text>
+        <Text style={[styles.targetValueText, { color: colors.textSecondary }]}>{targetValue}</Text>
       </View>
     </View>
   );
@@ -23,33 +24,57 @@ export default function DailySummaryCard({
   completedDrops = 0,
   onViewHistory,
 }) {
+  const { colors, isDarkMode } = useThemeStore();
+
+  // Defensive parsing fallbacks to shield against upstream type anomalies
+  const safeDistance = typeof distanceKm === "number" ? distanceKm : parseFloat(distanceKm) || 0;
+  const safeEarnings = Number(earnings) || 0;
+  const safeDrops = Number(completedDrops) || 0;
+
   const metrics = [
     {
-      value: typeof distanceKm === "number" ? distanceKm.toFixed(1) : distanceKm,
+      value: safeDistance.toFixed(1),
       unit: "Kilometers Tracked",
       target: "| Distance",
       targetValue: "60.0 km Target",
     },
     {
-      value: `GH₵ ${Number(earnings).toFixed(2)}`,
+      value: `GH₵ ${safeEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       unit: "Collected Funds",
       target: "| Earnings",
       targetValue: "GH₵ 500 Target",
     },
     {
-      value: String(completedDrops),
+      value: String(safeDrops),
       unit: "Completed Drops",
       target: "| Manifests",
       targetValue: "12 Runs Target",
     },
   ];
 
+  // Dynamic system shadows matching existing screen instances
+  const cardDepthShadow = {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isDarkMode ? 0.25 : 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+  };
+
+  // Safe fallback branding accents if custom palette profiles aren't bound yet
+  const primaryAccent = colors.primary || "#115e59";
+
   return (
-    <View style={styles.summaryCard}>
-      {/* Header section with brand accent colored icon */}
-      <View style={styles.cardHeader}>
-        <Zap size={16} color="#115e59" />
-        <Text style={styles.cardHeaderTitle}>Daily Summary</Text>
+    <View style={[
+      styles.summaryCard, 
+      cardDepthShadow, 
+      { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }
+    ]}>
+      
+      {/* Header section with theme-bound boundary split */}
+      <View style={[styles.cardHeader, { borderColor: colors.borderLight }]}>
+        <Zap size={16} color={primaryAccent} />
+        <Text style={[styles.cardHeaderTitle, { color: primaryAccent }]}>Daily Summary</Text>
       </View>
 
       {/* Metrics Render Mapping Loop */}
@@ -61,12 +86,13 @@ export default function DailySummaryCard({
           target={metric.target}
           targetValue={metric.targetValue}
           isLast={index === metrics.length - 1}
+          colors={colors}
         />
       ))}
 
       {/* Primary Navigation Trigger Component */}
       <TouchableOpacity 
-        style={styles.primaryActionButton} 
+        style={[styles.primaryActionButton, { backgroundColor: primaryAccent }]} 
         onPress={onViewHistory}
         activeOpacity={0.8}
       >
@@ -79,30 +105,21 @@ export default function DailySummaryCard({
 
 const styles = StyleSheet.create({
   summaryCard: {
-    backgroundColor: "#ffffff",
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    shadowColor: "#475569",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
   },
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     borderBottomWidth: 1,
-    borderColor: "#f1f5f9",
     paddingBottom: 12,
     marginBottom: 16,
   },
   cardHeaderTitle: {
     fontSize: 12,
     fontWeight: "900",
-    color: "#115e59",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
@@ -114,35 +131,30 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   lastMetricItemRow: {
-    marginBottom: 16, // Reduced margin block to balance whitespace right before the button line
+    marginBottom: 16,
   },
   metricMainValue: {
     fontSize: 26,
     fontWeight: "900",
-    color: "#0f172a",
     letterSpacing: -0.5,
   },
   metricSubLabelText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#94a3b8",
     marginTop: -1,
   },
   targetBlock: { alignItems: "flex-end" },
   targetIndicatorText: {
     fontSize: 10,
     fontWeight: "800",
-    color: "#f59e0b",
     textTransform: "uppercase",
   },
   targetValueText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#475569",
     marginTop: 2,
   },
   primaryActionButton: {
-    backgroundColor: "#115e59",
     borderRadius: 16,
     padding: 16,
     flexDirection: "row",

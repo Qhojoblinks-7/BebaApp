@@ -9,7 +9,7 @@ import {
   StatusBar,
   ActivityIndicator,
 } from "react-native";
-import Svg, { Path, Circle } from "react-native-svg";
+import Svg, { Circle } from "react-native-svg";
 import {
   ArrowLeft,
   TrendingUp,
@@ -85,7 +85,7 @@ function getPeriodRange(period, startDate, endDate) {
     const start = getStartOfDay(startDate);
     const end = getStartOfDay(endDate);
     end.setDate(end.getDate() + 1);
-    const prevStart = new Date(start.getTime() - (end - start));
+    const prevStart = new Date(start.getTime() - (end.getTime() - start.getTime()));
     const prevEnd = start;
     return { start, end, prevStart, prevEnd };
   }
@@ -126,15 +126,19 @@ async function fetchMetricsForRange(userId, start, end) {
 
 export default function ReportsScreen({ route, navigation }) {
   const { user } = useAuth();
-  const [period, setPeriod] = useState(
-    route?.params?.period || "monthly",
-  );
+  const [period, setPeriod] = useState(route?.params?.period || "monthly");
   const [expandedInsight, setExpandedInsight] = useState(null);
+  
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
-  const [showDateModal, setShowDateModal] = useState(false);
-  const [dateMode, setDateMode] = useState("start");
+  
+  // Scoped modal selections to prevent rapid recalculation triggers
+  const [tempStartDate, setTempStartDate] = useState(new Date());
+  const [tempEndDate, setTempEndDate] = useState(new Date());
+  const [dateMode, setDateMode] = useState("start"); // "start" or "end"
   const [tempDate, setTempDate] = useState(new Date());
+  
+  const [showDateModal, setShowDateModal] = useState(false);
   const [metrics, setMetrics] = useState(null);
   const [insights, setInsights] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -242,7 +246,6 @@ export default function ReportsScreen({ route, navigation }) {
 
   const mappedInsights = useMemo(() => {
     if (insights.length === 0) return [];
-
     return insights.map((item, idx) => ({
       id: item.id || String(idx),
       title: item.title,
@@ -250,6 +253,16 @@ export default function ReportsScreen({ route, navigation }) {
       tag: item.type === "warning" ? "Alert" : item.type === "success" ? "Stable" : item.type === "danger" ? "Action" : "Info",
     }));
   }, [insights]);
+
+  // Handle open modal configuration with existing values
+  const handleOpenCustomPicker = () => {
+    const currentStart = startDate || new Date();
+    const currentEnd = endDate || new Date();
+    setTempStartDate(currentStart);
+    setTempEndDate(currentEnd);
+    setTempDate(dateMode === "start" ? currentStart : currentEnd);
+    setShowDateModal(true);
+  };
 
   return (
     <View style={styles.container}>
@@ -273,7 +286,7 @@ export default function ReportsScreen({ route, navigation }) {
                 activeOpacity={0.8}
                 onPress={() => {
                   if (p === "custom") {
-                    setShowDateModal(true);
+                    handleOpenCustomPicker();
                   } else {
                     setPeriod(p);
                     setStartDate(null);
@@ -292,7 +305,7 @@ export default function ReportsScreen({ route, navigation }) {
               <Text style={styles.selectedDateText}>
                 {startDate.toLocaleDateString()} - {endDate.toLocaleDateString()}
               </Text>
-              <TouchableOpacity onPress={() => { setStartDate(null); setEndDate(null); }}>
+              <TouchableOpacity onPress={() => { setStartDate(null); setEndDate(null); setPeriod("monthly"); }}>
                 <Text style={styles.clearDateText}>Clear</Text>
               </TouchableOpacity>
             </View>
@@ -410,7 +423,7 @@ export default function ReportsScreen({ route, navigation }) {
                           </View>
                           {isOpen ? <ChevronUp size={16} color="#94a3b8" /> : <ChevronDown size={16} color="#94a3b8" />}
                         </View>
-                        <Text style={styles.insightBody}>{item.body}</Text>
+                        {isOpen && <Text style={styles.insightBody}>{item.body}</Text>}
                       </TouchableOpacity>
                     );
                   })}
@@ -449,10 +462,9 @@ export default function ReportsScreen({ route, navigation }) {
                       start.setDate(now.getDate() - preset.days);
                       start.setHours(0, 0, 0, 0);
                     }
-                    setStartDate(start);
-                    setEndDate(now);
-                    setPeriod("custom");
-                    setShowDateModal(false);
+                    setTempStartDate(start);
+                    setTempEndDate(now);
+                    setTempDate(dateMode === "start" ? start : now);
                   }}
                 >
                   <Text style={styles.presetChipText}>{preset.label}</Text>
@@ -463,35 +475,73 @@ export default function ReportsScreen({ route, navigation }) {
             <View style={styles.dateInputRow}>
               <View style={styles.inputBlock}>
                 <Text style={styles.inputLabel}>Start</Text>
-                <TouchableOpacity style={styles.dateInput} activeOpacity={0.8} onPress={() => { setDateMode("start"); setTempDate(startDate || new Date()); }}>
-                  <Text style={styles.dateInputText}>{(startDate || new Date()).toLocaleDateString()}</Text>
+                <TouchableOpacity 
+                  style={[styles.dateInput, dateMode === "start" && { borderColor: "#10b981" }]} 
+                  activeOpacity={0.8} 
+                  onPress={() => { setDateMode("start"); setTempDate(tempStartDate); }}
+                >
+                  <Text style={styles.dateInputText}>{tempStartDate.toLocaleDateString()}</Text>
                 </TouchableOpacity>
               </View>
               <View style={styles.inputBlock}>
                 <Text style={styles.inputLabel}>End</Text>
-                <TouchableOpacity style={styles.dateInput} activeOpacity={0.8} onPress={() => { setDateMode("end"); setTempDate(endDate || new Date()); }}>
-                  <Text style={styles.dateInputText}>{(endDate || new Date()).toLocaleDateString()}</Text>
+                <TouchableOpacity 
+                  style={[styles.dateInput, dateMode === "end" && { borderColor: "#10b981" }]} 
+                  activeOpacity={0.8} 
+                  onPress={() => { setDateMode("end"); setTempDate(tempEndDate); }}
+                >
+                  <Text style={styles.dateInputText}>{tempEndDate.toLocaleDateString()}</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
             <View style={styles.datePickerRow}>
-              <Text style={styles.pickerLabel}>{tempDate.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</Text>
+              <Text style={styles.pickerLabel}>
+                {tempDate.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+              </Text>
               <View style={styles.stepperRow}>
-                <TouchableOpacity style={styles.stepperButton} activeOpacity={0.8} onPress={() => { const d = new Date(tempDate); d.setDate(d.getDate() - 1); setTempDate(d); }}>
+                <TouchableOpacity 
+                  style={styles.stepperButton} 
+                  activeOpacity={0.8} 
+                  onPress={() => { 
+                    const d = new Date(tempDate); 
+                    d.setDate(d.getDate() - 1); 
+                    setTempDate(d);
+                    if (dateMode === "start") setTempStartDate(d); else setTempEndDate(d);
+                  }}
+                >
                   <Text style={styles.stepperButtonText}>−</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.stepperButton} activeOpacity={0.8} onPress={() => { const d = new Date(tempDate); d.setDate(d.getDate() + 1); setTempDate(d); }}>
+                <TouchableOpacity 
+                  style={styles.stepperButton} 
+                  activeOpacity={0.8} 
+                  onPress={() => { 
+                    const d = new Date(tempDate); 
+                    d.setDate(d.getDate() + 1); 
+                    setTempDate(d);
+                    if (dateMode === "start") setTempStartDate(d); else setTempEndDate(d);
+                  }}
+                >
                   <Text style={styles.stepperButtonText}>+</Text>
                 </TouchableOpacity>
               </View>
-              <TouchableOpacity style={styles.applyButton} activeOpacity={0.8} onPress={() => { if (dateMode === "start") setStartDate(new Date(tempDate)); else setEndDate(new Date(tempDate)); }}>
-                <Text style={styles.applyButtonText}>Set {dateMode === "start" ? "Start" : "End"}</Text>
-              </TouchableOpacity>
             </View>
 
             <View style={styles.modalFooterRow}>
-              <TouchableOpacity style={styles.applyRangeButton} activeOpacity={0.8} onPress={() => { if (startDate && endDate) { setShowDateModal(false); } }}>
+              <TouchableOpacity 
+                style={styles.applyRangeButton} 
+                activeOpacity={0.8} 
+                onPress={() => { 
+                  if (tempStartDate <= tempEndDate) {
+                    setStartDate(tempStartDate);
+                    setEndDate(tempEndDate);
+                    setPeriod("custom");
+                    setShowDateModal(false);
+                  } else {
+                    alert("Start date must be before or equal to end date.");
+                  }
+                }}
+              >
                 <Text style={styles.applyRangeButtonText}>Apply Range</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.cancelButton} activeOpacity={0.8} onPress={() => setShowDateModal(false)}>
@@ -688,13 +738,6 @@ const styles = StyleSheet.create({
     borderColor: "#ffffff10",
   },
   stepperButtonText: { color: "#ffffff", fontWeight: "800", fontSize: 16 },
-  applyButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: "#115e59",
-  },
-  applyButtonText: { color: "#ffffff", fontWeight: "800", fontSize: 12 },
   modalFooterRow: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
   applyRangeButton: {
     flex: 1,

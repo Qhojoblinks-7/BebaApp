@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -16,6 +16,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ArrowLeft, Shield, Lock, Eye, EyeOff, Trash2, ChevronRight, Moon, Sun } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
@@ -33,18 +34,18 @@ const defaultSettings = {
 
 export default function PrivacySecurityScreen({ navigation }) {
   const { user } = useAuth();
-  const { isDarkMode, setTheme } = useThemeStore();
+  const { isDarkMode, setTheme, colors } = useThemeStore();
+  const insets = useSafeAreaInsets();
+  
   const [settings, setSettings] = useState(defaultSettings);
-
-  useEffect(() => {
-    loadSettings();
-  }, [user?.id]);
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
 
   useEffect(() => {
     AsyncStorage.setItem("app_theme", isDarkMode ? "dark" : "light").catch(() => {});
   }, [isDarkMode]);
 
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const themeSaved = await AsyncStorage.getItem("app_theme");
       if (themeSaved === "light" || themeSaved === "dark") {
@@ -55,7 +56,7 @@ export default function PrivacySecurityScreen({ navigation }) {
         setSettings(JSON.parse(saved));
       }
     } catch (err) {
-      console.warn("Failed to load local security settings:", err.message);
+      console.warn("[PrivacySecurity] Failed to unpack local metadata payload:", err.message);
     }
 
     if (!user?.id) return;
@@ -78,9 +79,13 @@ export default function PrivacySecurityScreen({ navigation }) {
         });
       }
     } catch (err) {
-      console.warn("Failed to load security settings from server:", err.message);
+      console.warn("[PrivacySecurity] Remote database synchronization exception:", err.message);
     }
-  };
+  }, [user?.id, setTheme]);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   const saveSettings = async (newSettings) => {
     if (!user?.id) return;
@@ -102,14 +107,11 @@ export default function PrivacySecurityScreen({ navigation }) {
       if (error) throw error;
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings));
     } catch (err) {
-      console.warn("Failed to save security settings:", err.message);
-      Alert.alert("Error", "Failed to save security settings");
+      console.warn("[PrivacySecurity] Remote commit failed:", err.message);
+      Alert.alert("Sync Notice", "Preferences stored locally, cloud profiles are temporarily offline.");
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings));
     }
   };
-
-  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
 
   const toggle = async (key) => {
     const newSettings = { ...settings, [key]: !settings[key] };
@@ -124,16 +126,16 @@ export default function PrivacySecurityScreen({ navigation }) {
 
   const submitNewPassword = async () => {
     if (!newPassword || newPassword.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters");
+      Alert.alert("Invalid Format", "Security credentials must consist of 6 or more characters.");
       return;
     }
     const { error } = await supabase.auth.updateUser({
       password: newPassword,
     });
     if (error) {
-      Alert.alert("Error", error.message);
+      Alert.alert("Security Update Failed", error.message);
     } else {
-      Alert.alert("Success", "Password updated successfully");
+      Alert.alert("Success", "Account password updated successfully.");
     }
     setPasswordModalVisible(false);
     setNewPassword("");
@@ -155,45 +157,47 @@ export default function PrivacySecurityScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0b0d0f" />
-      <View style={styles.headerRow}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation?.goBack()}
-          activeOpacity={0.7}
-        >
-          <ArrowLeft size={22} color="#ffffff" />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor="transparent" translucent />
+      
+      <View style={[
+        styles.headerRow, 
+        { paddingTop: Platform.OS === "ios" ? Math.max(insets.top, 16) : StatusBar.currentHeight + 14 }
+      ]}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation?.goBack()} activeOpacity={0.7}>
+          <ArrowLeft size={22} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitleText}>Privacy & Security</Text>
+        <Text style={[styles.headerTitleText, { color: colors.text }]}>Privacy & Security</Text>
         <View style={styles.headerRightSpacer} />
       </View>
 
       <ScrollView
         style={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: Platform.OS === "ios" ? insets.bottom + 30 : 40 }}
       >
-        <View style={styles.infoCard}>
-          <Shield size={20} color="#115e59" />
-          <Text style={styles.infoText}>
-            Manage how your data is used and keep your account secure. Enable
-            extra protections to prevent unauthorized access.
+        {/* Top Feature Notice Card */}
+        <View style={[styles.infoCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
+          <Shield size={20} color={colors.primary} />
+          <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+            Manage how your data is used and keep your account secure. Enable extra protections to prevent unauthorized access.
           </Text>
         </View>
 
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Privacy</Text>
+        {/* Privacy Segment */}
+        <View style={[styles.sectionCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Privacy</Text>
 
           <View style={styles.settingRow}>
             <View style={styles.settingLeft}>
-              <View style={[styles.iconBadge, { backgroundColor: "#115e5920" }]}>
-                <Eye size={16} color="#115e59" />
+              <View style={[styles.iconBadge, { backgroundColor: colors.primaryAlpha }]}>
+                <Eye size={16} color={colors.primary} />
               </View>
               <View style={styles.settingTexts}>
-                <Text style={settings.shareLocation ? styles.settingLabel : styles.disabledLabel}>
+                <Text style={[styles.settingLabel, { color: settings.shareLocation ? colors.text : colors.textMuted }]}>
                   Share Live Location
                 </Text>
-                <Text style={styles.settingDesc}>
+                <Text style={[styles.settingDesc, { color: colors.textMuted }]}>
                   Allow dispatch to see your real-time position
                 </Text>
               </View>
@@ -201,27 +205,27 @@ export default function PrivacySecurityScreen({ navigation }) {
             <Switch
               value={settings.shareLocation}
               onValueChange={() => toggle("shareLocation")}
-              trackColor={{ false: "#334155", true: "#115e5980" }}
-              thumbColor={settings.shareLocation ? "#115e59" : "#64748b"}
+              trackColor={{ false: colors.borderDark, true: colors.primaryAlpha }}
+              thumbColor={settings.shareLocation ? colors.primary : colors.textMuted}
             />
           </View>
 
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
 
           <View style={styles.settingRow}>
             <View style={styles.settingLeft}>
-              <View style={[styles.iconBadge, { backgroundColor: "#a855f720" }]}>
+              <View style={[styles.iconBadge, { backgroundColor: colors.primaryAlpha }]}>
                 {settings.profileVisible ? (
-                  <Eye size={16} color="#a855f7" />
+                  <Eye size={16} color={colors.primary} />
                 ) : (
-                  <EyeOff size={16} color="#64748b" />
+                  <EyeOff size={16} color={colors.textMuted} />
                 )}
               </View>
               <View style={styles.settingTexts}>
-                <Text style={settings.profileVisible ? styles.settingLabel : styles.disabledLabel}>
+                <Text style={[styles.settingLabel, { color: settings.profileVisible ? colors.text : colors.textMuted }]}>
                   Public Profile
                 </Text>
-                <Text style={styles.settingDesc}>
+                <Text style={[styles.settingDesc, { color: colors.textMuted }]}>
                   Let customers and dispatch view your profile
                 </Text>
               </View>
@@ -229,23 +233,24 @@ export default function PrivacySecurityScreen({ navigation }) {
             <Switch
               value={settings.profileVisible}
               onValueChange={() => toggle("profileVisible")}
-              trackColor={{ false: "#334155", true: "#115e5980" }}
-              thumbColor={settings.profileVisible ? "#115e59" : "#64748b"}
+              trackColor={{ false: colors.borderDark, true: colors.primaryAlpha }}
+              thumbColor={settings.profileVisible ? colors.primary : colors.textMuted}
             />
           </View>
         </View>
 
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Appearance</Text>
+        {/* Appearance Segment */}
+        <View style={[styles.sectionCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Appearance</Text>
 
           <View style={styles.settingRow}>
             <View style={styles.settingLeft}>
-              <View style={[styles.iconBadge, { backgroundColor: "#6366f120" }]}>
-                {isDarkMode ? <Moon size={16} color="#6366f1" /> : <Sun size={16} color="#facc15" />}
+              <View style={[styles.iconBadge, { backgroundColor: colors.primaryAlpha }]}>
+                {isDarkMode ? <Moon size={16} color={colors.primary} /> : <Sun size={16} color={colors.primary} />}
               </View>
               <View style={styles.settingTexts}>
-                <Text style={styles.settingLabel}>Dark Mode</Text>
-                <Text style={styles.settingDesc}>
+                <Text style={[styles.settingLabel, { color: colors.text }]}>Dark Mode</Text>
+                <Text style={[styles.settingDesc, { color: colors.textMuted }]}>
                   {isDarkMode ? "Dark theme is enabled" : "Light theme is enabled"}
                 </Text>
               </View>
@@ -253,23 +258,26 @@ export default function PrivacySecurityScreen({ navigation }) {
             <Switch
               value={isDarkMode}
               onValueChange={() => setTheme(!isDarkMode)}
-              trackColor={{ false: "#334155", true: "#115e5980" }}
-              thumbColor={isDarkMode ? "#115e59" : "#64748b"}
+              trackColor={{ false: colors.borderDark, true: colors.primaryAlpha }}
+              thumbColor={isDarkMode ? colors.primary : colors.textMuted}
             />
           </View>
         </View>
 
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Security</Text>
+        {/* Security Segment */}
+        <View style={[styles.sectionCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Security</Text>
 
           <View style={styles.settingRow}>
             <View style={styles.settingLeft}>
-              <View style={[styles.iconBadge, { backgroundColor: "#facc1520" }]}>
-                <Lock size={16} color="#facc15" />
+              <View style={[styles.iconBadge, { backgroundColor: colors.primaryAlpha }]}>
+                <Lock size={16} color={colors.primary} />
               </View>
               <View style={styles.settingTexts}>
-                <Text style={styles.settingLabel}>Two-Factor Authentication</Text>
-                <Text style={styles.settingDesc}>
+                <Text style={[styles.settingLabel, { color: settings.twoFactorEnabled ? colors.text : colors.textMuted }]}>
+                  Two-Factor Authentication
+                </Text>
+                <Text style={[styles.settingDesc, { color: colors.textMuted }]}>
                   Add an extra layer of security to your account
                 </Text>
               </View>
@@ -277,21 +285,23 @@ export default function PrivacySecurityScreen({ navigation }) {
             <Switch
               value={settings.twoFactorEnabled}
               onValueChange={() => toggle("twoFactorEnabled")}
-              trackColor={{ false: "#334155", true: "#115e5980" }}
-              thumbColor={settings.twoFactorEnabled ? "#115e59" : "#64748b"}
+              trackColor={{ false: colors.borderDark, true: colors.primaryAlpha }}
+              thumbColor={settings.twoFactorEnabled ? colors.primary : colors.textMuted}
             />
           </View>
 
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
 
           <View style={styles.settingRow}>
             <View style={styles.settingLeft}>
-              <View style={[styles.iconBadge, { backgroundColor: "#10b98120" }]}>
-                <Shield size={16} color="#10b981" />
+              <View style={[styles.iconBadge, { backgroundColor: colors.primaryAlpha }]}>
+                <Shield size={16} color={colors.primary} />
               </View>
               <View style={styles.settingTexts}>
-                <Text style={styles.settingLabel}>Biometric Login</Text>
-                <Text style={styles.settingDesc}>
+                <Text style={[styles.settingLabel, { color: settings.biometricEnabled ? colors.text : colors.textMuted }]}>
+                  Biometric Login
+                </Text>
+                <Text style={[styles.settingDesc, { color: colors.textMuted }]}>
                   Use fingerprint or face recognition to sign in
                 </Text>
               </View>
@@ -299,37 +309,41 @@ export default function PrivacySecurityScreen({ navigation }) {
             <Switch
               value={settings.biometricEnabled}
               onValueChange={() => toggle("biometricEnabled")}
-              trackColor={{ false: "#334155", true: "#115e5980" }}
-              thumbColor={settings.biometricEnabled ? "#115e59" : "#64748b"}
+              trackColor={{ false: colors.borderDark, true: colors.primaryAlpha }}
+              thumbColor={settings.biometricEnabled ? colors.primary : colors.textMuted}
             />
           </View>
 
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: colors.borderLight }]} />
 
-          <TouchableOpacity style={styles.settingRow} onPress={handleChangePassword}>
+          <TouchableOpacity style={styles.settingRow} onPress={handleChangePassword} activeOpacity={0.7}>
             <View style={styles.settingLeft}>
-              <View style={[styles.iconBadge, { backgroundColor: "#6366f120" }]}>
-                <Lock size={16} color="#6366f1" />
+              <View style={[styles.iconBadge, { backgroundColor: colors.primaryAlpha }]}>
+                <Lock size={16} color={colors.primary} />
               </View>
               <View style={styles.settingTexts}>
-                <Text style={styles.settingLabel}>Change Password</Text>
-                <Text style={styles.settingDesc}>
+                <Text style={[styles.settingLabel, { color: colors.text }]}>Change Password</Text>
+                <Text style={[styles.settingDesc, { color: colors.textMuted }]}>
                   Update your account password
                 </Text>
               </View>
             </View>
-            <ChevronRight size={16} color="#64748b" />
+            <ChevronRight size={16} color={colors.textMuted} />
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.dangerButton} onPress={handleDeleteAccount}>
+        {/* Delete Account Button */}
+        <TouchableOpacity 
+          style={[styles.dangerButton, { backgroundColor: colors.backgroundCard, borderColor: "rgba(239,68,68,0.2)" }]} 
+          onPress={handleDeleteAccount} 
+          activeOpacity={0.7}
+        >
           <Trash2 size={18} color="#ef4444" />
           <Text style={styles.dangerText}>Delete Account</Text>
         </TouchableOpacity>
-
-        <View style={{ height: 40 }} />
       </ScrollView>
 
+      {/* Password Management Overlay */}
       <Modal
         visible={passwordModalVisible}
         transparent
@@ -338,30 +352,31 @@ export default function PrivacySecurityScreen({ navigation }) {
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : "height"}
-            >
+            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%", alignItems: "center" }}>
               <TouchableWithoutFeedback>
-                <View style={styles.modalCard}>
-                  <Text style={styles.modalTitle}>Change Password</Text>
+                <View style={[styles.modalCard, { backgroundColor: colors.backgroundCard, borderColor: colors.border }]}>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>Change Password</Text>
+                  
                   <TextInput
                     value={newPassword}
                     onChangeText={setNewPassword}
                     placeholder="Enter new password"
-                    placeholderTextColor="#64748b"
+                    placeholderTextColor={colors.textMuted}
                     secureTextEntry
                     autoFocus
-                    style={styles.modalInput}
+                    style={[styles.modalInput, { backgroundColor: colors.backgroundInput || colors.background, color: colors.text, borderColor: colors.border }]}
                   />
+                  
                   <View style={styles.modalActions}>
                     <TouchableOpacity
-                      style={styles.modalCancelBtn}
+                      style={[styles.modalCancelBtn, { backgroundColor: colors.backgroundInput || colors.background, borderColor: colors.border }]}
                       onPress={() => setPasswordModalVisible(false)}
                     >
-                      <Text style={styles.modalCancelText}>Cancel</Text>
+                      <Text style={[styles.modalCancelText, { color: colors.textSecondary }]}>Cancel</Text>
                     </TouchableOpacity>
+                    
                     <TouchableOpacity
-                      style={styles.modalSaveBtn}
+                      style={[styles.modalSaveBtn, { backgroundColor: colors.primary }]}
                       onPress={submitNewPassword}
                     >
                       <Text style={styles.modalSaveText}>Save</Text>
@@ -378,46 +393,39 @@ export default function PrivacySecurityScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0b0d0f" },
+  container: { flex: 1 },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 18,
-    paddingTop: 24,
     paddingBottom: 14,
-    backgroundColor: "#0b0d0f",
   },
   backButton: { width: 40, height: 40, justifyContent: "center", alignItems: "flex-start" },
-  headerTitleText: { fontSize: 18, fontWeight: "800", color: "#ffffff", letterSpacing: -0.3 },
+  headerTitleText: { fontSize: 18, fontWeight: "800", letterSpacing: -0.3 },
   headerRightSpacer: { width: 40 },
   scrollContent: { flex: 1, paddingHorizontal: 18 },
   infoCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "#16191e",
     borderRadius: 16,
     padding: 16,
     marginTop: 8,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#ffffff04",
   },
-  infoText: { flex: 1, fontSize: 13, fontWeight: "500", color: "#94a3b8", lineHeight: 18 },
+  infoText: { flex: 1, fontSize: 13, fontWeight: "500", lineHeight: 18 },
   sectionCard: {
-    backgroundColor: "#16191e",
     borderRadius: 20,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#ffffff04",
     gap: 4,
   },
   sectionTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#ffffff",
     letterSpacing: -0.2,
     marginBottom: 8,
   },
@@ -437,21 +445,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   settingTexts: { flex: 1, gap: 2 },
-  settingLabel: { fontSize: 14, fontWeight: "600", color: "#ffffff" },
-  settingDesc: { fontSize: 12, fontWeight: "500", color: "#64748b" },
-  disabledLabel: { fontSize: 14, fontWeight: "600", color: "#475569" },
-  divider: { height: 1, backgroundColor: "#ffffff08", marginLeft: 44 },
+  settingLabel: { fontSize: 14, fontWeight: "600" },
+  settingDesc: { fontSize: 12, fontWeight: "500" },
+  divider: { height: 1, marginLeft: 44 },
   dangerButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    backgroundColor: "#16191e",
     borderRadius: 16,
     paddingVertical: 16,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: "#ef444420",
   },
   dangerText: {
     fontSize: 15,
@@ -462,34 +467,28 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.7)",
-    paddingHorizontal: 32,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 24,
   },
   modalCard: {
     width: "100%",
-    backgroundColor: "#16191e",
     borderRadius: 20,
     padding: 24,
     borderWidth: 1,
-    borderColor: "#ffffff08",
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: "800",
-    color: "#ffffff",
     letterSpacing: -0.3,
     marginBottom: 16,
   },
   modalInput: {
-    backgroundColor: "#0b0d0f",
     borderRadius: 12,
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    color: "#ffffff",
     fontSize: 15,
     borderWidth: 1,
-    borderColor: "#ffffff10",
-    marginBottom: 24,
+    marginBottom: 20,
   },
   modalActions: {
     flexDirection: "row",
@@ -499,26 +498,21 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    backgroundColor: "#0b0d0f",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#ffffff10",
   },
   modalCancelText: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#94a3b8",
   },
   modalSaveBtn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    backgroundColor: "#115e59",
     alignItems: "center",
   },
   modalSaveText: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#ffffff",
   },
 });

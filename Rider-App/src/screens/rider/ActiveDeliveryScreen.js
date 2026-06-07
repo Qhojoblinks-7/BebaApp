@@ -7,16 +7,19 @@ import {
   FlatList,
   StatusBar,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Package, RefreshCw } from "lucide-react-native";
 import { supabase } from "../../services/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
-import { Package } from "lucide-react-native";
+import { useThemeStore } from "../../store/themeStore";
 import RiderOrderCard from "../../components/rider/RiderOrderCard";
 import DeliveryDetailsBottomSheet from "../../components/rider/DeliveryDetailsBottomSheet";
-import { useThemeStore } from "../../store/themeStore";
 
 export default function ActiveDeliveryScreen({ navigation }) {
   const { user } = useAuth();
-  const { colors } = useThemeStore();
+  const { colors, isDarkMode } = useThemeStore();
+  const insets = useSafeAreaInsets();
+
   const [itinerary, setItinerary] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -29,33 +32,22 @@ export default function ActiveDeliveryScreen({ navigation }) {
       setLoading(true);
     }
 
-    console.log("[ActiveDelivery] Fetching itinerary for rider:", user?.id);
-    const { data, error } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("rider_id", user?.id)
-      .in("status", ["assigned", "picked_up", "in_transit"])
-      .order("route_sequence", { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("rider_id", user?.id)
+        .in("status", ["assigned", "picked_up", "in_transit"])
+        .order("route_sequence", { ascending: true });
 
-    console.log("[ActiveDelivery] Itinerary result:", {
-      count: data?.length,
-      error: JSON.stringify(error),
-      orders: JSON.stringify(
-        data?.map((o) => ({
-          id: o.id,
-          order_id: o.order_id,
-          status: o.status,
-          route_sequence: o.route_sequence,
-        })),
-      ),
-    });
-
-    if (!error && data) {
-      setItinerary(data);
+      if (error) throw error;
+      if (data) setItinerary(data);
+    } catch (err) {
+      console.warn("[ActiveDelivery] Itinerary retrieval failed:", err.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    
-    setLoading(false);
-    setRefreshing(false);
   };
 
   useEffect(() => {
@@ -75,10 +67,7 @@ export default function ActiveDeliveryScreen({ navigation }) {
       } else if (item.status === "picked_up") {
         const { error } = await supabase
           .from("orders")
-          .update({
-            status: "in_transit",
-            updated_at: new Date().toISOString(),
-          })
+          .update({ status: "in_transit", updated_at: new Date().toISOString() })
           .eq("id", item.id);
         if (error) throw error;
       } else if (item.status === "in_transit") {
@@ -87,105 +76,146 @@ export default function ActiveDeliveryScreen({ navigation }) {
       }
       fetchActiveItinerary();
     } catch (err) {
-      console.warn("[ActiveDelivery] Status advance failed:", err.message);
+      console.warn("[ActiveDelivery] Status progression failed:", err.message);
     }
   };
 
-  const themedStyles = {
-    center: {
+  // --- Dynamic Style Matrix mapped direct to application theme context ---
+  const ui = {
+    container: {
       flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: colors.backgroundSecondary,
+      backgroundColor: colors.background,
     },
-    container: { flex: 1, backgroundColor: colors.background },
-    headerBackground: {
-      backgroundColor: colors.primary,
-      borderBottomLeftRadius: 24,
-      borderBottomRightRadius: 24,
-      paddingBottom: 24,
+    headerWrapper: {
+      backgroundColor: colors.backgroundCard,
+      borderBottomWidth: 1,
+      borderColor: colors.borderLight,
+      paddingTop: Platform.OS === "ios" ? Math.max(insets.top, 20) : StatusBar.currentHeight + 12,
       paddingHorizontal: 20,
+      paddingBottom: 18,
       ...Platform.select({
         ios: {
           shadowColor: colors.shadow,
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.3,
-          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: isDarkMode ? 0.15 : 0.02,
+          shadowRadius: 6,
         },
-        android: { elevation: 6 },
+        android: { elevation: 3 },
       }),
     },
-    safeHeader: {
-      paddingTop: Platform.OS === "android" ? StatusBar.currentHeight + 16 : 60,
-    },
-    headerContent: { paddingTop: Platform.OS === "android" ? 8 : 0 },
-    titleTag: {
-      fontSize: 11,
-      fontWeight: "900",
-      color: "rgba(255, 255, 255, 0.7)",
+    headerTitleTag: {
+      fontSize: 10,
+      fontWeight: "800",
+      color: colors.primary,
       textTransform: "uppercase",
-      letterSpacing: 1,
+      letterSpacing: 0.8,
+      marginBottom: 2,
+    },
+    headerMainHeading: {
+      fontSize: 22,
+      fontWeight: "900",
+      color: colors.text,
+      letterSpacing: -0.5,
+    },
+    listLayout: {
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: Platform.OS === "ios" ? 100 + insets.bottom : 112,
+    },
+    
+    // Non-blocking full layout center structures
+    feedbackStateFrame: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 32,
+      paddingBottom: 60,
+    },
+    loaderElement: {
+      transform: [{ scale: 1.1 }],
+    },
+    emptyStateIconBox: {
+      width: 72,
+      height: 72,
+      borderRadius: 24,
+      backgroundColor: colors.backgroundSecondary,
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+    },
+    emptyStateTitle: {
+      fontSize: 16,
+      fontWeight: "800",
+      color: colors.text,
+      textAlign: "center",
       marginBottom: 4,
     },
-    countText: { fontSize: 20, fontWeight: "800", color: colors.textOnPrimary },
-    noJobText: {
-      color: colors.textDisabled,
-      fontSize: 14,
-      fontWeight: "700",
-      marginTop: 14,
+    emptyStateSubtext: {
+      fontSize: 13,
+      fontWeight: "500",
+      color: colors.textMuted,
+      textAlign: "center",
     },
   };
 
-  if (loading) {
-    return (
-      <View style={themedStyles.center}>
-        <ActivityIndicator size="small" color={colors.primary} />
-      </View>
-    );
-  }
-
-  if (itinerary.length === 0) {
-    return (
-      <View style={themedStyles.center}>
-        <Package size={36} color={colors.textDisabled} />
-        <Text style={themedStyles.noJobText}>No active manifest items right now.</Text>
-      </View>
-    );
-  }
-
   return (
-    <View style={themedStyles.container}>
+    <View style={ui.container}>
       <StatusBar
-        barStyle="light-content"
-        backgroundColor={colors.primary}
+        barStyle={isDarkMode ? "light-content" : "dark-content"}
+        backgroundColor="transparent"
         translucent
       />
-      <View style={[themedStyles.headerBackground, themedStyles.safeHeader]}>
-        <View style={themedStyles.headerContent}>
-          <Text style={themedStyles.titleTag}>Active Run Manifest</Text>
-          <Text style={themedStyles.countText}>
-            {itinerary.length} Waypoints Remaining
-          </Text>
-        </View>
+
+      {/* Persistent Dashboard Navigation Header Frame */}
+      <View style={ui.headerWrapper}>
+        <Text style={ui.headerTitleTag}>Run Manifest</Text>
+        <Text style={ui.headerMainHeading}>
+          {loading ? "Updating..." : `${itinerary.length} Active Waypoints`}
+        </Text>
       </View>
 
-      <FlatList
-        data={itinerary}
-        keyExtractor={(item) => item.id}
-        onRefresh={() => fetchActiveItinerary(true)}
-        refreshing={refreshing}
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: 16,
-          paddingBottom: 24,
-        }}
-        renderItem={({ item }) => (
-          <RiderOrderCard
-            order={item}
-            onPress={(order) => setSelectedOrder(order)}
-          />
-        )}
-      />
+      {/* Unified Conditional Flow Control Layer */}
+      {loading && !refreshing ? (
+        <View style={ui.feedbackStateFrame}>
+          <ActivityIndicator size="small" color={colors.primary} style={ui.loaderElement} />
+        </View>
+      ) : itinerary.length === 0 ? (
+        <FlatList
+          data={[]}
+          renderItem={null}
+          onRefresh={() => fetchActiveItinerary(true)}
+          refreshing={refreshing}
+          contentContainerStyle={{ flexGrow: 1 }}
+          ListEmptyComponent={
+            <View style={ui.feedbackStateFrame}>
+              <View style={ui.emptyStateIconBox}>
+                <Package size={28} color={colors.textMuted} />
+              </View>
+              <Text style={ui.emptyStateTitle}>No Active Shipments</Text>
+              <Text style={ui.emptyStateSubtext}>
+                Pull down on the display to scan the repository for newly assigned runs.
+              </Text>
+            </View>
+          }
+        />
+      ) : (
+        <FlatList
+          data={itinerary}
+          keyExtractor={(item) => item.id}
+          onRefresh={() => fetchActiveItinerary(true)}
+          refreshing={refreshing}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={ui.listLayout}
+          renderItem={({ item }) => (
+            <RiderOrderCard
+              order={item}
+              onPress={(order) => setSelectedOrder(order)}
+            />
+          )}
+        />
+      )}
 
       <DeliveryDetailsBottomSheet
         order={selectedOrder}
@@ -194,7 +224,7 @@ export default function ActiveDeliveryScreen({ navigation }) {
         onAction={(order) => {
           if (!order) return;
           setSelectedOrder(null);
-          setTimeout(() => advanceStatus(order), 200);
+          setTimeout(() => advanceStatus(order), 250);
         }}
       />
     </View>

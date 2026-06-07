@@ -15,6 +15,8 @@ import { ArrowLeft, Wallet } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
 import { insertManualEntry } from "../../services/manualEntries";
 
+// If you ever install @react-native-community/datetimepicker for iOS support, 
+// you can swap Platform logic with that component here.
 export default function QuickAddEntryScreen({ route, navigation }) {
   const { user } = useAuth();
   const onAdded = route?.params?.onAdded;
@@ -26,14 +28,23 @@ export default function QuickAddEntryScreen({ route, navigation }) {
   const [saving, setSaving] = useState(false);
 
   const pickDate = () => {
-    DateTimePickerAndroid.open({
-      value: date,
-      mode: "date",
-      is24Hour: true,
-      onChange: (_, selected) => {
-        if (selected) setDate(selected);
-      },
-    });
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        value: date,
+        mode: "date",
+        is24Hour: true,
+        onChange: (_, selected) => {
+          if (selected) setDate(selected);
+        },
+      });
+    } else {
+      // iOS fallback reminder or custom simple modal alert
+      Alert.alert(
+        "Select Date", 
+        "Date picking on iOS requires @react-native-community/datetimepicker installed.",
+        [{ text: "OK" }]
+      );
+    }
   };
 
   const handleSave = async () => {
@@ -114,6 +125,7 @@ export default function QuickAddEntryScreen({ route, navigation }) {
             placeholderTextColor="#475569"
             value={note}
             onChangeText={setNote}
+            multiline={true}
           />
         </View>
 

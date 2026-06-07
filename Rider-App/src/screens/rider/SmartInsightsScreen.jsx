@@ -5,9 +5,7 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  Platform,
   StatusBar,
-  ActivityIndicator,
 } from "react-native";
 import Svg, { Path, Circle } from "react-native-svg";
 import {
@@ -64,18 +62,18 @@ export default function SmartInsightsScreen({ navigation }) {
       const totalDeliveries = revenue.length;
       const outflowTotal = manualEntries.filter((e) => e.type === "outflow").reduce((sum, e) => sum + Number(e.amount), 0);
 
+      // Baseline structural estimation metrics
       const costPerKm = totalDeliveries > 0 ? (outflowTotal / (totalDeliveries * 5.4)).toFixed(2) : "0.00";
       const runway = totalEarnings > 0 ? Math.max(0, (totalEarnings * 0.2) / (outflowTotal * 0.5)).toFixed(1) : "0.0";
       const residualWants = totalEarnings * 0.3 - outflowTotal * 0.4;
       const wantsRate = totalEarnings * 0.3 > 0 ? Math.min(100, Math.max(0, Math.round((residualWants / (totalEarnings * 0.3)) * 100))) : 0;
 
-      setMetrics((prev) => ({
-        ...prev,
+      setMetrics({
         operatingCostPerKm: `GHS ${costPerKm}`,
         runwayMonths: `${runway} Months`,
         wantsDepletionRate: `${wantsRate}%`,
         yieldVsInflation: totalEarnings > 0 ? "+2.4%" : "N/A",
-      }));
+      });
       setMetricsEarnings(totalEarnings);
       setOutflows(outflowTotal);
       setInsights(insightsData);
@@ -89,8 +87,7 @@ export default function SmartInsightsScreen({ navigation }) {
 
   const recentInsights = insights.slice(0, 4);
   const actionPlans = actions.slice(0, 3);
-  const totalEarnings = metricsEarnings;
-  const hasActivity = totalEarnings > 0 || outflows > 0;
+  const hasActivity = metricsEarnings > 0 || outflows > 0;
 
   return (
     <View style={styles.container}>
@@ -127,12 +124,12 @@ export default function SmartInsightsScreen({ navigation }) {
                   <Text style={styles.cardMainValueText}>{metrics.operatingCostPerKm}</Text>
                   <Text style={styles.cardUnitText}>per kilometer</Text>
                   <View style={styles.vectorContainer}>
-                    <Svg height="40" width="140" viewBox="0 0 140 40">
+                    <Svg height="40" width="100%" viewBox="0 0 140 40" preserveAspectRatio="xMidYMidMeet">
                       <Path d="M10,30 Q40,10 70,25 T130,15" fill="none" stroke="#a855f7" strokeWidth="2.5" strokeLinecap="round" />
                       <Circle cx="130" cy="15" r="3.5" fill="#ffffff" />
                     </Svg>
                   </View>
-                  <Text style={styles.cardFooterText}>Factoring bicycle upkeep, fuel margins, and wear parameters.</Text>
+                  <Text style={styles.cardFooterText}>Factoring asset upkeep, margins, and wear parameters.</Text>
                 </View>
 
                 <View style={styles.insightCard}>
@@ -143,7 +140,7 @@ export default function SmartInsightsScreen({ navigation }) {
                   <Text style={[styles.cardMainValueText, { color: "#22c55e" }]}>{metrics.yieldVsInflation}</Text>
                   <Text style={styles.cardUnitText}>above inflation curve</Text>
                   <View style={styles.vectorContainer}>
-                    <Svg height="40" width="140" viewBox="0 0 140 40">
+                    <Svg height="40" width="100%" viewBox="0 0 140 40" preserveAspectRatio="xMidYMidMeet">
                       <Path d="M10,35 Q35,35 50,20 T90,8 T130,25" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" />
                     </Svg>
                   </View>
@@ -192,7 +189,7 @@ export default function SmartInsightsScreen({ navigation }) {
                 <View style={styles.bannerTextContainer}>
                   <Text style={styles.bannerHeadingText}>Discretionary Depletion Rate</Text>
                   <Text style={styles.bannerDescriptionText}>
-                    You have utilized <Text style={{ color: "#ffffff", fontWeight: "700" }}>{metrics.wantsDepletionRate}</Text> of your 30% Wants bucket. Outbound pace at local food spots and tech subscriptions is accelerating.
+                    You have utilized <Text style={{ color: "#ffffff", fontWeight: "700" }}>{metrics.wantsDepletionRate}</Text> of your 30% Wants bucket. Outbound pace at local food spots and subscriptions is accelerating.
                   </Text>
                 </View>
               </View>
@@ -206,7 +203,7 @@ export default function SmartInsightsScreen({ navigation }) {
                 </View>
                 <View style={styles.insightsStack}>
                   {recentInsights.map((insight) => (
-                    <View key={insight.id || insight.title} style={styles.insightCard}>
+                    <View key={insight.id || insight.title} style={styles.rawCard}>
                       <View style={styles.insightHeaderRow}>
                         <View style={styles.insightTitleGroup}>
                           <Text style={styles.insightTitle}>{insight.title}</Text>
@@ -276,11 +273,12 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: "row", alignItems: "center", marginTop: 20, marginBottom: 14, gap: 8 },
   sectionTitleText: { fontSize: 15, fontWeight: "700", color: "#ffffff", letterSpacing: -0.2 },
   insightGrid: { flexDirection: "row", gap: 12, justifyContent: "space-between" },
-  insightCard: { backgroundColor: "#16191e", width: "100%", borderRadius: 24, padding: 16, borderWidth: 1, borderColor: "#ffffff04", gap: 10 },
+  insightCard: { backgroundColor: "#16191e", flex: 1, borderRadius: 24, padding: 16, borderWidth: 1, borderColor: "#ffffff04", gap: 10 },
+  rawCard: { backgroundColor: "#16191e", width: "100%", borderRadius: 24, padding: 16, borderWidth: 1, borderColor: "#ffffff04", gap: 10 },
   cardHeaderInline: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 },
-  cardLabelText: { fontSize: 12, fontWeight: "600", color: "#94a3b8" },
-  cardMainValueText: { fontSize: 26, fontWeight: "800", color: "#ffffff", letterSpacing: -0.5, marginTop: 4 },
-  cardUnitText: { fontSize: 12, fontWeight: "600", color: "#64748b", marginTop: -2 },
+  cardLabelText: { fontSize: 11, fontWeight: "600", color: "#94a3b8" },
+  cardMainValueText: { fontSize: 22, fontWeight: "800", color: "#ffffff", letterSpacing: -0.5, marginTop: 4 },
+  cardUnitText: { fontSize: 11, fontWeight: "600", color: "#64748b", marginTop: -2 },
   vectorContainer: { height: 44, justifyContent: "center", alignItems: "center", marginVertical: 6 },
   cardFooterText: { fontSize: 10, fontWeight: "500", color: "#475569", lineHeight: 13 },
   bannerInsightCard: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#16191e", padding: 16, borderRadius: 24, marginBottom: 12, borderWidth: 1, borderColor: "#ffffff04" },

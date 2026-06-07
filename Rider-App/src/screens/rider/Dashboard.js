@@ -1,76 +1,75 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   ActivityIndicator,
-  ScrollView,
+  FlatList,
   Text,
+  StatusBar,
+  Platform,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ArrowUpRight, Inbox } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabaseClient";
+import { useThemeStore } from "../../store/themeStore";
 import {
   startTrackingEngine,
   stopTrackingEngine,
 } from "../../services/locationManager";
 import DashboardHeader from "../../components/rider/DashboardHeader";
-import { ArrowUpRight } from "lucide-react-native";
 import RiderOrderCard from "../../components/rider/RiderOrderCard";
-import { useThemeStore } from "../../store/themeStore";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-function getMonday(d) {
-  const date = new Date(d);
-  const day = date.getDay();
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-  date.setDate(diff);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
-function buildWeekDays(fromMonday) {
-  return Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(fromMonday);
-    d.setDate(fromMonday.getDate() + i);
-    return {
-      day: DAYS[d.getDay()],
-      num: d.getDate(),
-      date: d.toISOString().split("T")[0],
-    };
-  });
-}
 
 export default function DashboardScreen({ navigation }) {
   const { user } = useAuth();
   const { colors, isDarkMode } = useThemeStore();
+  const insets = useSafeAreaInsets();
+
   const [isOnline, setIsOnline] = useState(false);
   const [syncing, setSyncing] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [weekStart, setWeekStart] = useState(getMonday(new Date()));
+  const [deliveryOrders, setDeliveryOrders] = useState([]);
+  const [profileName, setProfileName] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  
+  // Date tracking matrices calculated directly on initialization blocks
+  const [weekStart, setWeekStart] = useState(() => {
+    const today = new Date();
+    const day = today.getDay();
+    const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(today.setDate(diff));
+    monday.setHours(0, 0, 0, 0);
+    return monday;
+  });
+
   const [selectedDayIndex, setSelectedDayIndex] = useState(() => {
     const today = new Date();
     const dow = today.getDay();
     return dow === 0 ? 5 : dow - 1;
   });
+
   const [dailySummary, setDailySummary] = useState({
     distanceKm: "0.0",
     earnings: 0,
     completedDrops: 0,
     cancelledRate: 0,
   });
-  const [deliveryOrders, setDeliveryOrders] = useState([]);
-  const [profileName, setProfileName] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState("");
 
-  const calendarDays = buildWeekDays(weekStart);
-  const monthLabel = weekStart.toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
+  // Calculate days array matching the current tracking state
+  const calendarDays = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    return {
+      day: DAYS[d.getDay()],
+      num: d.getDate(),
+      date: d.toISOString().split("T")[0],
+    };
   });
-  const selectedDate =
-    calendarDays[selectedDayIndex]?.date ||
-    new Date().toISOString().split("T")[0];
 
-  async function fetchCurrentStatus() {
+  const selectedDate = calendarDays[selectedDayIndex]?.date || new Date().toISOString().split("T")[0];
+
+  const fetchCurrentStatus = useCallback(async () => {
     if (!user?.id) return;
     try {
       const { data, error } = await supabase
@@ -80,7 +79,6 @@ export default function DashboardScreen({ navigation }) {
         .maybeSingle();
 
       if (error) throw error;
-
       if (data) {
         setIsOnline(data.is_rider_online);
         if (data.is_rider_online) {
@@ -88,16 +86,13 @@ export default function DashboardScreen({ navigation }) {
         }
       }
     } catch (err) {
-      console.warn(
-        "[Dashboard] System fallback reading presence state:",
-        err.message,
-      );
+      console.warn("[Dashboard] Fallback capturing state presence:", err.message);
     } finally {
       setSyncing(false);
     }
-  }
+  }, [user?.id]);
 
-  async function fetchProfileName() {
+  const fetchProfileName = useCallback(async () => {
     if (!user?.id) return;
     try {
       const { data, error } = await supabase
@@ -112,11 +107,11 @@ export default function DashboardScreen({ navigation }) {
         if (data.avatar_url) setAvatarUrl(data.avatar_url);
       }
     } catch (err) {
-      console.warn("[Dashboard] Failed to fetch profile:", err.message);
+      console.warn("[Dashboard] Profile query run failure:", err.message);
     }
-  }
+  }, [user?.id]);
 
-  async function fetchUnreadCount() {
+  const fetchUnreadCount = useCallback(async () => {
     if (!user?.id) return;
     try {
       const { count, error } = await supabase
@@ -128,12 +123,60 @@ export default function DashboardScreen({ navigation }) {
       if (error) throw error;
       setUnreadCount(count || 0);
     } catch (err) {
-      console.warn(
-        "[Dashboard] Unread database counter lookup failure:",
-        err.message,
-      );
+      console.warn("[Dashboard] Notification lookup breakdown:", err.message);
     }
-  }
+  }, [user?.id]);
+
+  const fetchDashboardMetrics = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const startOfDay = `${selectedDate}T00:00:00`;
+      const endOfDay = `${selectedDate}T23:59:59`;
+
+      const { data: orders, error: ordersError } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("rider_id", user.id)
+        .gte("created_at", startOfDay)
+        .lte("created_at", endOfDay);
+
+      if (ordersError) throw ordersError;
+
+      const validOrders = orders?.filter((o) =>
+        ["assigned", "picked_up", "in_transit", "delivered"].includes(o.status)
+      ) || [];
+      
+      setDeliveryOrders(
+        validOrders.sort((a, b) => (a.route_sequence || 0) - (b.route_sequence || 0))
+      );
+
+      const completedDrops = orders?.filter((o) => o.status === "delivered").length || 0;
+      const cancelledCount = orders?.filter((o) => o.status === "cancelled").length || 0;
+      const totalBookings = orders?.length || 0;
+      const cancelledRate = totalBookings > 0 ? Math.round((cancelledCount / totalBookings) * 100) : 0;
+
+      const { data: revenue, error: revenueError } = await supabase
+        .from("revenue")
+        .select("amount")
+        .eq("rider_id", user.id)
+        .gte("order_completed_at", startOfDay)
+        .lte("order_completed_at", endOfDay);
+
+      if (revenueError) throw revenueError;
+
+      const earnings = revenue?.reduce((sum, r) => sum + Number(r.amount), 0) || 0;
+      const distanceKm = completedDrops * 5.4;
+
+      setDailySummary({
+        distanceKm: distanceKm.toFixed(1),
+        earnings,
+        completedDrops: totalBookings,
+        cancelledRate,
+      });
+    } catch (err) {
+      console.warn("[Dashboard] Analytics computation failure:", err.message);
+    }
+  }, [user?.id, selectedDate]);
 
   useEffect(() => {
     if (!user) {
@@ -147,7 +190,7 @@ export default function DashboardScreen({ navigation }) {
     return () => {
       stopTrackingEngine();
     };
-  }, [user]);
+  }, [user, fetchCurrentStatus, fetchUnreadCount, fetchProfileName]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -169,7 +212,11 @@ export default function DashboardScreen({ navigation }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id]);
+  }, [user?.id, fetchUnreadCount]);
+
+  useEffect(() => {
+    fetchDashboardMetrics();
+  }, [fetchDashboardMetrics]);
 
   const toggleAvailabilityState = async () => {
     const nextState = !isOnline;
@@ -195,179 +242,207 @@ export default function DashboardScreen({ navigation }) {
       if (error) throw error;
       setIsOnline(nextState);
     } catch (err) {
-      console.warn("[Dashboard] State push sync layout error:", err.message);
+      console.warn("[Dashboard] Presence sync pipeline failed:", err.message);
     } finally {
       setSyncing(false);
     }
   };
 
-  const handleMonthPrev = () => {
-    setWeekStart((prev) => {
-      const d = new Date(prev);
-      d.setDate(d.getDate() - 7);
-      return d;
-    });
-  };
-
-  const handleMonthNext = () => {
-    setWeekStart((prev) => {
-      const d = new Date(prev);
-      d.setDate(d.getDate() + 7);
-      return d;
-    });
-  };
-
-  const handleSelectDay = (index) => {
-    setSelectedDayIndex(index);
-  };
-
-  async function fetchDashboardMetrics() {
-    if (!user?.id) return;
-    try {
-      const startOfDay = `${selectedDate}T00:00:00`;
-      const endOfDay = `${selectedDate}T23:59:59`;
-
-      // Fetch day specific order manifest rows
-      const { data: orders, error: ordersError } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("rider_id", user.id)
-        .gte("created_at", startOfDay)
-        .lte("created_at", endOfDay);
-
-      if (ordersError) throw ordersError;
-
-      const validOrders = orders?.filter((o) =>
-        ["assigned", "picked_up", "in_transit", "delivered"].includes(o.status)
-      ) || [];
-      
-      setDeliveryOrders(
-        validOrders.sort((a, b) => (a.route_sequence || 0) - (b.route_sequence || 0))
-      );
-
-      const completedDrops = orders?.filter((o) => o.status === "delivered").length || 0;
-      const cancelledCount = orders?.filter((o) => o.status === "cancelled").length || 0;
-      const totalBookings = orders?.length || 0;
-      
-      const cancelledRate = totalBookings > 0 ? Math.round((cancelledCount / totalBookings) * 100) : 0;
-
-      // Fetch transaction parameters
-      const { data: revenue, error: revenueError } = await supabase
-        .from("revenue")
-        .select("amount")
-        .eq("rider_id", user.id)
-        .gte("order_completed_at", startOfDay)
-        .lte("order_completed_at", endOfDay);
-
-      if (revenueError) throw revenueError;
-
-      const earnings = revenue?.reduce((sum, r) => sum + Number(r.amount), 0) || 0;
-      const distanceKm = completedDrops * 5.4;
-
-      setDailySummary({
-        distanceKm: distanceKm.toFixed(1),
-        earnings,
-        completedDrops: totalBookings,
-        cancelledRate,
-      });
-    } catch (err) {
-      console.warn("[Dashboard] Metrics parsing failed:", err.message);
-    }
-  }
-
-  useEffect(() => {
-    fetchDashboardMetrics();
-  }, [user?.id, selectedDate]);
-
   if (syncing) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.backgroundSecondary, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="small" color={colors.warning} />
+      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="small" color={colors.primary} />
       </View>
     );
   }
 
-  const themedStyles = {
-    sectionTitleText: { fontSize: 22, fontWeight: "700", color: colors.text, letterSpacing: -0.4 },
-    pillCountBadge: { backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 16, borderWidth: 1, borderColor: colors.borderLight },
-    pillCountText: {
-      color: colors.textOnPrimary,
-      fontSize: 13,
-      fontWeight: "700",
-      opacity: 0.9,
+  // --- Dynamic Style Matrix mapped direct to application theme context ---
+  const ui = {
+    scrollLayout: {
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: Platform.OS === "ios" ? 90 + insets.bottom : 105,
     },
-    darkMetricCard: { flex: 1, borderRadius: 28, padding: 20, minHeight: 155, justifyContent: "space-between", borderWidth: 1, borderColor: colors.borderLight, shadowColor: colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 3, backgroundColor: colors.backgroundCard },
-    darkCardTitle: { fontSize: 16, fontWeight: "700", color: colors.text },
-    darkCardSubtitle: { fontSize: 13, fontWeight: "500", color: colors.textSecondary, marginTop: 2 },
-    darkCardValue: { fontSize: 34, fontWeight: "700", color: colors.primary, lineHeight: 40 },
-    darkArrowCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primaryLight, justifyContent: "center", alignItems: "center" },
-    emptyContainerFallback: { padding: 32, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryLight, borderRadius: 24 },
-    fallbackMessageText: { color: colors.textSecondary, fontSize: 13, fontWeight: "600" },
-    scrollContent: { flex: 1, paddingHorizontal: 20 },
     sectionHeader: {
       flexDirection: "row",
       alignItems: "center",
-      marginTop: 24,
-      marginBottom: 16,
-      gap: 12,
+      marginTop: 20,
+      marginBottom: 14,
+      gap: 10,
+    },
+    sectionTitleText: {
+      fontSize: 18,
+      fontWeight: "800",
+      color: colors.text,
+      letterSpacing: -0.4,
+    },
+    pillCountBadge: {
+      backgroundColor: "rgba(250, 100, 50, 0.12)",
+      paddingHorizontal: 10,
+      paddingVertical: 3,
+      borderRadius: 100,
+    },
+    pillCountText: {
+      color: colors.primary,
+      fontSize: 11,
+      fontWeight: "800",
     },
     statsGrid: {
       flexDirection: "row",
-      gap: 14,
+      gap: 12,
       width: "100%",
     },
     accentMetricCard: {
       flex: 1,
       backgroundColor: colors.primary,
-      borderRadius: 28,
-      padding: 20,
-      minHeight: 155,
+      borderRadius: 24,
+      padding: 16,
+      minHeight: 130,
       justifyContent: "space-between",
-      shadowColor: colors.shadow,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.1,
-      shadowRadius: 6,
-      elevation: 3,
+      ...Platform.select({
+        ios: {
+          shadowColor: colors.primary,
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.2,
+          shadowRadius: 10,
+        },
+        android: { elevation: 4 },
+      }),
     },
     accentCardTitle: {
-      fontSize: 16,
+      fontSize: 13,
       fontWeight: "700",
       color: colors.textOnPrimary,
+      opacity: 0.8,
     },
-    accentCardSubtitle: {
-      fontSize: 13,
-      fontWeight: "500",
+    accentCardValue: {
+      fontSize: 32,
+      fontWeight: "900",
       color: colors.textOnPrimary,
-      opacity: 0.6,
-      marginTop: 2,
+      letterSpacing: -1,
+    },
+    lightArrowCircle: {
+      width: 32,
+      height: 32,
+      borderRadius: 10,
+      backgroundColor: "rgba(255, 255, 255, 0.18)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    darkMetricCard: {
+      flex: 1,
+      backgroundColor: colors.backgroundCard,
+      borderRadius: 24,
+      padding: 16,
+      minHeight: 130,
+      justifyContent: "space-between",
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      ...Platform.select({
+        ios: {
+          shadowColor: colors.shadow,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: isDarkMode ? 0.2 : 0.03,
+          shadowRadius: 8,
+        },
+        android: { elevation: 3 },
+      }),
+    },
+    darkCardTitle: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: colors.textMuted,
+    },
+    darkCardValue: {
+      fontSize: 32,
+      fontWeight: "900",
+      color: colors.text,
+      letterSpacing: -1,
+    },
+    darkArrowCircle: {
+      width: 32,
+      height: 32,
+      borderRadius: 10,
+      backgroundColor: colors.backgroundSecondary,
+      justifyContent: "center",
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: colors.borderLight,
     },
     cardMetricsFooter: {
       flexDirection: "row",
       justifyContent: "space-between",
-      alignItems: "flex-end",
-    },
-    accentCardValue: {
-      fontSize: 38,
-      fontWeight: "700",
-      color: colors.textOnPrimary,
-      lineHeight: 42,
-    },
-    lightArrowCircle: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: colors.textOnPrimary,
-      justifyContent: "center",
       alignItems: "center",
     },
-    ordersListWrapper: {
-      marginTop: 2,
+    emptyContainerFallback: {
+      padding: 36,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.backgroundCard,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      marginTop: 4,
+    },
+    fallbackMessageText: {
+      color: colors.textMuted,
+      fontSize: 13,
+      fontWeight: "600",
+      marginTop: 8,
+      textAlign: "center",
     },
   };
 
+  // Pre-calculate view elements to keep FlatList performant
+  const renderDashboardSections = () => (
+    <View>
+      {/* --- STATS SECTION --- */}
+      <View style={ui.sectionHeader}>
+        <Text style={ui.sectionTitleText}>Performance Hub</Text>
+      </View>
+
+      <View style={ui.statsGrid}>
+        <View style={ui.accentMetricCard}>
+          <Text style={ui.accentCardTitle}>Total Bookings</Text>
+          <View style={ui.cardMetricsFooter}>
+            <Text style={ui.accentCardValue}>{dailySummary.completedDrops}</Text>
+            <View style={ui.lightArrowCircle}>
+              <ArrowUpRight size={16} color={colors.textOnPrimary} strokeWidth={2.5} />
+            </View>
+          </View>
+        </View>
+
+        <View style={ui.darkMetricCard}>
+          <Text style={ui.darkCardTitle}>Money Earned</Text>
+          <View style={ui.cardMetricsFooter}>
+            <Text style={ui.darkCardValue}>¢{dailySummary.earnings.toFixed(2)}</Text>
+            <View style={ui.darkArrowCircle}>
+              <ArrowUpRight size={16} color={colors.primary} strokeWidth={2.5} />
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* --- BOOKINGS RUN-LIST HEADER --- */}
+      <View style={[ui.sectionHeader, { marginTop: 24 }]}>
+        <Text style={ui.sectionTitleText}>Selected Manifest</Text>
+        <View style={ui.pillCountBadge}>
+          <Text style={ui.pillCountText}>
+            {deliveryOrders.length < 10 ? `0${deliveryOrders.length}` : deliveryOrders.length} jobs
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* Target UI layout header integration */}
+      <StatusBar
+        barStyle={isDarkMode ? "light-content" : "dark-content"}
+        backgroundColor="transparent"
+        translucent
+      />
+
       <DashboardHeader
         isOnline={isOnline}
         unreadCount={unreadCount}
@@ -375,78 +450,30 @@ export default function DashboardScreen({ navigation }) {
         onNavigateNotifications={() => navigation.navigate("Notifications")}
         onNavigateProfile={() => navigation.navigate("Profile")}
         weekStart={weekStart}
-        onMonthPrev={handleMonthPrev}
-        onMonthNext={handleMonthNext}
+        onMonthPrev={() => setWeekStart(p => new Date(p.setDate(p.getDate() - 7)))}
+        onMonthNext={() => setWeekStart(p => new Date(p.setDate(p.getDate() + 7)))}
         calendarDays={calendarDays}
         selectedDayIndex={selectedDayIndex}
-        onSelectDay={handleSelectDay}
+        onSelectDay={setSelectedDayIndex}
         profileName={profileName}
         avatarUri={avatarUrl}
       />
 
-      <ScrollView style={themedStyles.scrollContent} showsVerticalScrollIndicator={false}>
-          
-        {/* --- STATS SECTION --- */}
-        <View style={themedStyles.sectionHeader}>
-          <Text style={themedStyles.sectionTitleText}>Your Stats</Text>
-        </View>
-
-        {/* Asymmetric Image Analytics Metrics Block */}
-        <View style={themedStyles.statsGrid}>
-          {/* Accent Display Box */}
-          <View style={themedStyles.accentMetricCard}>
-            <View>
-              <Text style={themedStyles.accentCardTitle}>Total Bookings</Text>
-              <Text style={themedStyles.accentCardSubtitle}>Today</Text>
-            </View>
-            <View style={themedStyles.cardMetricsFooter}>
-              <Text style={themedStyles.accentCardValue}>{dailySummary.completedDrops}</Text>
-              <View style={themedStyles.lightArrowCircle}>
-                <ArrowUpRight size={18} color={colors.textOnPrimary} strokeWidth={2.5} />
-              </View>
-            </View>
+      {/* Core FlatList Engine replacing lazy ScrollView layout logic */}
+      <FlatList
+        data={deliveryOrders}
+        keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={ui.scrollLayout}
+        ListHeaderComponent={renderDashboardSections}
+        renderItem={({ item }) => <RiderOrderCard order={item} />}
+        ListEmptyComponent={
+          <View style={ui.emptyContainerFallback}>
+            <Inbox size={24} color={colors.textDisabled} />
+            <Text style={ui.fallbackMessageText}>No deliveries logs found for this calendar target.</Text>
           </View>
-
-          {/* Muted Display Box */}
-          <View style={themedStyles.darkMetricCard}>
-            <View>
-              <Text style={themedStyles.darkCardTitle}>Money Made</Text>
-              <Text style={themedStyles.darkCardSubtitle}>Today</Text>
-            </View>
-            <View style={themedStyles.cardMetricsFooter}>
-              <Text style={themedStyles.darkCardValue}>₵ {dailySummary.earnings.toFixed(1)}</Text>
-              <View style={themedStyles.darkArrowCircle}>
-                <ArrowUpRight size={18} color={colors.primary} strokeWidth={2.5} />
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* --- BOOKINGS RUN-LIST SECTION --- */}
-        <View style={[themedStyles.sectionHeader, { marginTop: 28 }]}>
-          <Text style={themedStyles.sectionTitleText}>Todays Bookings</Text>
-          <View style={themedStyles.pillCountBadge}>
-            <Text style={themedStyles.pillCountText}>
-              {deliveryOrders.length < 10 ? `0${deliveryOrders.length}` : deliveryOrders.length}
-            </Text>
-          </View>
-        </View>
-
-        {/* Output Dispatch Mapping */}
-        <View style={themedStyles.ordersListWrapper}>
-          {deliveryOrders.length === 0 ? (
-            <View style={themedStyles.emptyContainerFallback}>
-              <Text style={themedStyles.fallbackMessageText}>No bookings queued for this day.</Text>
-            </View>
-          ) : (
-            deliveryOrders.map((item) => (
-              <RiderOrderCard key={item.id} order={item} />
-            ))
-          )}
-        </View>
-
-        <View style={{ height: 40 }} />
-      </ScrollView>
+        }
+      />
     </View>
   );
 }

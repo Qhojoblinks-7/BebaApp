@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -14,6 +14,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ArrowLeft, Globe, Volume2, Palette, MapPin, Zap, Truck, ChevronRight } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
@@ -34,70 +35,13 @@ const defaultPreferences = {
 export default function PreferencesScreen({ navigation }) {
   const { user } = useAuth();
   const { colors, setTheme, isDarkMode } = useThemeStore();
+  const insets = useSafeAreaInsets();
+
   const [preferences, setPreferences] = useState(defaultPreferences);
   const [editingField, setEditingField] = useState(null);
   const [tempValue, setTempValue] = useState("");
 
-  const themedStyles = {
-    container: { flex: 1, backgroundColor: colors.background },
-    headerRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingHorizontal: 18,
-      paddingTop: 24,
-      paddingBottom: 14,
-      backgroundColor: colors.background,
-    },
-    sectionCard: {
-      backgroundColor: colors.backgroundCard,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: colors.borderLight,
-      overflow: "hidden",
-    },
-    modalCard: {
-      width: "100%",
-      backgroundColor: colors.backgroundCard,
-      borderRadius: 20,
-      padding: 24,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    modalInput: {
-      backgroundColor: colors.backgroundInput,
-      borderRadius: 12,
-      paddingVertical: 14,
-      paddingHorizontal: 16,
-      color: colors.text,
-      fontSize: 15,
-      borderWidth: 1,
-      borderColor: colors.border,
-      marginBottom: 24,
-    },
-    modalCancelBtn: {
-      flex: 1,
-      paddingVertical: 14,
-      borderRadius: 12,
-      backgroundColor: colors.backgroundInput,
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    modalSaveBtn: {
-      flex: 1,
-      paddingVertical: 14,
-      borderRadius: 12,
-      backgroundColor: colors.primary,
-      alignItems: "center",
-    },
-  };
-
-  useEffect(() => {
-    loadPreferences();
-  }, [user?.id]);
-
-  const loadPreferences = async () => {
+  const loadPreferences = useCallback(async () => {
     try {
       const saved = await AsyncStorage.getItem(STORAGE_KEY);
       if (saved) {
@@ -106,7 +50,7 @@ export default function PreferencesScreen({ navigation }) {
         if (parsed.theme) setTheme(parsed.theme);
       }
     } catch (err) {
-      console.warn("Failed to load local preferences:", err.message);
+      console.warn("[Preferences] Failed to extract persistent storage matrix:", err.message);
     }
 
     if (!user?.id) return;
@@ -133,9 +77,13 @@ export default function PreferencesScreen({ navigation }) {
         setTheme(loadedPrefs.theme);
       }
     } catch (err) {
-      console.warn("Failed to load preferences from server:", err.message);
+      console.warn("[Preferences] Failed to fetch remote context maps:", err.message);
     }
-  };
+  }, [user?.id, setTheme]);
+
+  useEffect(() => {
+    loadPreferences();
+  }, [loadPreferences]);
 
   const savePreferences = async (newPrefs) => {
     if (!user?.id) return;
@@ -159,8 +107,8 @@ export default function PreferencesScreen({ navigation }) {
       if (error) throw error;
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newPrefs));
     } catch (err) {
-      console.warn("Failed to save preferences:", err.message);
-      Alert.alert("Error", "Failed to save preferences");
+      console.warn("[Preferences] Sync pipeline exception encountered:", err.message);
+      Alert.alert("Connection Alert", "Settings cached locally, but cloud profiles could not update.");
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newPrefs));
     }
   };
@@ -177,18 +125,19 @@ export default function PreferencesScreen({ navigation }) {
     if (key === "volume" || key === "maxDistance") {
       const num = parseInt(value, 10);
       if (isNaN(num)) {
-        Alert.alert("Error", "Please enter a valid number");
+        Alert.alert("Invalid Input", "Please supply a standard numeric argument.");
         return;
       }
       value = num;
     } else if (key === "autoAccept") {
-      value = tempValue === "true";
+      value = tempValue === "true" || tempValue === true;
     }
 
     const newPrefs = { ...preferences, [key]: value };
     setPreferences(newPrefs);
     setEditingField(null);
     setTempValue("");
+    
     await savePreferences(newPrefs);
 
     if (key === "theme") {
@@ -199,13 +148,13 @@ export default function PreferencesScreen({ navigation }) {
   const dropDownOptions = (field) => {
     switch (field) {
       case "theme":
-        return { label: "Theme", options: ["dark", "light", "system"] };
+        return { label: "Theme Selection", options: ["dark", "light", "system"] };
       case "language":
-        return { label: "Language", options: ["English", "Twi", "Ewe", "Ga", "Hausa"] };
+        return { label: "Regional Language", options: ["English", "Twi", "Ewe", "Ga", "Hausa"] };
       case "defaultVehicle":
-        return { label: "Default Vehicle", options: ["Motorcycle", "Bicycle", "Car", "Van"] };
+        return { label: "Default Operational Mode", options: ["Motorcycle", "Bicycle", "Car", "Van"] };
       case "autoAccept":
-        return { label: "Auto-Accept", options: [true, false] };
+        return { label: "Auto-Accept Pipeline", options: [true, false] };
       default:
         return { label: field, options: [] };
     }
@@ -214,33 +163,31 @@ export default function PreferencesScreen({ navigation }) {
   const getDisplayValue = (field, value) => {
     if (field === "volume" && typeof value === "number") return `${value}%`;
     if (field === "maxDistance" && typeof value === "number") return `${value} km`;
-    if (field === "defaultVehicle") return value;
-    if (field === "theme") return value.charAt(0).toUpperCase() + value.slice(1);
-    if (field === "language") return value;
+    if (field === "theme" && typeof value === "string") return value.charAt(0).toUpperCase() + value.slice(1);
     if (field === "autoAccept") return value ? "On" : "Off";
-    return JSON.stringify(value);
+    return value?.toString() || "";
   };
 
   const preferenceGroups = [
     {
       group: "Appearance",
       items: [
-        { id: "theme", icon: Palette, color: "#a855f7", label: "Theme", desc: "App appearance" },
-        { id: "language", icon: Globe, color: "#115e59", label: "Language", desc: "Display language" },
+        { id: "theme", icon: Palette, color: "#a855f7", label: "Theme", desc: "Global layout interface shell" },
+        { id: "language", icon: Globe, color: "#115e59", label: "Language", desc: "Active localization translation" },
       ],
     },
     {
       group: "Audio & Feedback",
       items: [
-        { id: "volume", icon: Volume2, color: "#6366f1", label: "Volume", desc: "App sound level" },
+        { id: "volume", icon: Volume2, color: "#6366f1", label: "Volume", desc: "Notification audio system metrics" },
       ],
     },
     {
-      group: "Delivery",
+      group: "Delivery Options",
       items: [
-        { id: "defaultVehicle", icon: Truck, color: "#facc15", label: "Default Vehicle", desc: "Your primary delivery mode" },
-        { id: "maxDistance", icon: MapPin, color: "#10b981", label: "Max Distance", desc: "Willing travel distance" },
-        { id: "autoAccept", icon: Zap, color: "#ef4444", label: "Auto-Accept", desc: "Automatically accept jobs" },
+        { id: "defaultVehicle", icon: Truck, color: "#facc15", label: "Default Vehicle", desc: "Primary fleet transit resource" },
+        { id: "maxDistance", icon: MapPin, color: "#10b981", label: "Max Distance", desc: "Operational boundary limitations" },
+        { id: "autoAccept", icon: Zap, color: "#ef4444", label: "Auto-Accept", desc: "Instant deployment workflows" },
       ],
     },
   ];
@@ -248,55 +195,69 @@ export default function PreferencesScreen({ navigation }) {
   const renderEditorModal = () => {
     if (!editingField) return null;
     const { label, options } = dropDownOptions(editingField);
-    const current = preferences[editingField];
+    const current = tempValue !== "" ? tempValue : preferences[editingField];
 
     return (
       <Modal visible transparent animationType="fade" onRequestClose={() => setEditingField(null)}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={themedStyles.modalCard}>
-                <Text style={styles.modalTitle}>{label}</Text>
+            <KeyboardAvoidingView 
+              behavior={Platform.OS === "ios" ? "padding" : "height"} 
+              style={{ width: "100%", alignItems: "center" }}
+            >
+              <TouchableWithoutFeedback>
+                <View style={[styles.modalCard, { backgroundColor: colors.backgroundCard, borderColor: colors.border || "rgba(255,255,255,0.08)" }]}>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>{label}</Text>
 
-                {options.length > 0 ? (
-                  options.map((opt) => {
-                    const selected = current === opt;
-                    return (
-                      <TouchableOpacity
-                        key={opt}
-                        style={styles.optionRow}
-                        onPress={() => setTempValue(opt)}
-                      >
-                        <View style={[styles.radioOuter, selected && styles.radioOuterSelected]}>
-                          {selected && <View style={styles.radioInner} />}
-                        </View>
-                        <Text style={[styles.optionLabel, selected && styles.optionLabelSelected]}>
-                          {typeof opt === "boolean" ? (opt ? "On" : "Off") : opt}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })
-                ) : (
-                  <TextInput
-                    value={tempValue}
-                    onChangeText={setTempValue}
-                    autoFocus
-                    keyboardType={editingField === "volume" || editingField === "maxDistance" ? "numeric" : "default"}
-                    style={themedStyles.modalInput}
-                    placeholderTextColor={colors.textSecondary}
-                  />
-                )}
+                  {options.length > 0 ? (
+                    <View style={{ marginBottom: 20 }}>
+                      {options.map((opt) => {
+                        const selected = current === opt;
+                        return (
+                          <TouchableOpacity
+                            key={opt.toString()}
+                            style={styles.optionRow}
+                            onPress={() => setTempValue(opt)}
+                            activeOpacity={0.7}
+                          >
+                            <View style={[styles.radioOuter, { borderColor: colors.textMuted || "#475569" }, selected && { borderColor: colors.primary || "#115e59" }]}>
+                              {selected && <View style={[styles.radioInner, { backgroundColor: colors.primary || "#115e59" }]} />}
+                            </View>
+                            <Text style={[styles.optionLabel, { color: colors.textSecondary }, selected && { color: colors.primary || "#115e59", fontWeight: "700" }]}>
+                              {typeof opt === "boolean" ? (opt ? "On" : "Off") : opt.toString().charAt(0).toUpperCase() + opt.toString().slice(1)}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ) : (
+                    <TextInput
+                      value={tempValue.toString()}
+                      onChangeText={setTempValue}
+                      autoFocus
+                      keyboardType={editingField === "volume" || editingField === "maxDistance" ? "numeric" : "default"}
+                      style={[styles.modalInput, { backgroundColor: colors.backgroundInput || "rgba(0,0,0,0.2)", color: colors.text, borderColor: colors.border }]}
+                      placeholderTextColor={colors.textMuted || "#64748b"}
+                    />
+                  )}
 
-                <View style={styles.modalActions}>
-                  <TouchableOpacity style={themedStyles.modalCancelBtn} onPress={() => setEditingField(null)}>
-                    <Text style={styles.modalCancelText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={themedStyles.modalSaveBtn} onPress={applyEdit}>
-                    <Text style={styles.modalSaveText}>Save</Text>
-                  </TouchableOpacity>
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity 
+                      style={[styles.modalCancelBtn, { backgroundColor: colors.backgroundInput || "rgba(0,0,0,0.15)", borderColor: colors.border }]} 
+                      onPress={() => setEditingField(null)}
+                    >
+                      <Text style={[styles.modalCancelText, { color: colors.textSecondary || "#94a3b8" }]}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.modalSaveBtn, { backgroundColor: colors.primary || "#115e59" }]} 
+                      onPress={applyEdit}
+                    >
+                      <Text style={styles.modalSaveText}>Save</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            </TouchableWithoutFeedback>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
           </View>
         </TouchableWithoutFeedback>
       </Modal>
@@ -304,52 +265,55 @@ export default function PreferencesScreen({ navigation }) {
   };
 
   return (
-    <View style={themedStyles.container}>
-      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={colors.background} />
-      <View style={themedStyles.headerRow}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation?.goBack()}
-          activeOpacity={0.7}
-        >
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor="transparent" translucent />
+      
+      <View style={[
+        styles.headerRow, 
+        { paddingTop: Platform.OS === "ios" ? Math.max(insets.top, 16) : StatusBar.currentHeight + 14 }
+      ]}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation?.goBack()} activeOpacity={0.7}>
           <ArrowLeft size={22} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitleText}>Preferences</Text>
+        <Text style={[styles.headerTitleText, { color: colors.text }]}>Preferences</Text>
         <View style={styles.headerRightSpacer} />
       </View>
 
       <ScrollView
         style={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: Platform.OS === "ios" ? insets.bottom + 30 : 40 }}
       >
-        <Text style={styles.descText}>
+        <Text style={[styles.descText, { color: colors.textMuted || "#64748b" }]}>
           Customize your app experience and delivery defaults.
         </Text>
 
         {preferenceGroups.map((group) => (
           <View key={group.group} style={styles.sectionBlock}>
-            <Text style={styles.sectionLabel}>{group.group}</Text>
-            <View style={themedStyles.sectionCard}>
+            <Text style={[styles.sectionLabel, { color: colors.textMuted || "#64748b" }]}>{group.group}</Text>
+            <View style={[styles.sectionCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight || "rgba(255,255,255,0.04)" }]}>
               {group.items.map((item, idx) => (
                 <React.Fragment key={item.id}>
-                  {idx > 0 && <View style={[styles.rowDivider, { backgroundColor: colors.borderLight }]} />}
+                  {idx > 0 && <View style={[styles.rowDivider, { backgroundColor: colors.borderLight || "rgba(255,255,255,0.06)" }]} />}
                   <TouchableOpacity
                     style={styles.preferenceRow}
                     activeOpacity={0.7}
                     onPress={() => openEditor(item.id, preferences[item.id])}
                   >
                     <View style={styles.rowLeft}>
-                      <View style={[styles.iconBadge, { backgroundColor: `${item.color}20` }]}>
-                        <item.icon size={16} color={item.color} />
+                      <View style={[styles.iconBadge, { backgroundColor: `${item.color}15` }]}>
+                        <item.icon size={15} color={item.color} />
                       </View>
                       <View style={styles.rowTexts}>
-                        <Text style={styles.rowLabel}>{item.label}</Text>
-                        <Text style={styles.rowDesc}>{item.desc}</Text>
+                        <Text style={[styles.rowLabel, { color: colors.text }]}>{item.label}</Text>
+                        <Text style={[styles.rowDesc, { color: colors.textMuted || "#64748b" }]}>{item.desc}</Text>
                       </View>
                     </View>
                     <View style={styles.rowValueWrap}>
-                      <Text style={styles.rowValue}>{getDisplayValue(item.id, preferences[item.id])}</Text>
-                      <ChevronRight size={14} color="#64748b" />
+                      <Text style={[styles.rowValue, { color: colors.textSecondary || "#94a3b8" }]}>
+                        {getDisplayValue(item.id, preferences[item.id])}
+                      </Text>
+                      <ChevronRight size={14} color={colors.textMuted || "#64748b"} />
                     </View>
                   </TouchableOpacity>
                 </React.Fragment>
@@ -357,8 +321,6 @@ export default function PreferencesScreen({ navigation }) {
             </View>
           </View>
         ))}
-
-        <View style={{ height: 40 }} />
       </ScrollView>
 
       {renderEditorModal()}
@@ -373,16 +335,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 18,
-    paddingTop: 24,
     paddingBottom: 14,
   },
   backButton: { width: 40, height: 40, justifyContent: "center", alignItems: "flex-start" },
-  headerTitleText: { fontSize: 18, fontWeight: "800", color: "#ffffff", letterSpacing: -0.3 },
+  headerTitleText: { fontSize: 18, fontWeight: "800", letterSpacing: -0.3 },
   headerRightSpacer: { width: 40 },
   scrollContent: { flex: 1, paddingHorizontal: 18 },
-  descText: { fontSize: 13, fontWeight: "500", color: "#64748b", marginTop: 8, marginBottom: 20 },
+  descText: { fontSize: 13, fontWeight: "500", marginTop: 8, marginBottom: 20 },
   sectionBlock: { marginBottom: 20 },
-  sectionLabel: { fontSize: 12, fontWeight: "700", color: "#64748b", letterSpacing: 0.4, marginBottom: 8, textTransform: "uppercase" },
+  sectionLabel: { fontSize: 12, fontWeight: "700", letterSpacing: 0.4, marginBottom: 8, textTransform: "uppercase" },
   sectionCard: {
     borderRadius: 20,
     borderWidth: 1,
@@ -393,7 +354,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     gap: 12,
   },
   rowLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
@@ -405,17 +366,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   rowTexts: { flex: 1, gap: 2 },
-  rowLabel: { fontSize: 14, fontWeight: "600", color: "#ffffff" },
-  rowDesc: { fontSize: 11, fontWeight: "500", color: "#64748b" },
+  rowLabel: { fontSize: 14, fontWeight: "600" },
+  rowDesc: { fontSize: 11, fontWeight: "500" },
   rowValueWrap: { flexDirection: "row", alignItems: "center", gap: 4 },
-  rowValue: { fontSize: 12, fontWeight: "700", color: "#94a3b8" },
+  rowValue: { fontSize: 13, fontWeight: "700" },
   rowDivider: { height: 1, marginLeft: 56 },
   modalOverlay: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.7)",
-    paddingHorizontal: 32,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 24,
   },
   modalCard: {
     width: "100%",
@@ -426,50 +387,39 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: "800",
-    color: "#ffffff",
     letterSpacing: -0.3,
     marginBottom: 16,
   },
   modalInput: {
     borderRadius: 12,
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     fontSize: 15,
     borderWidth: 1,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   optionRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 12,
     gap: 12,
   },
   radioOuter: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     borderWidth: 2,
-    borderColor: "#475569",
     justifyContent: "center",
     alignItems: "center",
   },
-  radioOuterSelected: {
-    borderColor: "#115e59",
-  },
   radioInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#115e59",
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   optionLabel: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#ffffff",
-  },
-  optionLabelSelected: {
-    color: "#115e59",
-    fontWeight: "700",
   },
   modalActions: {
     flexDirection: "row",
@@ -485,7 +435,6 @@ const styles = StyleSheet.create({
   modalCancelText: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#94a3b8",
   },
   modalSaveBtn: {
     flex: 1,
