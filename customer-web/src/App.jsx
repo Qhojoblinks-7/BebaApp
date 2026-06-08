@@ -5,7 +5,7 @@ import LandingScreen from './screens/LandingScreen'
 
 export default function App() {
   const [view, setView] = useState('landing')
-  const [lastOrderWaybill, setLastOrderWaybill] = useState('')
+  const [lastOrderWaybill, setLastOrderWaybill] = useState(null)
 
   return (
     <div className="fixed inset-0 bg-white">

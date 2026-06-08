@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,8 @@ const STATUS_CONFIG = {
 };
 
 export default function TrackerScreen({ initialWaybill = '', onBookAnother }) {
-  const [waybill, setWaybill] = useState(initialWaybill || '');
+  const safeInitial = typeof initialWaybill === 'string' && initialWaybill.trim().length > 0 ? initialWaybill.trim() : ''
+  const [waybill, setWaybill] = useState(safeInitial);
   const [searching, setSearching] = useState(false);
   const [order, setOrder] = useState(null);
   const [error, setError] = useState('');
@@ -21,93 +22,93 @@ export default function TrackerScreen({ initialWaybill = '', onBookAnother }) {
   const [riderStatusLoading, setRiderStatusLoading] = useState(false);
   const autoSearchDone = useRef(false);
 
-  const handleSearch = async (waybillOverride) => {
-    const cleanWaybill = (waybillOverride || waybill).trim().toUpperCase();
-    if (!cleanWaybill) return;
-    
+const handleSearch = useCallback(async (waybillOverride) => {
+    const raw = waybillOverride ?? waybill ?? ''
+    const cleanWaybill = String(raw).trim().toUpperCase()
+    console.log('[Tracker] Searching for waybill:', cleanWaybill)
+    if (!cleanWaybill) return
+
     setSearching(true);
     setError('');
     setRiderStatus(null);
-    
+
     try {
+      console.log('[Tracker] Query params:', { table: 'orders', column: 'order_id', value: cleanWaybill })
       const { data, error: supabaseError } = await supabase
         .from('orders')
         .select('*')
         .eq('order_id', cleanWaybill)
         .maybeSingle();
 
-      if (supabaseError) throw supabaseError;
+      console.log('[Tracker] Query result:', { data, error: supabaseError, waybill: cleanWaybill })
+
+      // If not found, try a broader search as fallback
+      if (!data && !supabaseError) {
+        console.log('[Tracker] Order not found by eq, trying ilike...')
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('orders')
+          .select('order_id, status, rider_id, customer_name, delivery_address')
+          .ilike('order_id', `%${cleanWaybill}%`)
+          .limit(5);
+        console.log('[Tracker] Fallback query result:', { fallbackData, fallbackError })
+      }
+
+      if (supabaseError) {
+        console.error('[Tracker] Order lookup error:', supabaseError);
+        throw supabaseError;
+      }
       if (data) {
         setOrder(data);
 
         if (data.rider_id) {
           setRiderStatusLoading(true);
-          const { data: statusData } = await supabase
+          const { data: statusData, error: statusError } = await supabase
             .from('rider_status')
             .select('rider_status')
             .eq('id', data.rider_id)
             .maybeSingle();
-          setRiderStatus(statusData?.rider_status || null);
+          if (statusError) {
+            console.error('[Tracker] Rider status lookup error:', statusError);
+          }
+          setRiderStatus(statusData?.rider_status || 'offline');
           setRiderStatusLoading(false);
         }
       } else {
-        setError('Waybill reference code not found.');
+        setError('Waybill reference code not found. Please verify the code or contact support.');
         setOrder(null);
       }
-    } catch {
+    } catch (err) {
+      console.error('[Tracker] Search error:', err);
       setError('System lookup interruption. Try again.');
     } finally {
       setSearching(false);
     }
-  };
-
-  // Centralized real-time listener for order status changes
-  useEffect(() => {
-    if (!order?.id) return;
-
-    // Normalize subscription name to avoid naming collisions
-    const channelName = `live_order_${order.id}`;
-    const orderSubscription = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${order.id}` },
-        (payload) => {
-          setOrder(payload.new);
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') console.log(`[Tracker] Live updates active for ${order.id}`);
-      });
-
-    return () => {
-      supabase.removeChannel(orderSubscription);
-    };
-  }, [order?.id]);
+  }, [waybill]);
 
   useEffect(() => {
     if (!initialWaybill || autoSearchDone.current) return;
     autoSearchDone.current = true;
     const timer = setTimeout(() => handleSearch(initialWaybill), 300);
     return () => clearTimeout(timer);
-  }, [initialWaybill]);
+  }, [initialWaybill, handleSearch]);
 
   useEffect(() => {
     if (!order?.rider_id) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRiderStatus(null);
       return;
     }
 
     const fetchRiderStatus = async () => {
       setRiderStatusLoading(true);
-      const { data } = await supabase
+      const { data, error: statusError } = await supabase
         .from('rider_status')
         .select('rider_status')
         .eq('id', order.rider_id)
         .maybeSingle();
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setRiderStatus(data?.rider_status || null);
+      if (statusError) {
+        console.error('[Tracker] Rider status fetch error:', statusError);
+      }
+      setRiderStatus(data?.rider_status || 'offline');
       setRiderStatusLoading(false);
     };
 
@@ -120,6 +121,7 @@ export default function TrackerScreen({ initialWaybill = '', onBookAnother }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'rider_status', filter: `id=eq.${order.rider_id}` },
         (payload) => {
+          console.log('[Tracker] Real-time status update:', payload)
           setRiderStatus(payload.new.rider_status);
         }
       )
@@ -189,7 +191,7 @@ export default function TrackerScreen({ initialWaybill = '', onBookAnother }) {
               />
             </div>
             <Button 
-              onClick={handleSearch} 
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleSearch(); }} 
               disabled={searching || !waybill}
               className="bg-slate-900 h-12 px-6"
             >
