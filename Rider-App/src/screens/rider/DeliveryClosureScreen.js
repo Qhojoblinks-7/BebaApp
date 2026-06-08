@@ -13,11 +13,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckCircle2, X } from "lucide-react-native";
 import SignatureScreen from "react-native-signature-canvas";
+import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabaseClient";
 import { useThemeStore } from "../../store/themeStore";
 
 export default function DeliveryClosureScreen({ route, navigation }) {
   const { orderId } = route.params || {};
+  const { user } = useAuth();
   const { colors, isDarkMode } = useThemeStore();
   const insets = useSafeAreaInsets();
 
@@ -95,21 +97,45 @@ export default function DeliveryClosureScreen({ route, navigation }) {
 
     setSubmitting(true);
     try {
+      const now = new Date().toISOString();
       const { error } = await supabase
         .from("orders")
         .update({
           status: "delivered",
           received_by: receiverName.trim(),
-          received_at: new Date().toISOString(),
+          received_at: now,
           signature: signature,
-          updated_at: new Date().toISOString(),
+          updated_at: now,
         })
         .eq("id", orderId);
 
       if (error) throw error;
 
+      const { data: orderData, error: fetchError } = await supabase
+        .from("orders")
+        .select("delivery_fee")
+        .eq("id", orderId)
+        .maybeSingle();
+
+      if (fetchError) {
+        console.warn("[DeliveryClosure] Fee fetch failed:", fetchError.message);
+      }
+
+      const fee = orderData?.delivery_fee;
+      if (fee !== null && fee !== undefined) {
+        const { error: revenueError } = await supabase.from("revenue").insert({
+          rider_id: user.id,
+          order_id: orderId,
+          amount: Number(fee),
+          order_completed_at: now,
+        });
+        if (revenueError) {
+          console.warn("[DeliveryClosure] Revenue insert failed:", revenueError.message);
+        }
+      }
+
       Alert.alert("Success", "Handover Complete. Consignment closed out.", [
-        { text: "OK", onPress: () => navigation.popToTop() },
+        { text: "OK", onPress: () => navigation.navigate("DashboardTab") },
       ]);
     } catch (err) {
       Alert.alert("Error", err.message);

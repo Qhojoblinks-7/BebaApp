@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowUpRight, Inbox } from "lucide-react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabaseClient";
 import { useThemeStore } from "../../store/themeStore";
@@ -131,15 +132,17 @@ export default function DashboardScreen({ navigation }) {
   const fetchDashboardMetrics = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const startOfDay = `${selectedDate}T00:00:00`;
-      const endOfDay = `${selectedDate}T23:59:59`;
+      const startOfDay = new Date(`${selectedDate}T00:00:00`);
+      const endOfDay = new Date(`${selectedDate}T23:59:59`);
+      const startStr = startOfDay.toISOString();
+      const endStr = endOfDay.toISOString();
 
       const { data: orders, error: ordersError } = await supabase
         .from("orders")
         .select("*")
         .eq("rider_id", user.id)
-        .gte("created_at", startOfDay)
-        .lte("created_at", endOfDay);
+        .gte("created_at", startStr)
+        .lt("created_at", endStr);
 
       if (ordersError) throw ordersError;
 
@@ -160,8 +163,8 @@ export default function DashboardScreen({ navigation }) {
         .from("revenue")
         .select("amount")
         .eq("rider_id", user.id)
-        .gte("order_completed_at", startOfDay)
-        .lte("order_completed_at", endOfDay);
+        .gte("order_completed_at", startStr)
+        .lt("order_completed_at", endStr);
 
       if (revenueError) throw revenueError;
 
@@ -171,7 +174,7 @@ export default function DashboardScreen({ navigation }) {
       setDailySummary({
         distanceKm: distanceKm.toFixed(1),
         earnings,
-        completedDrops: totalBookings,
+        completedDrops,
         cancelledRate,
       });
     } catch (err) {
@@ -215,9 +218,45 @@ export default function DashboardScreen({ navigation }) {
     };
   }, [user?.id, fetchUnreadCount]);
 
-  useEffect(() => {
-    fetchDashboardMetrics();
-  }, [fetchDashboardMetrics]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) return;
+
+      fetchDashboardMetrics();
+
+      const channel = supabase
+        .channel(`dashboard-metrics-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "orders",
+            filter: `rider_id=eq.${user.id}`,
+          },
+          () => {
+            fetchDashboardMetrics();
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "revenue",
+            filter: `rider_id=eq.${user.id}`,
+          },
+          () => {
+            fetchDashboardMetrics();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }, [user?.id, fetchDashboardMetrics])
+  );
 
   const statusConfig = {
     online:  { label: "Go Offline",  colorKey: "success",  icon: "online",  nextState: "in_class" },

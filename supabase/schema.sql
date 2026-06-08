@@ -331,6 +331,10 @@ DROP POLICY IF EXISTS "Riders can view their own revenue" ON revenue;
 CREATE POLICY "Riders can view their own revenue" ON revenue
   FOR SELECT USING (auth.uid() = rider_id);
 
+DROP POLICY IF EXISTS "Riders can insert their own revenue" ON revenue;
+CREATE POLICY "Riders can insert their own revenue" ON revenue
+  FOR INSERT WITH CHECK (auth.uid() = rider_id);
+
 -- Notifications policies
 DROP POLICY IF EXISTS "Riders can view their notifications" ON notifications;
 CREATE POLICY "Riders can view their notifications" ON notifications

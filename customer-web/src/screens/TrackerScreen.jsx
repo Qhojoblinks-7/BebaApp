@@ -3,7 +3,8 @@ import { supabase } from '../lib/supabaseClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MapPin, Box, Bike, ShieldCheck, HelpCircle, Ban, Search, Users, UserX, BookOpen, Wifi } from 'lucide-react';
+import { Search, Bike, BookOpen, UserX, Wifi } from 'lucide-react';
+import TrackingCard from '@/components/TrackingCard';
 
 const STATUS_CONFIG = {
   online:    { label: 'Rider Available',     color: 'bg-emerald-500', textColor: 'text-emerald-700',  icon: Wifi },
@@ -142,32 +143,11 @@ const handleSearch = useCallback(async (waybillOverride) => {
       delivered: 'Delivered',
       cancelled: 'Cancelled / Failed'
     }[status] || status),
-
-    percentage: (status) => ({
-      pending: '5%',
-      assigned: '25%',
-      picked_up: '50%',
-      in_transit: '75%',
-      delivered: '100%',
-      cancelled: '100%'
-    }[status] || '0%'),
-
-    icon: (status) => {
-      const icons = {
-        pending: <Box className="w-4 h-4 text-slate-900" />,
-        assigned: <ShieldCheck className="w-4 h-4 text-slate-900" />,
-        picked_up: <Box className="w-4 h-4 text-slate-900" fill="currentColor" />,
-        in_transit: <Bike className="w-4 h-4 text-slate-900" />,
-        delivered: <ShieldCheck className="w-4 h-4 text-slate-900" />,
-        cancelled: <Ban className="w-4 h-4 text-red-600" />
-      };
-      return icons[status] || <HelpCircle className="w-4 h-4 text-slate-900" />;
-    }
   };
 
   return (
     <div className="p-4 space-y-4 max-w-md mx-auto">
-      <div className="pt-2 flex items-start justify-between gap-4">
+      <div className="animate-in fade-in slide-in-from-top-4 duration-500 pt-2 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Track Package</h1>
           <p className="text-xs font-semibold text-slate-500">Monitor dispatch progress in real-time.</p>
@@ -177,7 +157,7 @@ const handleSearch = useCallback(async (waybillOverride) => {
         )}
       </div>
 
-      <Card className="border-slate-200 shadow-sm rounded-xl">
+      <Card className="animate-in fade-in slide-in-from-bottom-6 duration-500 delay-75 border-slate-200 shadow-sm rounded-xl">
         <CardContent className="pt-5 pb-5">
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -190,8 +170,8 @@ const handleSearch = useCallback(async (waybillOverride) => {
                 className="pl-10 h-12 font-bold uppercase"
               />
             </div>
-            <Button 
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleSearch(); }} 
+            <Button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleSearch(); }}
               disabled={searching || !waybill}
               className="bg-slate-900 h-12 px-6"
             >
@@ -203,65 +183,13 @@ const handleSearch = useCallback(async (waybillOverride) => {
       </Card>
 
       {order && (
-        <Card className="border-0 bg-[#FBBF24] shadow-lg rounded-[24px] p-6 relative overflow-hidden">
-          {/* Tracking visualization elements */}
-          <div className="space-y-4 relative z-10">
-            <div>
-              <p className="text-[10px] font-bold text-amber-950/60 uppercase">Waybill ID</p>
-              <h2 className="text-xl font-mono font-black text-slate-950">#{order.order_id}</h2>
-            </div>
-
-            {/* Rider Status */}
-            {riderStatus && !riderStatusLoading && (() => {
-              const conf = STATUS_CONFIG[riderStatus] || STATUS_CONFIG.offline;
-              const StatusIcon = conf.icon;
-              return (
-                <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full ${conf.color} bg-opacity-20`}>
-                  <StatusIcon className={`w-3.5 h-3.5 ${conf.textColor}`} />
-                  <span className={`text-xs font-bold uppercase tracking-wide ${conf.textColor}`}>
-                    {conf.label}
-                  </span>
-                </div>
-              );
-            })()}
-
-            {!order.rider_id && (
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-300/25">
-                <Users className="w-3.5 h-3.5 text-slate-600" />
-                <span className="text-xs font-bold uppercase tracking-wide text-slate-600">
-                  Awaiting Rider Assignment
-                </span>
-              </div>
-            )}
-
-            <div className="flex items-start gap-2">
-              <MapPin className="w-5 h-5 mt-0.5" />
-              <p className="text-sm font-black text-slate-950">
-                {order.status === 'delivered' ? order.delivery_address : 'Tracking active'}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-full bg-white/70">
-                {statusHelpers.icon(order.status)}
-              </div>
-              <p className="text-sm font-black text-slate-950">{statusHelpers.label(order.status)}</p>
-            </div>
-          </div>
-
-          <div className="mt-8 relative w-full h-2 bg-amber-950/20 rounded-full">
-            <div 
-              className="absolute h-full bg-slate-900 rounded-full transition-all duration-700"
-              style={{ width: statusHelpers.percentage(order.status) }}
-            />
-            <div 
-              className="absolute top-1/2 -translate-y-1/2 -ml-3 w-7 h-7 bg-slate-900 rounded-full flex items-center justify-center border-2 border-[#FBBF24] transition-all duration-700"
-              style={{ left: statusHelpers.percentage(order.status) }}
-            >
-              <Bike className="w-3.5 h-3.5 text-white" />
-            </div>
-          </div>
-        </Card>
+        <TrackingCard
+          waybill={order.order_id}
+          location={order.status === 'delivered' ? order.delivery_address : 'Tracking active'}
+          status={statusHelpers.label(order.status)}
+          riderStatus={riderStatusLoading ? null : riderStatus}
+          riderAssigned={!!order.rider_id}
+        />
       )}
     </div>
   );

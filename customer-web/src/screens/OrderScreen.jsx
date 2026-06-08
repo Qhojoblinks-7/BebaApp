@@ -168,14 +168,14 @@ export default function OrderScreen({ onOrderSuccess }) {
   if (submitted) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50 px-4">
-        <Card className="w-full max-w-sm text-center rounded-3xl border-0 shadow-lg p-8">
+        <Card className="animate-in zoom-in-105 duration-500 w-full max-w-sm text-center rounded-3xl border-0 shadow-lg p-8">
           <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4 text-green-600">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
           </div>
           <h2 className="text-xl font-black text-slate-900 uppercase">Request Logged!</h2>
           <p className="text-xs text-slate-500 mt-1">Waybill: {submittedOrderId}</p>
           <p className="text-lg font-bold text-red-600 mt-4">Total: GH₵ {submittedTotalFee.toFixed(2)}</p>
-          <div className="mt-6 flex flex-col gap-2">
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-200 mt-6 flex flex-col gap-2">
             <Button onClick={() => onOrderSuccess?.(submittedOrderId)} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold uppercase rounded-xl">Track Order</Button>
             <Button onClick={() => { setSubmitted(false); form.reset(); setStep(1); }} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold uppercase rounded-xl">Book Another</Button>
           </div>
@@ -187,11 +187,11 @@ export default function OrderScreen({ onOrderSuccess }) {
   return (
     <div className="min-h-screen bg-slate-50 p-4 pb-32">
       <div className="text-center pt-6 pb-8">
-        <h1 className="text-3xl font-black text-slate-900 uppercase italic">Request Delivery</h1>
-        <p className="text-red-600 font-bold uppercase text-xs tracking-widest mt-1">Beba Fleet Service</p>
+        <h1 className="animate-in fade-in slide-in-from-top-4 duration-500 text-3xl font-black text-slate-900 uppercase italic">Request Delivery</h1>
+        <p className="animate-in fade-in duration-500 delay-75 text-red-600 font-bold uppercase text-xs tracking-widest mt-1">Beba Fleet Service</p>
       </div>
 
-      <Card className="w-full max-w-md mx-auto border-0 shadow-xl rounded-3xl overflow-hidden mb-8">
+      <Card className="animate-in fade-in slide-in-from-bottom-6 duration-500 delay-100 w-full max-w-md mx-auto border-0 shadow-xl rounded-3xl overflow-hidden mb-8">
         <CardContent className="p-6">
           <StepIndicator step={step} />
           <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); }} className="space-y-5">
