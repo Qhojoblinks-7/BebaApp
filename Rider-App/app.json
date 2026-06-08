@@ -43,7 +43,14 @@
     },
     "plugins": [
       "expo-location",
-      "expo-notifications"
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#115e59",
+          "sounds": ["./assets/magiaz_cash_register_444842.mp3"]
+        }
+      ]
     ],
     "extra": {
       "EXPO_PUBLIC_SUPABASE_URL": "https://tjgutznerztvegoyitex.supabase.co",

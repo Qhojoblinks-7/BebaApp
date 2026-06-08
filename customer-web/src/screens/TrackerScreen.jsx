@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,40 +12,17 @@ const STATUS_CONFIG = {
   on_route:  { label: 'Rider On Route',       color: 'bg-blue-500',   textColor: 'text-blue-700',    icon: Bike },
 };
 
-export default function TrackerScreen() {
-  const [waybill, setWaybill] = useState('');
+export default function TrackerScreen({ initialWaybill = '', onBookAnother }) {
+  const [waybill, setWaybill] = useState(initialWaybill || '');
   const [searching, setSearching] = useState(false);
   const [order, setOrder] = useState(null);
   const [error, setError] = useState('');
   const [riderStatus, setRiderStatus] = useState(null);
   const [riderStatusLoading, setRiderStatusLoading] = useState(false);
+  const autoSearchDone = useRef(false);
 
-  // Centralized real-time listener for order status changes
-  useEffect(() => {
-    if (!order?.id) return;
-
-    // Normalize subscription name to avoid naming collisions
-    const channelName = `live_order_${order.id}`;
-    const orderSubscription = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${order.id}` },
-        (payload) => {
-          setOrder(payload.new);
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') console.log(`[Tracker] Live updates active for ${order.id}`);
-      });
-
-    return () => {
-      supabase.removeChannel(orderSubscription);
-    };
-  }, [order?.id]);
-
-  const handleSearch = async () => {
-    const cleanWaybill = waybill.trim().toUpperCase();
+  const handleSearch = async (waybillOverride) => {
+    const cleanWaybill = (waybillOverride || waybill).trim().toUpperCase();
     if (!cleanWaybill) return;
     
     setSearching(true);
@@ -84,8 +61,40 @@ export default function TrackerScreen() {
     }
   };
 
+  // Centralized real-time listener for order status changes
+  useEffect(() => {
+    if (!order?.id) return;
+
+    // Normalize subscription name to avoid naming collisions
+    const channelName = `live_order_${order.id}`;
+    const orderSubscription = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${order.id}` },
+        (payload) => {
+          setOrder(payload.new);
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') console.log(`[Tracker] Live updates active for ${order.id}`);
+      });
+
+    return () => {
+      supabase.removeChannel(orderSubscription);
+    };
+  }, [order?.id]);
+
+  useEffect(() => {
+    if (!initialWaybill || autoSearchDone.current) return;
+    autoSearchDone.current = true;
+    const timer = setTimeout(() => handleSearch(initialWaybill), 300);
+    return () => clearTimeout(timer);
+  }, [initialWaybill]);
+
   useEffect(() => {
     if (!order?.rider_id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRiderStatus(null);
       return;
     }
@@ -97,6 +106,7 @@ export default function TrackerScreen() {
         .select('rider_status')
         .eq('id', order.rider_id)
         .maybeSingle();
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRiderStatus(data?.rider_status || null);
       setRiderStatusLoading(false);
     };
@@ -155,9 +165,14 @@ export default function TrackerScreen() {
 
   return (
     <div className="p-4 space-y-4 max-w-md mx-auto">
-      <div className="pt-2">
-        <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Track Package</h1>
-        <p className="text-xs font-semibold text-slate-500">Monitor dispatch progress in real-time.</p>
+      <div className="pt-2 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Track Package</h1>
+          <p className="text-xs font-semibold text-slate-500">Monitor dispatch progress in real-time.</p>
+        </div>
+        {onBookAnother && (
+          <Button onClick={onBookAnother} className="bg-red-600 hover:bg-red-700 text-white font-black uppercase rounded-xl text-xs">Book Another</Button>
+        )}
       </div>
 
       <Card className="border-slate-200 shadow-sm rounded-xl">

@@ -151,6 +151,18 @@ export default function JobQueueScreen() {
   }, []);
 
   useEffect(() => {
+    if (Platform.OS === "android") {
+      Notifications.setNotificationChannelAsync("new-orders", {
+        name: "New Order Alerts",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: "#115e59",
+        sound: "magiaz-cash_register-444842.mp3",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
     fetchAvailable();
 
     const channel = supabase
@@ -164,7 +176,10 @@ export default function JobQueueScreen() {
               content: {
                 title: "New Order Available",
                 body: `Order #${payload.new.order_id || payload.new.id} is ready for pickup`,
+                channelId: "new-orders",
+                sound: "magiaz-cash_register-444842.mp3",
               },
+              trigger: null,
             });
             fetchAvailable();
           }

@@ -11,16 +11,15 @@ export default function LocationSearch({ value, onChange, placeholder }) {
   const timeoutRef = useRef();
   const wrapperRef = useRef();
 
-  // FIX: Sync internal state if parent 'value' changes
+  // Sync internal state if parent 'value' changes
   useEffect(() => {
-    setQuery(value || '');
+    if (value !== undefined && value !== query) {
+      setQuery(value);
+    }
   }, [value]);
 
   useEffect(() => {
-    if (!query || query.length < 3) {
-      setResults([]);
-      return;
-    }
+    if (!query || query.length < 3) return;
 
     // Debounce logic
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
