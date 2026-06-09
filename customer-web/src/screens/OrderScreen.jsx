@@ -86,6 +86,7 @@ export default function OrderScreen({ onOrderSuccess }) {
     sender: '',
     recipient: '',
     phone: '',
+    phone2: '',
     pickup: '',
     drop: '',
     item: '',
@@ -120,7 +121,7 @@ export default function OrderScreen({ onOrderSuccess }) {
   }
 
   const canSubmitStep1 = (values) => values.sender.length >= 2 && values.pickup.length >= 5 && values.phone.length >= 10
-  const canSubmitStep2 = (values) => values.recipient.length >= 2 && values.drop.length >= 5 && values.item.length >= 2
+  const canSubmitStep2 = (values) => values.recipient.length >= 2 && values.drop.length >= 5 && values.item.length >= 2 && values.phone2?.replace(/[^0-9]/g, '').length >= 10
 
   const updateDistance = useCallback(async (pickup, drop) => {
     if (pickup?.length < 5 || drop?.length < 5) return
@@ -177,9 +178,10 @@ export default function OrderScreen({ onOrderSuccess }) {
     if (distanceLoading) { console.log('[OrderScreen] submit blocked: distanceLoading'); return }
     const orderId = `BBA-${Math.floor(1000 + Math.random() * 9000)}-XP`
     const normalizedPhone = normalizePhone(formData.phone)
+    const normalizedRecipientPhone = normalizePhone(formData.phone2)
     const distanceVal = currentDistance
-    console.log('[OrderScreen] Submit payload:', { orderId, distance: distanceVal, pricing: calculateDeliveryFee(distanceVal) })
-    const validation = orderSchema.safeParse({ ...formData, distance: distanceVal })
+    console.log('[OrderScreen] Submit payload:', { orderId, senderPhone: normalizedPhone, recipientPhone: normalizedRecipientPhone, distance: distanceVal, pricing: calculateDeliveryFee(distanceVal) })
+    const validation = orderSchema.safeParse({ ...formData, phone: formData.phone, distance: distanceVal })
     if (!validation.success) {
       console.log('[OrderScreen] validation failed:', validation.flatten())
       return
@@ -190,7 +192,7 @@ export default function OrderScreen({ onOrderSuccess }) {
     try {
       const { error } = await supabase.from('orders').insert({
         order_id: orderId, sender_name: value.sender, sender_phone: normalizedPhone,
-        customer_name: value.recipient, customer_phone: normalizedPhone,
+        customer_name: value.recipient, customer_phone: normalizedRecipientPhone,
         pickup_address: value.pickup, pickup_zone: value.pickup?.split(',').pop()?.trim() || 'General Accra',
         pickup_lng: value.pickupLng || null,
         pickup_lat: value.pickupLat || null,
@@ -223,7 +225,7 @@ export default function OrderScreen({ onOrderSuccess }) {
           <p className="text-lg font-bold text-red-600 mt-4">Total: GH₵ {submittedTotalFee.toFixed(2)}</p>
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-200 mt-6 flex flex-col gap-2">
             <Button onClick={() => onOrderSuccess?.(submittedOrderId)} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold uppercase rounded-xl">Track Order</Button>
-            <Button onClick={() => { setSubmitted(false); setFormData({ sender: '', recipient: '', phone: '', pickup: '', drop: '', item: '', instructions: '', distance: 2.0, pickupLng: undefined, pickupLat: undefined, deliveryLng: undefined, deliveryLat: undefined }); setStep(1); }} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold uppercase rounded-xl">Book Another</Button>
+            <Button onClick={() => { setSubmitted(false); setFormData({ sender: '', recipient: '', phone: '', phone2: '', pickup: '', drop: '', item: '', instructions: '', distance: 2.0, pickupLng: undefined, pickupLat: undefined, deliveryLng: undefined, deliveryLat: undefined }); setStep(1); }} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold uppercase rounded-xl">Book Another</Button>
           </div>
         </Card>
       </div>
@@ -252,6 +254,7 @@ export default function OrderScreen({ onOrderSuccess }) {
               <div className="space-y-4">
                 <Field><FieldLabel>Recipient Name</FieldLabel><Input className="rounded-xl" value={formData.recipient} onChange={(e) => setField('recipient', e.target.value)} placeholder="Recipient Full Name" /></Field>
                 <Field><FieldLabel>Destination</FieldLabel><LocationSearch className="rounded-xl" value={formData.drop} onChange={(val) => handleAddressChange('drop', val)} placeholder="Search destination..." /></Field>
+                <Field><FieldLabel>Recipient Contact</FieldLabel><Input className="rounded-xl" type="tel" value={formData.phone2} onChange={(e) => setField('phone2', e.target.value)} placeholder="Recipient Mobile Number" /></Field>
                 <Field><FieldLabel>Cargo Details</FieldLabel><Input className="rounded-xl" value={formData.item} onChange={(e) => setField('item', e.target.value)} placeholder="What are you sending?" /></Field>
                 {distanceLoading && <div className="p-3 text-xs font-bold text-red-700 bg-red-50 rounded-xl flex items-center"><Loader2 className="animate-spin w-4 h-4 mr-2" /> Calculating distance...</div>}
                 {distanceError && <div className="p-3 text-xs text-red-600 bg-red-50 rounded-xl">{distanceError}</div>}
