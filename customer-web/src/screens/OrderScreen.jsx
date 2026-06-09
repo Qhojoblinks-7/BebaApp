@@ -99,6 +99,11 @@ export default function OrderScreen({ onOrderSuccess }) {
 
   const lastDistanceKeyRef = useRef('')
   const addressTimeoutRef = useRef(null)
+  const addressTokenRef = useRef(0)
+  const formDataRef = useRef(formData)
+  formDataRef.current = formData
+  console.log('[OrderScreen] ref synced:', formDataRef.current)
+
   const currentDistance = localDistance
 
   const setField = useCallback((name, value) => {
@@ -158,13 +163,13 @@ export default function OrderScreen({ onOrderSuccess }) {
     setField(fieldName, value)
     if (addressTimeoutRef.current) clearTimeout(addressTimeoutRef.current)
     addressTimeoutRef.current = setTimeout(() => {
-      const { pickup, drop } = formData
+      const { pickup, drop } = formDataRef.current
       console.log('[OrderScreen] debounced address check:', { pickup, drop })
       if (pickup?.length >= 5 && drop?.length >= 5) {
         updateDistance(pickup, drop)
       }
     }, 800)
-  }, [formData, setField, updateDistance])
+  }, [setField, updateDistance])
 
   const onSubmit = async (e) => {
     e?.preventDefault?.()

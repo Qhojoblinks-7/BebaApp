@@ -3,7 +3,8 @@ import TrackerScreen from './screens/TrackerScreen'
 import OrderScreen from './screens/OrderScreen'
 import LandingScreen from './screens/LandingScreen'
 
-function InstallPrompt({ onInstall }) {
+// --- PWA INSTALL PROMPT ---
+function InstallPrompt() {
   const [visible, setVisible] = useState(false)
   const [promptEvent, setPromptEvent] = useState(null)
 
@@ -21,32 +22,29 @@ function InstallPrompt({ onInstall }) {
     if (!promptEvent) return
     promptEvent.prompt()
     const { outcome } = await promptEvent.userChoice
-    if (outcome === 'accepted') {
-      onInstall?.()
-    }
-    setVisible(false)
+    if (outcome === 'accepted') setVisible(false)
     setPromptEvent(null)
-  }, [promptEvent, onInstall])
+  }, [promptEvent])
 
   if (!visible) return null
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 px-4 pb-4">
-      <div className="rounded-xl border border-border bg-background/95 p-4 shadow-lg backdrop-blur">
-        <p className="text-sm font-medium">Install Beba</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Add Beba to your home screen for quick access.
+    <div className="fixed inset-x-0 bottom-0 z-50 px-4 pb-4 animate-in fade-in slide-in-from-bottom-5 duration-300">
+      <div className="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur-md max-w-sm mx-auto">
+        <p className="text-sm font-black text-slate-900 uppercase tracking-tight">Install Beba App</p>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Add Beba to your home screen for rapid logistics booking and instant tracking.
         </p>
         <div className="mt-3 flex gap-2">
           <button
             onClick={handleInstall}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+            className="flex-1 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold uppercase text-white hover:bg-red-700 transition-colors shadow-md shadow-red-600/10 active:scale-95 transform"
           >
             Install
           </button>
           <button
             onClick={() => setVisible(false)}
-            className="rounded-lg bg-secondary px-4 py-2 text-sm font-semibold text-secondary-foreground"
+            className="flex-1 rounded-xl bg-slate-100 px-4 py-2 text-xs font-bold uppercase text-slate-600 hover:bg-slate-200 transition-colors active:scale-95 transform"
           >
             Not now
           </button>
@@ -56,64 +54,52 @@ function InstallPrompt({ onInstall }) {
   )
 }
 
+// --- MAIN ROUTER CONTROLLER ---
 export default function App() {
   const [view, setView] = useState('landing')
   const [lastOrderWaybill, setLastOrderWaybill] = useState(null)
-  const [displayView, setDisplayView] = useState('landing')
-  const [animating, setAnimating] = useState(false)
-  const [progress, setProgress] = useState(0)
-
-  const switchView = useCallback((next) => {
-    if (next === view || animating) return
-    setAnimating(true)
-    setProgress(0)
-    setDisplayView(next)
-    const start = performance.now()
-    const duration = 280
-    const tick = (now) => {
-      const t = Math.min((now - start) / duration, 1)
-      setProgress(t)
-      if (t < 1) requestAnimationFrame(tick)
-      else setAnimating(false)
-    }
-    requestAnimationFrame(tick)
-    setView(next)
-  }, [view, animating])
-
-  useEffect(() => {
-    if (animating) setDisplayView(view)
-  }, [animating, view])
-
-  const currentView = view
 
   return (
-    <div className="fixed inset-0 bg-white">
-      <div
-        className="absolute inset-0"
-        style={{
-          opacity: 1 - progress,
-          transform: `translateY(${progress * 18}px)`,
-          transition: 'none',
-          pointerEvents: animating && view !== currentView ? 'none' : 'auto',
-        }}
-      >
-        {currentView === 'landing' && <LandingScreen onOrderClick={() => switchView('order')} onTrackClick={() => switchView('track')} />}
-        {currentView === 'track' && <TrackerScreen initialWaybill={lastOrderWaybill} onBookAnother={() => switchView('order')} />}
-        {currentView === 'order' && <OrderScreen onOrderSuccess={(orderId) => { setLastOrderWaybill(orderId); switchView('track') }} onBackToLanding={() => switchView('landing')} />}
+    <div className="fixed inset-0 bg-slate-50 overflow-hidden antialiased select-none">
+      
+      {/* Single Viewport Mounting Plane: 
+        Using native CSS entry keyframes eliminates the possibility of layout ghosting.
+      */}
+      <div className="relative w-full h-full">
+        
+        {view === 'landing' && (
+          <div className="absolute inset-0 w-full h-full animate-in fade-in slide-in-from-bottom-3 duration-300 ease-out">
+            <LandingScreen 
+              onOrderClick={() => setView('order')} 
+              onTrackClick={() => setView('track')} 
+            />
+          </div>
+        )}
+        
+        {view === 'track' && (
+          <div className="absolute inset-0 w-full h-full animate-in fade-in slide-in-from-bottom-3 duration-300 ease-out">
+            <TrackerScreen 
+              initialWaybill={lastOrderWaybill} 
+              onBookAnother={() => setView('order')} 
+              onBackToLanding={() => setView('landing')}
+            />
+          </div>
+        )}
+        
+        {view === 'order' && (
+          <div className="absolute inset-0 w-full h-full animate-in fade-in slide-in-from-bottom-3 duration-300 ease-out">
+            <OrderScreen 
+              onOrderSuccess={(orderId) => { 
+                setLastOrderWaybill(orderId)
+                setView('track') 
+              }} 
+              onBackToLanding={() => setView('landing')} 
+            />
+          </div>
+        )}
+
       </div>
-      <div
-        className="absolute inset-0"
-        style={{
-          opacity: progress,
-          transform: `translateY(${(1 - progress) * -18}px)`,
-          transition: 'none',
-          pointerEvents: progress >= 1 ? 'auto' : 'none',
-        }}
-      >
-        {view === 'landing' && <LandingScreen onOrderClick={() => switchView('order')} onTrackClick={() => switchView('track')} />}
-        {view === 'track' && <TrackerScreen initialWaybill={lastOrderWaybill} onBookAnother={() => switchView('order')} />}
-        {view === 'order' && <OrderScreen onOrderSuccess={(orderId) => { setLastOrderWaybill(orderId); switchView('track') }} onBackToLanding={() => switchView('landing')} />}
-      </div>
+
       <InstallPrompt />
     </div>
   )
