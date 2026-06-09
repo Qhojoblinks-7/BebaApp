@@ -19,6 +19,7 @@ import {
   Calendar,
   Layers,
   FileText,
+  Navigation,
 } from "lucide-react-native";
 import { useThemeStore } from "../../store/themeStore";
 import RiderOrderCard from "./RiderOrderCard";
@@ -459,20 +460,43 @@ export default function DeliveryDetailsBottomSheet({
 
             {/* Native Hub-Spoke Route Timeline */}
             <View style={ui.addressBlock}>
-              {/* Pickup Node */}
-              <View style={ui.addressRow}>
-                <View style={ui.timelineIndicator}>
-                  <View style={[ui.dotOuter, { backgroundColor: `${colors.primary}20` }]}>
-                    <View style={[ui.dotInner, { backgroundColor: colors.primary }]} />
-                  </View>
-                  <View style={[ui.connectorLine, { backgroundColor: colors.borderLight }]} />
-                </View>
-                <View style={ui.addressContent}>
-                  <Text style={[ui.addressTag, { color: colors.primary }]}>Pickup Point</Text>
-                  <Text style={ui.addressText}>{order.pickup_address || "---"}</Text>
-                  <Text style={ui.addressTime}>{fmt(order.created_at)}</Text>
-                </View>
-              </View>
+               {/* Pickup Node */}
+               <View style={ui.addressRow}>
+                 <View style={ui.timelineIndicator}>
+                   <View style={[ui.dotOuter, { backgroundColor: `${colors.primary}20` }]}>
+                     <View style={[ui.dotInner, { backgroundColor: colors.primary }]} />
+                   </View>
+                   <View style={[ui.connectorLine, { backgroundColor: colors.borderLight }]} />
+                 </View>
+                 <View style={ui.addressContent}>
+                   <Text style={[ui.addressTag, { color: colors.primary }]}>Pickup Point</Text>
+                   <Text style={ui.addressText}>{order.pickup_address || "---"}</Text>
+                   <Text style={ui.addressTime}>{fmt(order.created_at)}</Text>
+                   {order.pickup_lat && order.pickup_lng && (
+                     <TouchableOpacity
+                       style={{
+                         flexDirection: "row",
+                         alignItems: "center",
+                         gap: 6,
+                         marginTop: 10,
+                         paddingVertical: 8,
+                         paddingHorizontal: 14,
+                         borderRadius: 10,
+                         backgroundColor: `${colors.primary}20`,
+                         alignSelf: "flex-start",
+                       }}
+                       onPress={() => {
+                         const url = `https://www.google.com/maps/dir/?api=1&destination=${order.pickup_lat},${order.pickup_lng}`;
+                         Linking.openURL(url);
+                       }}
+                       activeOpacity={0.7}
+                     >
+                       <Navigation size={14} color={colors.primary} />
+                       <Text style={{ fontSize: 12, fontWeight: "700", color: colors.primary }}>Navigate</Text>
+                     </TouchableOpacity>
+                   )}
+                 </View>
+               </View>
 
               {/* Drop-off Node */}
               <View style={ui.addressRow}>
@@ -485,6 +509,29 @@ export default function DeliveryDetailsBottomSheet({
                   <Text style={[ui.addressTag, { color: "#10b981" }]}>Drop-off Destination</Text>
                   <Text style={ui.addressText}>{order.delivery_address || "---"}</Text>
                   <Text style={ui.addressTime}>{fmt(order.received_at || order.updated_at)}</Text>
+                  {order.delivery_lat && order.delivery_lng && (
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                        marginTop: 10,
+                        paddingVertical: 8,
+                        paddingHorizontal: 14,
+                        borderRadius: 10,
+                        backgroundColor: "#10b98120",
+                        alignSelf: "flex-start",
+                      }}
+                      onPress={() => {
+                        const url = `https://www.google.com/maps/dir/?api=1&destination=${order.delivery_lat},${order.delivery_lng}`;
+                        Linking.openURL(url);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Navigation size={14} color="#10b981" />
+                      <Text style={{ fontSize: 12, fontWeight: "700", color: "#10b981" }}>Navigate</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             </View>

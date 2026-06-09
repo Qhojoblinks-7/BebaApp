@@ -114,6 +114,8 @@ export default function NotificationsScreen() {
   const renderNotification = ({ item }) => {
     const rawDate = new Date(item.created_at);
     const formattedTime = rawDate.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    const orderRecord = Array.isArray(item.orders) ? item.orders[0] : item.orders;
+    const waybill = orderRecord?.order_id || item.order_id;
 
     return (
       <TouchableOpacity
@@ -128,17 +130,17 @@ export default function NotificationsScreen() {
         activeOpacity={0.7}
         onPress={() => {
           markAsRead(item.id);
-          if (item.orders) {
+          if (orderRecord) {
             setSelectedOrder({
               id: item.order_id,
-              order_id: item.orders.order_id,
-              item_description: item.orders.item_description,
-              pickup_address: item.orders.pickup_address,
-              customer_name: item.orders.customer_name,
-              customer_phone: item.orders.customer_phone,
-              delivery_address: item.orders.delivery_address,
-              delivery_fee: item.orders.delivery_fee,
-              status: item.orders.status || (item.title.toLowerCase().includes("new") ? "pending" : "assigned"),
+              order_id: waybill,
+              item_description: orderRecord.item_description,
+              pickup_address: orderRecord.pickup_address,
+              customer_name: orderRecord.customer_name,
+              customer_phone: orderRecord.customer_phone,
+              delivery_address: orderRecord.delivery_address,
+              delivery_fee: orderRecord.delivery_fee,
+              status: orderRecord.status || (item.title.toLowerCase().includes("new") ? "pending" : "assigned"),
             });
           }
         }}
@@ -159,9 +161,9 @@ export default function NotificationsScreen() {
         <Text style={[styles.body, { color: colors.textSecondary || colors.textMuted }]}>{item.body}</Text>
         
         <View style={styles.cardFooter}>
-          {item.orders ? (
+          {waybill ? (
             <Text style={[styles.orderInfo, { color: colors.primary || "#115e59" }]}>
-              Waybill: {item.orders.order_id}
+              Waybill: {waybill}
             </Text>
           ) : <View />}
           <Text style={[styles.time, { color: colors.textMuted || "#94a3b8" }]}>{formattedTime}</Text>
@@ -230,9 +232,11 @@ export default function NotificationsScreen() {
         onClose={() => setSelectedOrder(null)}
         onAction={(order, status) => {
           if (status === "pending") {
-            alert("Please use the Job Board tab to accept this order.");
+            setSelectedOrder(null);
+            navigation.navigate("JobQueue");
+          } else {
+            setSelectedOrder(null);
           }
-          setSelectedOrder(null);
         }}
       />
     </View>

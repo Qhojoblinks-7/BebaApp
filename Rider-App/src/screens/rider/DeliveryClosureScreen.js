@@ -141,7 +141,9 @@ export default function DeliveryClosureScreen({ route, navigation }) {
         surge: Number(orderData?.surge_fee) || 0,
       };
 
-      const fee = parsed.delivery || parsed.base + parsed.distance + parsed.surge;
+      const fee = parsed.delivery > 0
+        ? parsed.delivery
+        : parsed.base + parsed.distance + parsed.surge;
       console.log(`[DeliveryClosure] Computed fee=${fee.toFixed(2)} | orderId=${orderId}`);
 
       if (fee > 0) {

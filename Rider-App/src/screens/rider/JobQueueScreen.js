@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -118,8 +118,13 @@ export default function JobQueueScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const fetchTimerRef = useRef(null);
 
   const fetchAvailable = useCallback(async () => {
+    if (fetchTimerRef.current) return;
+    fetchTimerRef.current = setTimeout(() => {
+      fetchTimerRef.current = null;
+    }, 800);
     try {
       const { data, error } = await supabase
         .from("orders")
@@ -158,7 +163,11 @@ export default function JobQueueScreen() {
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: "#115e59",
-        sound: "magiaz-cash_register-444842.mp3",
+        sound: "magiaz_cash_register_444842.mp3",
+      }).then(() => {
+        console.log("[JobQueue] Notification channel 'new-orders' registered with sound");
+      }).catch((err) => {
+        console.warn("[JobQueue] Channel registration failed:", err.message);
       });
     }
   }, []);
@@ -178,7 +187,7 @@ export default function JobQueueScreen() {
                 title: "New Order Available",
                 body: `Order #${payload.new.order_id || payload.new.id} is ready for pickup`,
                 channelId: "new-orders",
-                sound: "magiaz-cash_register-444842.mp3",
+                sound: "magiaz_cash_register_444842.mp3",
               },
               trigger: null,
             });
