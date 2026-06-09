@@ -4,7 +4,7 @@ import { supabase } from "./supabaseClient";
  * Normalizes a local client date into an explicit, safe ISO string boundary
  * protecting against localized timezone clipping.
  */
-function getLocalDateBounds() {
+export function getLocalDateBounds() {
   const now = new Date();
   
   // First day of current month: YYYY-MM-01
@@ -135,32 +135,49 @@ export async function createOrUpdateBudgetAllocation({
 }
 
 /**
- * Calculates real-time 50/30/20 target distribution balances 
- * from cumulative revenue logs for the current calendar month.
+ * Queries all-time revenue + all manual cash flow entries and produces
+ * a data-backed 50/30/20 breakdown where "spent" reflects real money
+ * logged in manual_entries per category.
  */
-export async function getLiveBudgetFromRevenue(userId) {
-  const { periodStart } = getLocalDateBounds();
-  
-  // Match exact UTC baseline string safely reflecting complete daily intervals
-  const isoStartThreshold = `${periodStart}T00:00:00.000Z`;
-
+export async function getLiveBudgetWithExpenses(userId) {
   const { data: revenue, error: revenueError } = await supabase
     .from("revenue")
     .select("amount")
-    .eq("rider_id", userId)
-    .gte("order_completed_at", isoStartThreshold);
+    .eq("rider_id", userId);
 
   if (revenueError) throw revenueError;
 
-  const totalEarnings = (revenue || []).reduce((sum, r) => sum + Number(r.amount), 0);
-  if (totalEarnings <= 0) return [];
+  const { data: inflowEntries, error: inflowError } = await supabase
+    .from("manual_entries")
+    .select("amount")
+    .eq("rider_id", userId)
+    .eq("type", "inflow");
+
+  if (inflowError) throw inflowError;
+
+  const deliveryEarnings = (revenue || []).reduce((sum, r) => sum + Number(r.amount), 0);
+  const externalIncome = (inflowEntries || []).reduce((sum, r) => sum + Math.abs(Number(r.amount)), 0);
+  const totalEarnings = deliveryEarnings + externalIncome;
+
+  if (totalEarnings <= 0) return buildDefaultBudget(0);
+
+  const { data: entries, error: entriesError } = await supabase
+    .from("manual_entries")
+    .select("type, amount")
+    .eq("rider_id", userId);
+
+  if (entriesError) throw entriesError;
+
+  const outflowsTotal = (entries || [])
+    .filter((e) => e.type === "outflow")
+    .reduce((sum, e) => sum + Math.abs(Number(e.amount)), 0);
 
   return [
     {
       id: "needs",
       title: "50% Needs",
       allocated: totalEarnings * 0.5,
-      spent: totalEarnings * 0.4,
+      spent: 0,
       color: "#a855f7",
       description: getCategoryDescription("needs"),
       icon: getCategoryIcon("needs"),
@@ -175,7 +192,7 @@ export async function getLiveBudgetFromRevenue(userId) {
       id: "wants",
       title: "30% Wants",
       allocated: totalEarnings * 0.3,
-      spent: totalEarnings * 0.25,
+      spent: 0,
       color: "#6366f1",
       description: getCategoryDescription("wants"),
       icon: getCategoryIcon("wants"),
@@ -189,7 +206,8 @@ export async function getLiveBudgetFromRevenue(userId) {
       id: "savings",
       title: "20% Savings",
       allocated: totalEarnings * 0.2,
-      spent: totalEarnings * 0.2,
+      spent: 0,
+      saved: 0,
       color: "#10b981",
       description: getCategoryDescription("savings"),
       icon: getCategoryIcon("savings"),
@@ -198,6 +216,26 @@ export async function getLiveBudgetFromRevenue(userId) {
         { name: "Investments", amount: totalEarnings * 0.1 },
       ],
     },
+  ];
+}
+
+export function buildDefaultBudget(totalEarnings) {
+  return [
+    { id: "needs", title: "50% Needs", allocated: totalEarnings * 0.5, spent: 0, color: "#a855f7", description: "Rent, utilities, fuel, maintenance", icon: "Home", subItems: [
+      { name: "Rent", amount: totalEarnings * 0.15 },
+      { name: "Utilities", amount: totalEarnings * 0.05 },
+      { name: "Fuel", amount: totalEarnings * 0.08 },
+      { name: "Groceries", amount: totalEarnings * 0.12 },
+    ]},
+    { id: "wants", title: "30% Wants", allocated: totalEarnings * 0.3, spent: 0, color: "#6366f1", description: "Dining out, hobbies, shopping", icon: "ShoppingBag", subItems: [
+      { name: "Dining Out", amount: totalEarnings * 0.08 },
+      { name: "Hobbies", amount: totalEarnings * 0.05 },
+      { name: "Shopping", amount: totalEarnings * 0.12 },
+    ]},
+    { id: "savings", title: "20% Savings", allocated: totalEarnings * 0.2, spent: 0, color: "#10b981", description: "Emergency fund, investments", icon: "PiggyBank", subItems: [
+      { name: "Emergency Fund", amount: totalEarnings * 0.1 },
+      { name: "Investments", amount: totalEarnings * 0.1 },
+    ]},
   ];
 }
 

@@ -358,6 +358,7 @@ CREATE TABLE IF NOT EXISTS manual_entries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   rider_id UUID REFERENCES users(id) NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('inflow', 'outflow')),
+  category TEXT NOT NULL CHECK (category IN ('needs', 'wants', 'savings')) DEFAULT 'needs',
   amount DECIMAL(10,2) NOT NULL,
   note TEXT,
   occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

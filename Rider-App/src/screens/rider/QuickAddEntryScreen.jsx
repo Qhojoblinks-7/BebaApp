@@ -22,6 +22,7 @@ export default function QuickAddEntryScreen({ route, navigation }) {
   const onAdded = route?.params?.onAdded;
 
   const [type, setType] = useState("outflow");
+  const [category, setCategory] = useState("needs");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(new Date());
@@ -59,6 +60,7 @@ export default function QuickAddEntryScreen({ route, navigation }) {
       await insertManualEntry({
         userId: user.id,
         type,
+        category,
         amount: parsedAmount,
         note,
         occurredAt: date.toISOString(),
@@ -86,23 +88,49 @@ export default function QuickAddEntryScreen({ route, navigation }) {
       </View>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.typeRow}>
-          {[
-            { key: "inflow", label: "Inflow", color: "#10b981" },
-            { key: "outflow", label: "Outflow", color: "#ef4444" },
-          ].map((item) => {
-            const isActive = type === item.key;
-            return (
-              <TouchableOpacity
-                key={item.key}
-                style={[styles.typeChip, isActive && { backgroundColor: item.color + "18", borderColor: item.color }]}
-                activeOpacity={0.8}
-                onPress={() => setType(item.key)}
-              >
-                <Text style={[styles.typeChipText, isActive && { color: item.color }]}>{item.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.labelText}>Type</Text>
+          <View style={styles.chipRow}>
+            {[
+              { key: "inflow", label: "Inflow", color: "#10b981" },
+              { key: "outflow", label: "Outflow", color: "#ef4444" },
+            ].map((item) => {
+              const isActive = type === item.key;
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[styles.typeChip, isActive && { backgroundColor: item.color + "18", borderColor: item.color }]}
+                  activeOpacity={0.8}
+                  onPress={() => setType(item.key)}
+                >
+                  <Text style={[styles.typeChipText, isActive && { color: item.color }]}>{item.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={[styles.fieldGroup, { marginTop: 16 }]}>
+          <Text style={styles.labelText}>Category</Text>
+          <View style={styles.chipRow}>
+            {[
+              { key: "needs", label: "Needs", color: "#a855f7" },
+              { key: "wants", label: "Wants", color: "#6366f1" },
+              { key: "savings", label: "Savings", color: "#10b981" },
+            ].map((item) => {
+              const isActive = category === item.key;
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[styles.typeChip, isActive && { backgroundColor: item.color + "18", borderColor: item.color }]}
+                  activeOpacity={0.8}
+                  onPress={() => setCategory(item.key)}
+                >
+                  <Text style={[styles.typeChipText, isActive && { color: item.color }]}>{item.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
 
         <View style={styles.fieldGroup}>
@@ -179,15 +207,19 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   scrollContent: { flex: 1, paddingHorizontal: 18 },
-  typeRow: { flexDirection: "row", gap: 10, marginTop: 18, marginBottom: 18 },
+  typeRow: { flexDirection: "row", marginTop: 10, marginBottom: 10 },
+  chipRow: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
   typeChip: {
     flex: 1,
     paddingVertical: 12,
+    paddingHorizontal: 8,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: "#ffffff0a",
     backgroundColor: "#16191e",
     alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
   },
   typeChipText: { fontSize: 14, fontWeight: "700", color: "#64748b" },
   fieldGroup: { marginBottom: 18 },

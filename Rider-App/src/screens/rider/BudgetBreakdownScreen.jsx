@@ -8,16 +8,16 @@ import {
   StatusBar,
 } from "react-native";
 import Svg, { Circle } from "react-native-svg";
-import { 
-  ArrowLeft, 
-  Home, 
-  ShoppingBag, 
-  PiggyBank, 
-  ArrowUpRight, 
-  Wallet 
+import {
+  ArrowLeft,
+  Home,
+  ShoppingBag,
+  PiggyBank,
+  ArrowUpRight,
+  Wallet
 } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
-import { getLiveBudgetFromRevenue } from "../../services/budgetService";
+import { getLiveBudgetWithExpenses, buildDefaultBudget } from "../../services/budgetService";
 import { useThemeStore } from "../../store/themeStore";
 
 // Added Wallet as a fallback structure element to prevent empty spaces
@@ -53,15 +53,16 @@ export default function BudgetBreakdownScreen({ route, navigation }) {
 
   const loadBudget = async () => {
     try {
-      const data = await getLiveBudgetFromRevenue(user.id);
+      const data = await getLiveBudgetWithExpenses(user.id);
       if (data && data.length > 0) {
         setCategories(data);
       } else {
-        setCategories([]);
+        const fallback = buildDefaultBudget(0);
+        setCategories(fallback);
       }
     } catch (e) {
       console.warn("[BudgetBreakdown] load failed:", e.message);
-      setCategories([]);
+      setCategories(buildDefaultBudget(0));
     } finally {
       setLoading(false);
     }

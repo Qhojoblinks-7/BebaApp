@@ -33,7 +33,7 @@ export default function DeliveryHistoryScreen({ navigation }) {
     try {
       const { data, error } = await supabase
         .from("revenue")
-        .select("*")
+        .select("id, amount, order_completed_at, order_id, orders!inner(order_id, pickup_address, delivery_address)")
         .eq("rider_id", user?.id)
         .order("order_completed_at", { ascending: false });
 
@@ -229,6 +229,9 @@ export default function DeliveryHistoryScreen({ navigation }) {
 
   const renderDeliveryItem = ({ item, index }) => {
     const amount = Number(item.amount || 0);
+    const orderRecord = Array.isArray(item.orders) ? item.orders[0] : item.orders;
+    const waybill = orderRecord?.order_id || item.order_id || item.id;
+    const pickup = orderRecord?.pickup_address || "";
 
     return (
       <View style={ui.deliveryCard}>
@@ -237,17 +240,17 @@ export default function DeliveryHistoryScreen({ navigation }) {
             <ClipboardList size={16} color={colors.primary} />
           </View>
           <View style={ui.metaBlock}>
-            <Text style={ui.orderIdText}>Order #{item.order_id || item.id.substring(0, 8)}</Text>
+            <Text style={ui.orderIdText}>Order #{waybill}</Text>
             <View style={ui.metaRow}>
               <Clock size={12} color={colors.textDisabled} />
               <Text style={ui.metaText}>
                 {formatDate(item.order_completed_at)} · {formatTime(item.order_completed_at)}
               </Text>
             </View>
-            {item.pickup_address && (
+            {pickup && (
               <View style={ui.metaRow}>
                 <MapPin size={12} color={colors.textDisabled} />
-                <Text style={ui.metaText} numberOfLines={1}>{item.pickup_address}</Text>
+                <Text style={ui.metaText} numberOfLines={1}>{pickup}</Text>
               </View>
             )}
           </View>

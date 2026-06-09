@@ -4,6 +4,7 @@ import {
   Text,
   View,
   FlatList,
+  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   StatusBar,
@@ -194,79 +195,6 @@ export default function JobQueueScreen() {
 
   const generateDeliveryPin = () => Math.floor(1000 + Math.random() * 9000).toString();
 
-  const acceptOrder = async (order) => {
-    if (!user?.id || !order?.id) return;
-    try {
-      setLoading(true);
-      const deliveryPin = generateDeliveryPin();
-      
-      const { count } = await supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq("rider_id", user.id)
-        .in("status", ["assigned", "picked_up", "in_transit"]);
-
-      const { error } = await supabase
-        .from("orders")
-        .update({
-          rider_id: user.id,
-          status: "assigned",
-          route_sequence: (count || 0) + 1,
-          delivery_pin: deliveryPin,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", order.id);
-
-      if (error) throw error;
-      setOrders((prev) => prev.filter((o) => o.id !== order.id));
-    } catch (err) {
-      console.error("[JobQueue] Accept failed:", err);
-      alert("Failed to accept order. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const acceptEntireZone = async (zoneOrders) => {
-    if (!user?.id || !zoneOrders.length) return;
-    try {
-      setLoading(true);
-      
-      const { count } = await supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq("rider_id", user.id)
-        .in("status", ["assigned", "picked_up", "in_transit"]);
-
-      const baseSeq = count || 0;
-      const updates = zoneOrders.map((order, index) =>
-        supabase
-          .from("orders")
-          .update({
-            rider_id: user.id,
-            status: "assigned",
-            route_sequence: baseSeq + index + 1,
-            delivery_pin: generateDeliveryPin(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", order.id),
-      );
-
-      const results = await Promise.all(updates);
-      if (results.some((r) => r.error)) {
-        alert("Failed to claim some orders. Please refresh and retry.");
-      } else {
-        alert(`Zone locked! ${zoneOrders.length} dispatches assigned.`);
-        fetchAvailable();
-      }
-    } catch (err) {
-      console.error("[JobQueue] Batch claim failed:", err);
-      alert("Error claiming batch.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   if (loading && orders.length === 0) {
     return (
       <View style={[styles.center, { backgroundColor: colors.backgroundSecondary }]}>
@@ -348,31 +276,31 @@ export default function JobQueueScreen() {
           }
         ]}>
           <Text style={[styles.batchClaimText, { color: colors.textSecondary }]}>
-            Tap a card to accept one, or claim its entire zone below:
+            Tap a zone to claim dispatches in that area:
           </Text>
-          <FlatList
-            horizontal
-            data={zones}
-            keyExtractor={(zone) => zone}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingVertical: 4 }}
-            renderItem={({ item: zone }) => {
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingVertical: 4 }}>
+            {zones.map((zone) => {
               const zoneOrders = orders.filter((o) => o.zone === zone);
-              const zoneFee = zoneOrders.reduce((sum, o) => sum + (o.delivery_fee || 0), 0);
+              const zoneFee = zoneOrders.reduce((sum, o) => sum + (Number(o.base_price || 0) + Number(o.distance_fee || 0) + Number(o.surge_fee || 0) || Number(o.delivery_fee || 0)), 0);
               
               return (
                 <TouchableOpacity
+                  key={zone}
                   style={[styles.batchClaimBtn, { backgroundColor: colors.primary }]}
-                  onPress={() => acceptEntireZone(zoneOrders)}
+                  onPress={() => {
+                    if (zoneOrders.length > 0 && zoneOrders[0]) {
+                      setSelectedOrder(zoneOrders[0]);
+                    }
+                  }}
                 >
                   <Text style={[styles.batchClaimZone, { color: colors.textOnPrimary }]}>{zone}</Text>
                   <Text style={[styles.batchClaimMeta, { color: colors.textOnPrimary }]}>
-                    {zoneOrders.length} pkg{zoneOrders.length !== 1 ? "s" : ""} · GH¢ {zoneFee.toFixed(2)}
+                    {zoneOrders.length} dispatch{zoneOrders.length !== 1 ? "es" : ""} · GH¢ {zoneFee.toFixed(2)}
                   </Text>
                 </TouchableOpacity>
               );
-            }}
-          />
+            })}
+          </ScrollView>
         </View>
       )}
 
@@ -380,11 +308,67 @@ export default function JobQueueScreen() {
         order={selectedOrder}
         visible={!!selectedOrder}
         onClose={() => setSelectedOrder(null)}
-        onAction={(order, status) => {
-          if (status === "pending") {
-            acceptOrder(order);
+        onAction={async (order, status) => {
+          if (!order?.id) return;
+          console.log(`[JobQueue] Action triggered | order=${order.orderId || order.id} status=${status}`);
+
+          const nextStatus = {
+            pending: "assigned",
+            assigned: "picked_up",
+            picked_up: "in_transit",
+            in_transit: "delivered",
+          }[status];
+
+          if (!nextStatus) {
+            console.log(`[JobQueue] No next status for ${status}, closing sheet`);
+            setSelectedOrder(null);
+            return;
           }
-          setSelectedOrder(null);
+
+          if (nextStatus === "delivered") {
+            console.log(`[JobQueue] Navigating to DeliveryClosure | orderId=${order.id}`);
+            setSelectedOrder(null);
+            navigation.navigate("DeliveryClosure", { orderId: order.id });
+            return;
+          }
+
+          try {
+            console.log(`[JobQueue] Advancing ${order.orderId || order.id} : ${status} → ${nextStatus}`);
+            setLoading(true);
+            const updates = { status: nextStatus, updated_at: new Date().toISOString() };
+
+            if (nextStatus === "assigned") {
+              const deliveryPin = generateDeliveryPin();
+              const { count } = await supabase
+                .from("orders")
+                .select("*", { count: "exact", head: true })
+                .eq("rider_id", user.id)
+                .in("status", ["assigned", "picked_up", "in_transit"]);
+              const seq = (count || 0) + 1;
+              updates.rider_id = user.id;
+              updates.route_sequence = seq;
+              updates.delivery_pin = deliveryPin;
+              console.log(`[JobQueue] Assigned | pin=${deliveryPin} routeSequence=${seq}`);
+            }
+
+            const { error } = await supabase
+              .from("orders")
+              .update(updates)
+              .eq("id", order.id);
+
+            if (error) {
+              console.error(`[JobQueue] Status advance failed for ${order.orderId || order.id}:`, error.message);
+              throw error;
+            }
+            console.log(`[JobQueue] Update success | order=${order.orderId || order.id} newStatus=${nextStatus}`);
+            fetchAvailable();
+          } catch (err) {
+            console.error(`[JobQueue] Status advance error for ${order.orderId || order.id}:`, err);
+            alert(`Failed to update order status: ${err.message}`);
+          } finally {
+            setLoading(false);
+            setSelectedOrder(null);
+          }
         }}
       />
     </View>

@@ -1,18 +1,12 @@
 import { supabase } from "./supabaseClient";
+import { getLocalDateBounds } from "./budgetService";
 
-/**
- * Standardizes calculation date markers to prevent timezone clipping.
- * Returns both the dynamic tracking baseline and a stable unique conflict key.
- */
-function getInsightPeriodBounds() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  
-  return {
-    monthStartISO: `${year}-${month}-01T00:00:00.000Z`,
-    conflictPeriodKey: `${year}-${month}-01` // Clean YYYY-MM-DD anchor for unique indexing
-  };
+const { periodStart, periodEnd } = getLocalDateBounds();
+const monthStartISO = `${periodStart}T00:00:00.000Z`;
+const monthEndISO = `${periodEnd}T23:59:59.999Z`;
+
+export function getInsightPeriodBounds() {
+  return { monthStartISO, monthEndISO, conflictPeriodKey: periodStart };
 }
 
 export async function fetchInsights(userId) {
@@ -60,19 +54,21 @@ export async function computeAndStoreInsights(userId) {
     supabase
       .from("revenue")
       .select("amount")
-      .eq("rider_id", userId)
-      .gte("order_completed_at", monthStartISO),
+      .eq("rider_id", userId),
     supabase
       .from("manual_entries")
-      .select("type, category, amount")
+      .select("type, amount")
       .eq("rider_id", userId)
-      .gte("occurred_at", monthStartISO)
   ]);
 
   if (revenueResponse.error) throw revenueResponse.error;
   if (manualEntriesResponse.error) throw manualEntriesResponse.error;
 
-  const totalEarnings = (revenueResponse.data || []).reduce((sum, r) => sum + Number(r.amount), 0);
+  const deliveryEarnings = (revenueResponse.data || []).reduce((sum, r) => sum + Number(r.amount), 0);
+  const externalIncome = (manualEntriesResponse.data || [])
+    .filter((e) => e.type === "inflow")
+    .reduce((sum, e) => sum + Math.abs(Number(e.amount)), 0);
+  const totalEarnings = deliveryEarnings + externalIncome;
   const manualEntries = manualEntriesResponse.data || [];
 
   if (totalEarnings === 0 && manualEntries.length === 0) {
@@ -94,16 +90,15 @@ export async function computeAndStoreInsights(userId) {
     const amount = Number(entry.amount) || 0;
     
     if (entry.type === "outflow") {
-      // Map item entries directly onto matching categories safely
       if (entry.category === "needs" || entry.category === "wants") {
         spentAggregates[entry.category] += amount;
+      } else if (entry.category === "savings") {
+        spentAggregates.savings += amount;
       } else {
-        // Fallback default routing logic if custom label maps are absent
         spentAggregates.needs += amount * 0.5;
-        spentAggregates.wants += amount * 0.5;
+        spentAggregates.wants += amount * 0.3;
+        spentAggregates.savings += amount * 0.2;
       }
-    } else if (entry.type === "inflow" && entry.category === "savings") {
-      spentAggregates.savings += amount;
     }
   });
 

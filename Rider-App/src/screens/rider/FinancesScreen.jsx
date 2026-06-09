@@ -26,7 +26,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabaseClient";
 import { useNavigation } from "@react-navigation/native";
-import { getLiveBudgetFromRevenue } from "../../services/budgetService";
+import { getLiveBudgetWithExpenses, buildDefaultBudget } from "../../services/budgetService";
 import { useThemeStore } from "../../store/themeStore";
 
 const { width } = Dimensions.get("window");
@@ -59,26 +59,6 @@ function buildWeekDays(fromMonday) {
       date: d.toISOString().split("T")[0],
     };
   });
-}
-
-function buildDefaultBudget(totalEarnings) {
-  return [
-    { id: "needs", title: "50% Needs", allocated: totalEarnings * 0.5, spent: totalEarnings * 0.4, color: "#a855f7", description: "Rent, utilities, fuel, food", icon: "Home", subItems: [
-      { name: "Rent", amount: totalEarnings * 0.15 },
-      { name: "Utilities", amount: totalEarnings * 0.05 },
-      { name: "Fuel", amount: totalEarnings * 0.08 },
-      { name: "Groceries", amount: totalEarnings * 0.12 },
-    ]},
-    { id: "wants", title: "30% Wants", allocated: totalEarnings * 0.3, spent: totalEarnings * 0.25, color: "#6366f1", description: "Dining out, hobbies, shopping", icon: "ShoppingBag", subItems: [
-      { name: "Dining Out", amount: totalEarnings * 0.08 },
-      { name: "Hobbies", amount: totalEarnings * 0.05 },
-      { name: "Shopping", amount: totalEarnings * 0.12 },
-    ]},
-    { id: "savings", title: "20% Savings", allocated: totalEarnings * 0.2, spent: totalEarnings * 0.2, color: "#10b981", description: "Emergency fund, investments", icon: "PiggyBank", subItems: [
-      { name: "Emergency Fund", amount: totalEarnings * 0.1 },
-      { name: "Investments", amount: totalEarnings * 0.1 },
-    ]},
-  ];
 }
 
 export default function FinancesScreen() {
@@ -116,10 +96,15 @@ export default function FinancesScreen() {
   const loadBudgetData = async () => {
     if (!user?.id) return;
     try {
-      const data = await getLiveBudgetFromRevenue(user.id);
-      if (data) setBudgetData(data);
+      const data = await getLiveBudgetWithExpenses(user.id);
+      if (data && data.length > 0) {
+        setBudgetData(data);
+      } else {
+        setBudgetData(buildDefaultBudget(financeSummary.totalEarnings));
+      }
     } catch (e) {
       console.warn("[Finances] budget load failed:", e.message);
+      setBudgetData(buildDefaultBudget(financeSummary.totalEarnings));
     }
   };
 
@@ -187,26 +172,30 @@ export default function FinancesScreen() {
     try {
       const weekStart = getMonday(new Date());
       const weekDays = buildWeekDays(weekStart);
-      
-      const weeklyPromises = weekDays.map(async (day) => {
-        const startOfDay = day.date + "T00:00:00";
-        const endOfDay = day.date + "T23:59:59";
-        
-        const { data, error } = await supabase
-          .from("revenue")
-          .select("amount")
-          .eq("rider_id", user.id)
-          .gte("order_completed_at", startOfDay)
-          .lte("order_completed_at", endOfDay);
 
-        if (error) throw error;
+      const { data: revenue, error } = await supabase
+        .from("revenue")
+        .select("amount, order_completed_at")
+        .eq("rider_id", user.id);
+
+      if (error) throw error;
+
+      const weeklyPromises = weekDays.map(async (day) => {
+        const dayStart = new Date(day.date + "T00:00:00");
+        const dayEnd = new Date(day.date + "T23:59:59.999");
+
+        const dayEarnings = (revenue || []).reduce((sum, r) => {
+          const d = new Date(r.order_completed_at || r.created_at);
+          return d >= dayStart && d <= dayEnd ? sum + Number(r.amount) : sum;
+        }, 0);
+
         return {
           day: day.day,
-          earnings: data?.reduce((sum, r) => sum + Number(r.amount), 0) || 0,
+          earnings: dayEarnings,
         };
       });
 
-    const results = await Promise.all(weeklyPromises);
+      const results = await Promise.all(weeklyPromises);
       setWeeklyData(results);
     } catch (err) {
       console.warn("[Finances] Weekly data fetch failed:", err.message);
@@ -713,15 +702,19 @@ export default function FinancesScreen() {
               <ActivityIndicator size="small" color={colors.warning} />
             </View>
           ) : (
-            weeklyData.map((day, index) => (
-              <View key={index} style={ui.weeklyBarCard}>
-                <View style={ui.weeklyBarWrapper}>
-                  <View style={[ui.weeklyBarFill, { height: Math.max(day.earnings / 10, 20) }]} />
+            weeklyData.map((day, index) => {
+              const maxEarning = Math.max(...weeklyData.map(d => d.earnings), 1);
+              const barHeight = Math.max((day.earnings / maxEarning) * 80, 4);
+              return (
+                <View key={index} style={ui.weeklyBarCard}>
+                  <View style={ui.weeklyBarWrapper}>
+                    <View style={[ui.weeklyBarFill, { height: barHeight }]} />
+                  </View>
+                  <Text style={ui.weeklyDayLabel}>{day.day}</Text>
+                  <Text style={ui.weeklyAmountLabel}>GH₵{day.earnings.toFixed(0)}</Text>
                 </View>
-                <Text style={ui.weeklyDayLabel}>{day.day}</Text>
-                <Text style={ui.weeklyAmountLabel}>GH₵{day.earnings.toFixed(0)}</Text>
-              </View>
-            ))
+              );
+            })
           )}
         </ScrollView>
 

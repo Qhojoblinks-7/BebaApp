@@ -100,7 +100,7 @@ async function fetchMetricsForRange(userId, start, end) {
 
   const { data: revenue, error: revenueError } = await supabase
     .from("revenue")
-    .select("amount, order_completed_at")
+    .select("amount")
     .eq("rider_id", userId)
     .gte("order_completed_at", startStr)
     .lt("order_completed_at", endStr);
@@ -116,7 +116,19 @@ async function fetchMetricsForRange(userId, start, end) {
 
   if (ordersError) throw ordersError;
 
-  const totalEarnings = (revenue || []).reduce((sum, r) => sum + Number(r.amount), 0);
+  const { data: inflows, error: inflowError } = await supabase
+    .from("manual_entries")
+    .select("amount")
+    .eq("rider_id", userId)
+    .eq("type", "inflow")
+    .gte("occurred_at", startStr)
+    .lt("occurred_at", endStr);
+
+  if (inflowError) throw inflowError;
+
+  const deliveryEarnings = (revenue || []).reduce((sum, r) => sum + Number(r.amount), 0);
+  const externalIncome = (inflows || []).reduce((sum, r) => sum + Math.abs(Number(r.amount)), 0);
+  const totalEarnings = deliveryEarnings + externalIncome;
   const totalCompletions = (orders || []).filter((o) => o.status === "delivered").length;
   const totalOrders = (orders || []).length;
   const completionRate = totalOrders > 0 ? Math.round((totalCompletions / totalOrders) * 100) : 0;
@@ -142,6 +154,7 @@ export default function ReportsScreen({ route, navigation }) {
   const [metrics, setMetrics] = useState(null);
   const [insights, setInsights] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [periodOutflows, setPeriodOutflows] = useState(0);
 
   const range = useMemo(
     () => getPeriodRange(period, startDate, endDate),
@@ -159,7 +172,7 @@ export default function ReportsScreen({ route, navigation }) {
 
       const earningsDelta = previous.totalEarnings > 0 ? ((current.totalEarnings - previous.totalEarnings) / previous.totalEarnings) * 100 : current.totalEarnings > 0 ? 100 : 0;
       const completionDelta = previous.completionRate > 0 ? ((current.completionRate - previous.completionRate) / previous.completionRate) * 100 : current.completionRate > 0 ? 100 : 0;
-      const completionsDelta = previous.totalCompletions > 0 ? ((current.totalCompletions - previous.totalCompletions) / previous.totalCompletions) * 100 : current.totalCompletions > 0 ? 100 : 0;
+      const completionsDelta = previous.totalCompletions > 0 ? ((current.totalCompletions - previous.totalCompletions) / previous.totalCompletions) * 100 : 0;
 
       setMetrics({
         completionRate: current.completionRate,
@@ -188,11 +201,12 @@ export default function ReportsScreen({ route, navigation }) {
   }, [user?.id, period, startDate, endDate]);
 
   const earnings = metrics?.totalEarnings || 0;
-  const needs = earnings * 0.5;
-  const wants = earnings * 0.3;
-  const savings = earnings * 0.2;
+  const totalOutflows = periodOutflows;
+  const needsAllocated = earnings * 0.5;
+  const wantsAllocated = earnings * 0.3;
+  const savingsAllocated = earnings * 0.2;
 
-  const hasActivity = (metrics?.totalEarnings || 0) > 0;
+  const hasActivity = earnings > 0;
 
   const renderDelta = (delta) => {
     if (!delta || delta === 0) return null;
@@ -370,32 +384,29 @@ export default function ReportsScreen({ route, navigation }) {
             </View>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.budgetRollRow}>
-              <View style={styles.budgetBucketCard}>
-                <Text style={styles.bucketLabel}>Needs</Text>
-                <Text style={styles.bucketValue}>GH₵ {needs.toFixed(2)}</Text>
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: "50%", backgroundColor: "#a855f7" }]} />
+              {earnings > 0 ? [
+                { id: "needs", title: "Needs", allocated: needsAllocated, used: 0, color: "#a855f7" },
+                { id: "wants", title: "Wants", allocated: wantsAllocated, used: 0, color: "#6366f1" },
+                { id: "savings", title: "Savings", allocated: savingsAllocated, used: 0, color: "#10b981" },
+              ].map((bucket) => {
+                const usedPercent = bucket.allocated > 0 ? Math.min(Math.round((bucket.used / bucket.allocated) * 100), 100) : 0;
+                return (
+                  <View key={bucket.id} style={styles.budgetBucketCard}>
+                    <Text style={styles.bucketLabel}>{bucket.title}</Text>
+                    <Text style={styles.bucketValue}>GH₵ {bucket.allocated.toFixed(2)}</Text>
+                    <View style={styles.progressTrack}>
+                      <View style={[styles.progressFill, { width: `${usedPercent}%`, backgroundColor: bucket.color }]} />
+                    </View>
+                    <Text style={styles.bucketShare}>
+                      {bucket.id === "savings" ? "Saved" : "Spent"} · {usedPercent}%
+                    </Text>
+                  </View>
+                );
+              }) : (
+                <View style={[styles.budgetBucketCard, { width: CARD_WIDTH * 3 + 24 }]}>
+                  <Text style={[styles.bucketLabel, { textAlign: "center", width: "100%" }]}>No earnings this period</Text>
                 </View>
-                <Text style={styles.bucketShare}>50%</Text>
-              </View>
-
-              <View style={styles.budgetBucketCard}>
-                <Text style={styles.bucketLabel}>Wants</Text>
-                <Text style={styles.bucketValue}>GH₵ {wants.toFixed(2)}</Text>
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: "30%", backgroundColor: "#6366f1" }]} />
-                </View>
-                <Text style={styles.bucketShare}>30%</Text>
-              </View>
-
-              <View style={styles.budgetBucketCard}>
-                <Text style={styles.bucketLabel}>Savings</Text>
-                <Text style={styles.bucketValue}>GH₵ {savings.toFixed(2)}</Text>
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: "20%", backgroundColor: "#10b981" }]} />
-                </View>
-                <Text style={styles.bucketShare}>20%</Text>
-              </View>
+              )}
             </ScrollView>
 
             {mappedInsights.length > 0 && (

@@ -15,6 +15,7 @@ import { CheckCircle2, X } from "lucide-react-native";
 import SignatureScreen from "react-native-signature-canvas";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabaseClient";
+import { computeAndStoreInsights } from "../../services/insightsService";
 import { useThemeStore } from "../../store/themeStore";
 
 export default function DeliveryClosureScreen({ route, navigation }) {
@@ -97,7 +98,9 @@ export default function DeliveryClosureScreen({ route, navigation }) {
 
     setSubmitting(true);
     try {
+      console.log(`[DeliveryClosure] Starting finalise | orderId=${orderId} receiver=${receiverName}`);
       const now = new Date().toISOString();
+      console.log(`[DeliveryClosure] Timestamp: ${now}`);
       const { error } = await supabase
         .from("orders")
         .update({
@@ -109,35 +112,68 @@ export default function DeliveryClosureScreen({ route, navigation }) {
         })
         .eq("id", orderId);
 
-      if (error) throw error;
+      if (error) {
+        console.error(`[DeliveryClosure] Order update failed | orderId=${orderId}:`, error.message);
+        throw error;
+      }
+      console.log(`[DeliveryClosure] Order status set to delivered | orderId=${orderId}`);
 
       const { data: orderData, error: fetchError } = await supabase
         .from("orders")
-        .select("delivery_fee")
+        .select("delivery_fee, base_price, distance_fee, surge_fee")
         .eq("id", orderId)
         .maybeSingle();
 
       if (fetchError) {
-        console.warn("[DeliveryClosure] Fee fetch failed:", fetchError.message);
+        console.warn(`[DeliveryClosure] Fee fetch failed | orderId=${orderId}:`, fetchError.message);
       }
+      console.log(`[DeliveryClosure] Fee columns | orderId=${orderId}`, {
+        delivery_fee: orderData?.delivery_fee,
+        base_price: orderData?.base_price,
+        distance_fee: orderData?.distance_fee,
+        surge_fee: orderData?.surge_fee,
+      });
 
-      const fee = orderData?.delivery_fee;
-      if (fee !== null && fee !== undefined) {
-        const { error: revenueError } = await supabase.from("revenue").insert({
+      const parsed = {
+        delivery: Number(orderData?.delivery_fee) || 0,
+        base: Number(orderData?.base_price) || 0,
+        distance: Number(orderData?.distance_fee) || 0,
+        surge: Number(orderData?.surge_fee) || 0,
+      };
+
+      const fee = parsed.delivery || parsed.base + parsed.distance + parsed.surge;
+      console.log(`[DeliveryClosure] Computed fee=${fee.toFixed(2)} | orderId=${orderId}`);
+
+      if (fee > 0) {
+        const revenuePayload = {
           rider_id: user.id,
           order_id: orderId,
-          amount: Number(fee),
+          amount: fee,
           order_completed_at: now,
-        });
+        };
+        console.log(`[DeliveryClosure] Inserting revenue | orderId=${orderId}`, revenuePayload);
+        const { error: revenueError } = await supabase.from("revenue").insert(revenuePayload);
         if (revenueError) {
-          console.warn("[DeliveryClosure] Revenue insert failed:", revenueError.message);
+          console.error(`[DeliveryClosure] Revenue insert failed | orderId=${orderId}:`, revenueError.message);
+        } else {
+          console.log(`[DeliveryClosure] Revenue inserted successfully | orderId=${orderId} fee=GHS ${fee.toFixed(2)}`);
+          try {
+            console.log(`[DeliveryClosure] Triggering insight recompute for rider ${user.id}`);
+            await computeAndStoreInsights(user.id);
+            console.log(`[DeliveryClosure] Insight recompute complete`);
+          } catch (insightErr) {
+            console.warn(`[DeliveryClosure] Non-blocking insight recompute failed:`, insightErr.message);
+          }
         }
+      } else {
+        console.warn(`[DeliveryClosure] Fee is zero, skipping revenue insert | orderId=${orderId}`);
       }
 
       Alert.alert("Success", "Handover Complete. Consignment closed out.", [
         { text: "OK", onPress: () => navigation.navigate("DashboardTab") },
       ]);
     } catch (err) {
+      console.error(`[DeliveryClosure] Fatal error | orderId=${orderId}:`, err);
       Alert.alert("Error", err.message);
     } finally {
       setSubmitting(false);

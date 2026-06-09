@@ -18,7 +18,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
 import { fetchInsightsByCategory, fetchActionPlans } from "../../services/insightsService";
-import { fetchBudgetBreakdownData } from "../../services/budgetService";
+import { getLiveBudgetWithExpenses, buildDefaultBudget } from "../../services/budgetService";
 
 // Static mapping layout configuration safely pulled outside render lifecycle scope
 const INSIGHT_DATA_MAP = {
@@ -54,6 +54,8 @@ export default function BudgetInsightDetailScreen({ route, navigation }) {
   const [insights, setInsights] = useState([]);
   const [actions, setActions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const params = route.params || {};
+  const serverBudgetData = params.budgetData;
 
   const currentInsight = useMemo(() => INSIGHT_DATA_MAP[categoryId] || INSIGHT_DATA_MAP.needs, [categoryId]);
 
@@ -64,11 +66,30 @@ export default function BudgetInsightDetailScreen({ route, navigation }) {
       if (!user?.id) return;
       setLoading(true);
       try {
-        const [breakdownData, rawInsights, rawActions] = await Promise.all([
-          fetchBudgetBreakdownData(user.id),
-          fetchInsightsByCategory(user.id, categoryId),
-          fetchActionPlans(user.id),
-        ]);
+        let breakdownData = null;
+
+        if (serverBudgetData && serverBudgetData[categoryId]) {
+          breakdownData = { [categoryId]: serverBudgetData[categoryId] };
+        } else if (serverBudgetData && Array.isArray(serverBudgetData) && serverBudgetData.length > 0) {
+          breakdownData = serverBudgetData.reduce((acc, cat) => {
+            acc[cat.id] = cat;
+            return acc;
+          }, {});
+        } else {
+          const liveData = await getLiveBudgetWithExpenses(user.id);
+          if (liveData && Array.isArray(liveData) && liveData.length > 0) {
+            breakdownData = liveData.reduce((acc, cat) => {
+              acc[cat.id] = cat;
+              return acc;
+            }, {});
+          } else {
+            const fallback = buildDefaultBudget(0);
+            breakdownData = fallback.reduce((acc, cat) => {
+              acc[cat.id] = cat;
+              return acc;
+            }, {});
+          }
+        }
 
         if (!isMounted) return;
 
@@ -77,6 +98,11 @@ export default function BudgetInsightDetailScreen({ route, navigation }) {
         } else {
           setCategoryData(null);
         }
+
+        const [rawInsights, rawActions] = await Promise.all([
+          fetchInsightsByCategory(user.id, categoryId),
+          fetchActionPlans(user.id),
+        ]);
 
         setInsights(rawInsights);
         setActions(rawActions.filter((a) => a.category === categoryId));
@@ -90,7 +116,7 @@ export default function BudgetInsightDetailScreen({ route, navigation }) {
     loadCategoryData();
 
     return () => {
-      isMounted = false; // Clean up subscriptions to protect against memory leaks on unmount
+      isMounted = false;
     };
   }, [user?.id, categoryId]);
 

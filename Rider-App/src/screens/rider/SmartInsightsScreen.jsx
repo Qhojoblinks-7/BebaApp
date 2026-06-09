@@ -22,6 +22,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabaseClient";
 import { fetchInsights, fetchActionPlans } from "../../services/insightsService";
+import { getLocalDateBounds } from "../../services/budgetService";
 
 export default function SmartInsightsScreen({ navigation }) {
   const { user } = useAuth();
@@ -45,13 +46,9 @@ export default function SmartInsightsScreen({ navigation }) {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const monthStart = new Date();
-      monthStart.setDate(1);
-      monthStart.setHours(0, 0, 0, 0);
-
       const [revenueResult, manualResult, insightsData, actionsData] = await Promise.all([
-        supabase.from("revenue").select("amount").eq("rider_id", user.id).gte("order_completed_at", monthStart.toISOString()),
-        supabase.from("manual_entries").select("type, amount").eq("rider_id", user.id).gte("occurred_at", monthStart.toISOString()),
+        supabase.from("revenue").select("amount, order_completed_at").eq("rider_id", user.id),
+        supabase.from("manual_entries").select("type, amount").eq("rider_id", user.id),
         fetchInsights(user.id),
         fetchActionPlans(user.id),
       ]);
@@ -62,17 +59,27 @@ export default function SmartInsightsScreen({ navigation }) {
       const totalDeliveries = revenue.length;
       const outflowTotal = manualEntries.filter((e) => e.type === "outflow").reduce((sum, e) => sum + Number(e.amount), 0);
 
-      // Baseline structural estimation metrics
-      const costPerKm = totalDeliveries > 0 ? (outflowTotal / (totalDeliveries * 5.4)).toFixed(2) : "0.00";
-      const runway = totalEarnings > 0 ? Math.max(0, (totalEarnings * 0.2) / (outflowTotal * 0.5)).toFixed(1) : "0.0";
+      console.log("[SmartInsights] Data loaded", {
+        totalEarnings,
+        totalDeliveries,
+        outflowTotal,
+        revenueCount: revenueResult.data?.length,
+        manualCount: manualResult.data?.length,
+      });
+
+      const avgCost = totalDeliveries > 0 ? (outflowTotal / totalDeliveries).toFixed(2) : "0.00";
+      const runway = totalEarnings > 0 && outflowTotal > 0 ? ((totalEarnings * 0.2) / outflowTotal).toFixed(1) : "0.0";
       const residualWants = totalEarnings * 0.3 - outflowTotal * 0.4;
-      const wantsRate = totalEarnings * 0.3 > 0 ? Math.min(100, Math.max(0, Math.round((residualWants / (totalEarnings * 0.3)) * 100))) : 0;
+      const wantsRate = outflowTotal > 0 && totalEarnings * 0.3 > 0
+        ? Math.min(100, Math.max(0, Math.round((residualWants / (totalEarnings * 0.3)) * 100)))
+        : 0;
+      const netMargin = totalEarnings > 0 ? ((totalEarnings - outflowTotal) / totalEarnings * 100).toFixed(1) : "0.0";
 
       setMetrics({
-        operatingCostPerKm: `GHS ${costPerKm}`,
+        operatingCostPerKm: `GHS ${avgCost}`,
         runwayMonths: `${runway} Months`,
         wantsDepletionRate: `${wantsRate}%`,
-        yieldVsInflation: totalEarnings > 0 ? "+2.4%" : "N/A",
+        yieldVsInflation: totalEarnings > 0 ? `+${netMargin}%` : "N/A",
       });
       setMetricsEarnings(totalEarnings);
       setOutflows(outflowTotal);
@@ -122,29 +129,41 @@ export default function SmartInsightsScreen({ navigation }) {
                     <Text style={styles.cardLabelText}>True Operating Cost</Text>
                   </View>
                   <Text style={styles.cardMainValueText}>{metrics.operatingCostPerKm}</Text>
-                  <Text style={styles.cardUnitText}>per kilometer</Text>
-                  <View style={styles.vectorContainer}>
-                    <Svg height="40" width="100%" viewBox="0 0 140 40" preserveAspectRatio="xMidYMidMeet">
-                      <Path d="M10,30 Q40,10 70,25 T130,15" fill="none" stroke="#a855f7" strokeWidth="2.5" strokeLinecap="round" />
-                      <Circle cx="130" cy="15" r="3.5" fill="#ffffff" />
-                    </Svg>
-                  </View>
-                  <Text style={styles.cardFooterText}>Factoring asset upkeep, margins, and wear parameters.</Text>
+                  <Text style={styles.cardUnitText}>per delivery</Text>
+                  {outflows > 0 ? (
+                    <View style={styles.vectorContainer}>
+                      <Svg height="40" width="100%" viewBox="0 0 140 40" preserveAspectRatio="xMidYMidMeet">
+                        <Path d="M10,30 Q40,10 70,25 T130,15" fill="none" stroke="#a855f7" strokeWidth="2.5" strokeLinecap="round" />
+                        <Circle cx="130" cy="15" r="3.5" fill="#ffffff" />
+                      </Svg>
+                    </View>
+                  ) : (
+                    <View style={styles.noDataWrap}>
+                      <Text style={styles.noDataText}>Log expenses to see cost trajectory</Text>
+                    </View>
+                  )}
+                  <Text style={styles.cardFooterText}>Based on actual delivered deliveries & recorded costs.</Text>
                 </View>
 
                 <View style={styles.insightCard}>
                   <View style={styles.cardHeaderInline}>
                     <TrendingUp size={14} color="#94a3b8" />
-                    <Text style={styles.cardLabelText}>Net Portfolio Yield</Text>
+                    <Text style={styles.cardLabelText}>Net Margin</Text>
                   </View>
                   <Text style={[styles.cardMainValueText, { color: "#22c55e" }]}>{metrics.yieldVsInflation}</Text>
-                  <Text style={styles.cardUnitText}>above inflation curve</Text>
-                  <View style={styles.vectorContainer}>
-                    <Svg height="40" width="100%" viewBox="0 0 140 40" preserveAspectRatio="xMidYMidMeet">
-                      <Path d="M10,35 Q35,35 50,20 T90,8 T130,25" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" />
-                    </Svg>
-                  </View>
-                  <Text style={styles.cardFooterText}>Aggregated growth rates across your fixed-income channels.</Text>
+                  <Text style={styles.cardUnitText}>earned vs spent</Text>
+                  {outflows > 0 ? (
+                    <View style={styles.vectorContainer}>
+                      <Svg height="40" width="100%" viewBox="0 0 140 40" preserveAspectRatio="xMidYMidMeet">
+                        <Path d="M10,35 Q35,35 50,20 T90,8 T130,25" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" />
+                      </Svg>
+                    </View>
+                  ) : (
+                    <View style={styles.noDataWrap}>
+                      <Text style={styles.noDataText}>Add outflows to see margin breakdown</Text>
+                    </View>
+                  )}
+                  <Text style={styles.cardFooterText}>Revenue kept after all recorded expenses.</Text>
                 </View>
               </View>
             ) : (
@@ -189,7 +208,9 @@ export default function SmartInsightsScreen({ navigation }) {
                 <View style={styles.bannerTextContainer}>
                   <Text style={styles.bannerHeadingText}>Discretionary Depletion Rate</Text>
                   <Text style={styles.bannerDescriptionText}>
-                    You have utilized <Text style={{ color: "#ffffff", fontWeight: "700" }}>{metrics.wantsDepletionRate}</Text> of your 30% Wants bucket. Outbound pace at local food spots and subscriptions is accelerating.
+                    {outflows > 0
+                      ? <React.Fragment>You have utilized <Text style={{ color: "#ffffff", fontWeight: "700" }}>{metrics.wantsDepletionRate}</Text> of your 30% Wants bucket.</React.Fragment>
+                      : "No expense data recorded yet. Add manual cash flow entries to track discretionary spending."}
                   </Text>
                 </View>
               </View>
@@ -306,4 +327,6 @@ const styles = StyleSheet.create({
   emptyWrap: { paddingTop: 32, alignItems: "center", gap: 12 },
   emptyText: { color: "#64748b", fontSize: 14, fontWeight: "600", textAlign: "center" },
   emptySubtext: { color: "#475569", fontSize: 12, fontWeight: "500", textAlign: "center" },
+  noDataWrap: { height: 44, justifyContent: "center", alignItems: "center", marginVertical: 6 },
+  noDataText: { color: "#475569", fontSize: 11, fontWeight: "500", textAlign: "center" },
 });
