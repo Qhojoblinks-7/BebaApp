@@ -14,10 +14,14 @@ const corsHeaders = {
  */
 const formatPhoneNumber = (phone: string | null | undefined): string | null => {
   if (!phone) return null;
-  const digits = phone.replace(/[^0-9]/g, "");
-  if (digits.startsWith("0")) return "233" + digits.slice(1);
-  if (digits.startsWith("233")) return digits;
-  return digits.length >= 9 ? digits : null;
+  const trimmed = phone.trim();
+  const hasPlus = trimmed.startsWith("+");
+  const digits = trimmed.replace(/[^0-9]/g, "");
+  if (hasPlus) return "+" + digits;
+  if (digits.startsWith("0")) return "+233" + digits.slice(1);
+  if (digits.startsWith("233")) return "+" + digits;
+  if (digits.length >= 9) return "+" + digits;
+  return null;
 };
 
 Deno.serve(async (req) => {

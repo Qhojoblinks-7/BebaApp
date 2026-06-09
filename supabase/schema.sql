@@ -185,7 +185,7 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Insert trigger to send notifications to all online riders when order is created
+-- Insert trigger to send notifications to all riders when order is created
 CREATE OR REPLACE FUNCTION notify_riders_new_order()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -195,8 +195,7 @@ BEGIN
     rs.id,
     'New Order Available',
     'Order ' || NEW.order_id || ' needs pickup from ' || NEW.pickup_address
-  FROM rider_status rs
-  WHERE rs.rider_status = 'online';
+  FROM rider_status rs;
   RETURN NEW;
 END;
 $$ language 'plpgsql' SECURITY DEFINER;

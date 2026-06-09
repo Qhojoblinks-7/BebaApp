@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../services/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
+import * as Notifications from "expo-notifications";
 import { Bell } from "lucide-react-native";
 import DeliveryDetailsBottomSheet from "../../components/rider/DeliveryDetailsBottomSheet";
 
@@ -26,12 +27,51 @@ export default function NotificationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
 
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      Notifications.setNotificationChannelAsync("new-orders", {
+        name: "New Order Alerts",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: "#115e59",
+        sound: "magiaz_cash_register_444842.mp3",
+      }).then(() => {
+        console.log("[Notifications] channel 'new-orders' registered");
+      }).catch((err) => {
+        console.warn("[Notifications] channel registration failed:", err.message);
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== "granted") {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      console.log("[Notifications] permission:", finalStatus);
+    })();
+  }, []);
+
   const fetchNotifications = useCallback(async (showLoadingIndicator = true) => {
-    if (!user?.id) return;
+    console.log('[Notifications] fetchNotifications start', { userId: user?.id, showLoadingIndicator })
+    if (!user?.id) {
+      console.log('[Notifications] abort: no user id')
+      return
+    }
     if (showLoadingIndicator) setLoading(true);
 
     try {
-      // FIX: Explicitly request foundational root order fields within relational selection tree
       const { data, error } = await supabase
         .from("notifications")
         .select(`
@@ -47,16 +87,22 @@ export default function NotificationsScreen() {
             order_id,
             item_description,
             pickup_address,
+            sender_phone,
             customer_name,
             customer_phone,
             delivery_address,
             delivery_fee,
+            pickup_lat,
+            pickup_lng,
+            delivery_lat,
+            delivery_lng,
             status
           )
         `)
         .eq("rider_id", user.id)
         .order("created_at", { ascending: false });
 
+      console.log('[Notifications] query result', { count: data?.length, error: error?.message })
       if (error) throw error;
       if (data) setNotifications(data);
     } catch (err) {
@@ -76,9 +122,18 @@ export default function NotificationsScreen() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "notifications" },
         (payload) => {
+          console.log('[Notifications] realtime INSERT payload:', payload.new)
           if (payload.new && payload.new.rider_id === user?.id) {
-            // Hot reload context values natively to inject real-time relational maps
             fetchNotifications(false);
+            Notifications.scheduleNotificationAsync({
+              content: {
+                title: "New Order Available",
+                body: `Waybill ${payload.new.order_id || payload.new.id}`,
+                channelId: "new-orders",
+                sound: "magiaz_cash_register_444842.mp3",
+              },
+              trigger: null,
+            });
           }
         },
       )
@@ -136,10 +191,15 @@ export default function NotificationsScreen() {
               order_id: waybill,
               item_description: orderRecord.item_description,
               pickup_address: orderRecord.pickup_address,
+              sender_phone: orderRecord.sender_phone,
               customer_name: orderRecord.customer_name,
               customer_phone: orderRecord.customer_phone,
               delivery_address: orderRecord.delivery_address,
               delivery_fee: orderRecord.delivery_fee,
+              pickup_lat: orderRecord.pickup_lat,
+              pickup_lng: orderRecord.pickup_lng,
+              delivery_lat: orderRecord.delivery_lat,
+              delivery_lng: orderRecord.delivery_lng,
               status: orderRecord.status || (item.title.toLowerCase().includes("new") ? "pending" : "assigned"),
             });
           }
@@ -233,7 +293,6 @@ export default function NotificationsScreen() {
         onAction={(order, status) => {
           if (status === "pending") {
             setSelectedOrder(null);
-            navigation.navigate("JobQueue");
           } else {
             setSelectedOrder(null);
           }

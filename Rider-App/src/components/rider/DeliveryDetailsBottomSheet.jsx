@@ -485,10 +485,10 @@ export default function DeliveryDetailsBottomSheet({
                          backgroundColor: `${colors.primary}20`,
                          alignSelf: "flex-start",
                        }}
-                       onPress={() => {
-                         const url = `https://www.google.com/maps/dir/?api=1&destination=${order.pickup_lat},${order.pickup_lng}`;
-                         Linking.openURL(url);
-                       }}
+onPress={() => {
+                          const url = `https://www.google.com/maps/dir/?api=1&destination=${order.pickup_lat},${order.pickup_lng}&travelmode=bicycling`;
+                          Linking.openURL(url);
+                        }}
                        activeOpacity={0.7}
                      >
                        <Navigation size={14} color={colors.primary} />
@@ -522,10 +522,10 @@ export default function DeliveryDetailsBottomSheet({
                         backgroundColor: "#10b98120",
                         alignSelf: "flex-start",
                       }}
-                      onPress={() => {
-                        const url = `https://www.google.com/maps/dir/?api=1&destination=${order.delivery_lat},${order.delivery_lng}`;
-                        Linking.openURL(url);
-                      }}
+onPress={() => {
+                         const url = `https://www.google.com/maps/dir/?api=1&destination=${order.delivery_lat},${order.delivery_lng}&travelmode=bicycling`;
+                         Linking.openURL(url);
+                       }}
                       activeOpacity={0.7}
                     >
                       <Navigation size={14} color="#10b981" />
