@@ -15,6 +15,7 @@ import { ArrowLeft, Plus, TrendingUp, TrendingDown, Trash2 } from "lucide-react-
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
 import { fetchManualEntries, removeManualEntry } from "../../services/manualEntries";
+import { useFocusEffect } from "@react-navigation/native";
 
 export default function ManualCashFlowScreen({ navigation }) {
   const { user } = useAuth();
@@ -41,6 +42,12 @@ export default function ManualCashFlowScreen({ navigation }) {
   useEffect(() => {
     if (user?.id) loadEntries(true);
   }, [user?.id, loadEntries]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.id) loadEntries(false);
+    }, [user?.id, loadEntries])
+  );
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -158,9 +165,7 @@ export default function ManualCashFlowScreen({ navigation }) {
               style={[styles.addButton, { backgroundColor: colors.primary || "#115e59" }]}
               activeOpacity={0.8}
               onPress={() =>
-                navigation.navigate("QuickAddEntry", {
-                  onAdded: () => loadEntries(false),
-                })
+                navigation.navigate("QuickAddEntry")
               }
             >
               <Plus size={16} color={colors.textOnPrimary || "#ffffff"} />

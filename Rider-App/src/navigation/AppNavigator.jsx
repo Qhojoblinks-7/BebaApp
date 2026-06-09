@@ -27,6 +27,7 @@ import ReportsScreen from "../screens/rider/ReportsScreen";
 import ManualCashFlowScreen from "../screens/rider/ManualCashFlowScreen";
 import QuickAddEntryScreen from "../screens/rider/QuickAddEntryScreen";
 import DeliveryHistoryScreen from "../screens/rider/DeliveryHistoryScreen";
+import DeliveryDetailScreen from "../screens/rider/DeliveryDetailScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -164,6 +165,7 @@ export default function AppNavigator() {
         <Stack.Screen name="ManualCashFlow" component={ManualCashFlowScreen} />
         <Stack.Screen name="QuickAddEntry" component={QuickAddEntryScreen} />
         <Stack.Screen name="DeliveryHistory" component={DeliveryHistoryScreen} />
+        <Stack.Screen name="DeliveryDetail" component={DeliveryDetailScreen} />
         <Stack.Screen name="NotificationsSettings" component={NotificationsSettingsScreen} />
         <Stack.Screen name="PrivacySecurity" component={PrivacySecurityScreen} />
         <Stack.Screen name="Preferences" component={PreferencesScreen} />

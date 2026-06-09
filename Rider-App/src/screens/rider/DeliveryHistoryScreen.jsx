@@ -33,7 +33,20 @@ export default function DeliveryHistoryScreen({ navigation }) {
     try {
       const { data, error } = await supabase
         .from("revenue")
-        .select("id, amount, order_completed_at, order_id, orders!inner(order_id, pickup_address, delivery_address)")
+        .select(`
+          id, amount, order_completed_at, order_id,
+          orders!inner(
+            order_id, pickup_address, delivery_address,
+            customer_name, customer_phone,
+            sender_name, sender_phone,
+            pickup_zone, delivery_zone,
+            item_description, delivery_instructions,
+            delivery_fee, base_price, distance_fee, surge_fee,
+            status, received_by, received_at,
+            delivery_pin, signature,
+            created_at, updated_at
+          )
+        `)
         .eq("rider_id", user?.id)
         .order("order_completed_at", { ascending: false });
 
@@ -232,37 +245,44 @@ export default function DeliveryHistoryScreen({ navigation }) {
     const orderRecord = Array.isArray(item.orders) ? item.orders[0] : item.orders;
     const waybill = orderRecord?.order_id || item.order_id || item.id;
     const pickup = orderRecord?.pickup_address || "";
+    const dropoff = orderRecord?.delivery_address || "";
+
+    const handlePress = () => {
+      navigation.navigate("DeliveryDetail", { item });
+    };
 
     return (
-      <View style={ui.deliveryCard}>
-        <View style={ui.leftBlock}>
-          <View style={ui.iconPill}>
-            <ClipboardList size={16} color={colors.primary} />
-          </View>
-          <View style={ui.metaBlock}>
-            <Text style={ui.orderIdText}>Order #{waybill}</Text>
-            <View style={ui.metaRow}>
-              <Clock size={12} color={colors.textDisabled} />
-              <Text style={ui.metaText}>
-                {formatDate(item.order_completed_at)} · {formatTime(item.order_completed_at)}
-              </Text>
+      <TouchableOpacity activeOpacity={0.7} onPress={handlePress}>
+        <View style={ui.deliveryCard}>
+          <View style={ui.leftBlock}>
+            <View style={ui.iconPill}>
+              <ClipboardList size={16} color={colors.primary} />
             </View>
-            {pickup && (
+            <View style={ui.metaBlock}>
+              <Text style={ui.orderIdText}>Order #{waybill}</Text>
               <View style={ui.metaRow}>
-                <MapPin size={12} color={colors.textDisabled} />
-                <Text style={ui.metaText} numberOfLines={1}>{pickup}</Text>
+                <Clock size={12} color={colors.textDisabled} />
+                <Text style={ui.metaText}>
+                  {formatDate(item.order_completed_at)} · {formatTime(item.order_completed_at)}
+                </Text>
               </View>
-            )}
+              {pickup && (
+                <View style={ui.metaRow}>
+                  <MapPin size={12} color={colors.textDisabled} />
+                  <Text style={ui.metaText} numberOfLines={1}>{pickup}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          <View style={ui.rightBlock}>
+            <Text style={ui.amountText}>
+              GH¢{amount.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+            <ChevronRight size={14} color={colors.textDisabled} />
           </View>
         </View>
-
-        <View style={ui.rightBlock}>
-          <Text style={ui.amountText}>
-            GH¢{amount.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </Text>
-          <ChevronRight size={14} color={colors.textDisabled} />
-        </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
