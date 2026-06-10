@@ -34,15 +34,20 @@ export default function BudgetBreakdownScreen({ route, navigation }) {
   const params = route.params || {};
   const serverBudgetData = params.budgetData;
   const [categories, setCategories] = useState([]);
+  const [totalEarnings, setTotalEarnings] = useState(0);
+  const [manualInflows, setManualInflows] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (serverBudgetData) {
-      const categoriesWithIcons = serverBudgetData.map((cat) => ({
-        ...cat,
-        icon: cat.icon && ICON_MAP[cat.icon] ? cat.icon : "Wallet",
-      }));
-      setCategories(categoriesWithIcons);
+      const categoriesWithIcons = serverBudgetData.categories
+        ? serverBudgetData.categories
+        : Array.isArray(serverBudgetData)
+          ? serverBudgetData
+          : [];
+      setCategories(categoriesWithIcons.map((cat) => ({ ...cat, icon: cat.icon && ICON_MAP[cat.icon] ? cat.icon : "Wallet" })));
+      setTotalEarnings(serverBudgetData.totalEarnings || 0);
+      setManualInflows(serverBudgetData.manualInflows || 0);
       setLoading(false);
     } else if (user?.id) {
       loadBudget();
@@ -53,16 +58,16 @@ export default function BudgetBreakdownScreen({ route, navigation }) {
 
   const loadBudget = async () => {
     try {
-      const data = await getLiveBudgetWithExpenses(user.id);
-      if (data && data.length > 0) {
-        setCategories(data);
-      } else {
-        const fallback = buildDefaultBudget(0);
-        setCategories(fallback);
-      }
+      const result = await getLiveBudgetWithExpenses(user.id);
+      const cats = result.categories || result;
+      setCategories(cats.map((cat) => ({ ...cat, icon: cat.icon && ICON_MAP[cat.icon] ? cat.icon : "Wallet" })));
+      setTotalEarnings(result.totalEarnings || 0);
+      setManualInflows(result.manualInflows || 0);
     } catch (e) {
       console.warn("[BudgetBreakdown] load failed:", e.message);
-      setCategories(buildDefaultBudget(0));
+      setCategories(buildDefaultBudget(0).map((cat) => ({ ...cat, icon: cat.icon && ICON_MAP[cat.icon] ? cat.icon : "Wallet" })));
+      setTotalEarnings(0);
+      setManualInflows(0);
     } finally {
       setLoading(false);
     }
@@ -100,106 +105,125 @@ export default function BudgetBreakdownScreen({ route, navigation }) {
             </Text>
           </View>
         ) : (
-          categories.map((category) => {
-            const percentage = category.allocated > 0 ? Math.round((category.spent / category.allocated) * 100) : 0;
-            const remaining = category.allocated - category.spent;
-            const IconComponent = ICON_MAP[category.icon] || Wallet;
-
-            const radius = 16;
-            const circumference = 2 * Math.PI * radius;
-            const strokeDashoffset = circumference - (Math.min(percentage, 100) / 100) * circumference;
-
-            return (
-              <TouchableOpacity 
-                key={category.id} 
-                style={[styles.budgetBucketCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]} 
-                activeOpacity={0.8} 
-                onPress={() => navigation.navigate("BudgetInsightDetail", { categoryId: category.id, budgetData: categories })}
-              >
-                <View style={styles.cardMainHeader}>
-                  <View style={styles.leftMetaStack}>
-                    <View style={styles.cardHeaderInline}>
-                      <View style={[styles.iconCircle, { backgroundColor: category.color + "15" }]}>
-                        <IconComponent size={14} color={category.color} />
-                      </View>
-                      <Text style={[styles.cardLabelText, { color: colors.text }]}>{category.title}</Text>
-                    </View>
-                    <Text style={[styles.descriptionText, { color: colors.textMuted }]}>{category.description}</Text>
-                  </View>
-
-                  <View style={styles.arcVisualContainer}>
-                    <Svg height="48" width="48" viewBox="0 0 40 40">
-                      <Circle cx="20" cy="20" r={radius} fill="none" stroke={colors.border} strokeWidth="3" />
-                      <Circle
-                        cx="20"
-                        cy="20"
-                        r={radius}
-                        fill="none"
-                        stroke={category.color}
-                        strokeWidth="3.5"
-                        strokeDasharray={`${circumference} ${circumference}`}
-                        strokeDashoffset={strokeDashoffset}
-                        strokeLinecap="round"
-                        transform="rotate(-90 20 20)"
-                      />
-                    </Svg>
-                    <View style={styles.arcAbsoluteLabelCenter}>
-                      <Text style={[styles.arcPercentageText, { color: colors.text }]}>{percentage}%</Text>
-                    </View>
-                  </View>
+          <View>
+            {totalEarnings > 0 && (
+              <View style={[styles.summaryCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}>
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Total Earnings</Text>
+                  <Text style={[styles.summaryValue, { color: colors.text }]}>
+                    GH₵ {Number(totalEarnings).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </Text>
                 </View>
-
-                {/* Added theme-consistent boundary lines to keep UI neat */}
-                <View style={[styles.metricRowGroup, { backgroundColor: colors.backgroundInput, borderColor: colors.borderLight }]}>
-                  <View style={styles.metricBlock}>
-                    <Text style={[styles.metricLabelStatic, { color: colors.textMuted }]}>Allocated Base</Text>
-                    <Text style={[styles.metricValueText, { color: colors.textSecondary }]}>
-                      GH₵ {Number(category.allocated).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                {manualInflows > 0 && (
+                  <View style={styles.summaryRow}>
+                    <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Manual Inflows</Text>
+                    <Text style={[styles.summaryValue, { color: colors.success || "#10b981" }]}>
+                      + GH₵ {Number(manualInflows).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </Text>
-                  </View>
-                  <View style={styles.metricBlock}>
-                    <Text style={[styles.metricLabelStatic, { color: colors.textMuted }]}>Spent Outflow</Text>
-                    <Text style={[styles.metricValueText, { color: colors.text }]}>
-                      GH₵ {Number(category.spent).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    </Text>
-                  </View>
-                  <View style={[styles.metricBlock, { alignItems: "flex-end" }]}>
-                    <Text style={[styles.metricLabelStatic, { color: colors.textMuted }]}>Remaining Free</Text>
-                    <Text style={[styles.metricValueText, { color: remaining < 0 ? colors.danger : colors.textSecondary }]}>
-                      GH₵ {Number(remaining).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    </Text>
-                  </View>
-                </View>
-
-                {category.subItems && category.subItems.length > 0 && (
-                  <View style={[styles.subItemsSection, { borderTopColor: colors.borderLight }]}>
-                    <Text style={[styles.subSectionTitle, { color: colors.textMuted }]}>Atomic Cost Ledger</Text>
-                    
-                    {category.subItems.map((subItem, idx) => (
-                      <View key={idx} style={[styles.subItemRow, { borderBottomColor: colors.borderLight }]}>
-                        <View style={styles.subItemLeftNode}>
-                          <View style={[styles.dot, { backgroundColor: category.color }]} />
-                          <Text style={[styles.subItemName, { color: colors.textSecondary }]} numberOfLines={1}>
-                            {subItem.name}
-                          </Text>
-                        </View>
-                        <View style={styles.subItemRightNode}>
-                          <Text style={[styles.subItemAmount, { color: colors.text }]}>
-                            GH₵ {Number(subItem.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                          </Text>
-                          <TouchableOpacity style={[styles.microArrowAction, { backgroundColor: colors.backgroundSecondary }]} activeOpacity={0.7}>
-                            <ArrowUpRight size={12} color={colors.textMuted} />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ))}
                   </View>
                 )}
-              </TouchableOpacity>
-            );
-          })
+              </View>
+            )}
+
+            {categories.map((category) => {
+              const percentage = category.allocated > 0 ? Math.round((category.spent / category.allocated) * 100) : 0;
+              const remaining = category.allocated - category.spent;
+              const IconComponent = ICON_MAP[category.icon] || Wallet;
+
+              const radius = 16;
+              const circumference = 2 * Math.PI * radius;
+              const strokeDashoffset = circumference - (Math.min(percentage, 100) / 100) * circumference;
+
+              return (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[styles.budgetBucketCard, { backgroundColor: colors.backgroundCard, borderColor: colors.borderLight }]}
+                  activeOpacity={0.8}
+                  onPress={() => navigation.navigate("BudgetInsightDetail", { categoryId: category.id, budgetData: categories })}
+                >
+                  <View style={styles.cardMainHeader}>
+                    <View style={styles.leftMetaStack}>
+                      <View style={styles.cardHeaderInline}>
+                        <View style={[styles.iconCircle, { backgroundColor: category.color + "15" }]}>
+                          <IconComponent size={14} color={category.color} />
+                        </View>
+                        <Text style={[styles.cardLabelText, { color: colors.text }]}>{category.title}</Text>
+                      </View>
+                      <Text style={[styles.descriptionText, { color: colors.textMuted }]}>{category.description}</Text>
+                    </View>
+
+                    <View style={styles.arcVisualContainer}>
+                      <Svg height="48" width="48" viewBox="0 0 40 40">
+                        <Circle cx="20" cy="20" r={radius} fill="none" stroke={colors.border} strokeWidth="3" />
+                        <Circle
+                          cx="20"
+                          cy="20"
+                          r={radius}
+                          fill="none"
+                          stroke={category.color}
+                          strokeWidth="3.5"
+                          strokeDasharray={`${circumference} ${circumference}`}
+                          strokeDashoffset={strokeDashoffset}
+                          strokeLinecap="round"
+                          transform="rotate(-90 20 20)"
+                        />
+                      </Svg>
+                      <View style={styles.arcAbsoluteLabelCenter}>
+                        <Text style={[styles.arcPercentageText, { color: colors.text }]}>{percentage}%</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={[styles.metricRowGroup, { backgroundColor: colors.backgroundInput, borderColor: colors.borderLight }]}>
+                    <View style={styles.metricBlock}>
+                      <Text style={[styles.metricLabelStatic, { color: colors.textMuted }]}>Allocated Base</Text>
+                      <Text style={[styles.metricValueText, { color: colors.textSecondary }]}>
+                        GH₵ {Number(category.allocated).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </Text>
+                    </View>
+                    <View style={styles.metricBlock}>
+                      <Text style={[styles.metricLabelStatic, { color: colors.textMuted }]}>Spent Outflow</Text>
+                      <Text style={[styles.metricValueText, { color: colors.text }]}>
+                        GH₵ {Number(category.spent).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </Text>
+                    </View>
+                    <View style={[styles.metricBlock, { alignItems: "flex-end" }]}>
+                      <Text style={[styles.metricLabelStatic, { color: colors.textMuted }]}>Remaining Free</Text>
+                      <Text style={[styles.metricValueText, { color: remaining < 0 ? colors.danger : colors.textSecondary }]}>
+                        GH₵ {Number(remaining).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {category.subItems && category.subItems.length > 0 && (
+                    <View style={[styles.subItemsSection, { borderTopColor: colors.borderLight }]}>
+                      <Text style={[styles.subSectionTitle, { color: colors.textMuted }]}>Atomic Cost Ledger</Text>
+
+                      {category.subItems.map((subItem, idx) => (
+                        <View key={idx} style={[styles.subItemRow, { borderBottomColor: colors.borderLight }]}>
+                          <View style={styles.subItemLeftNode}>
+                            <View style={[styles.dot, { backgroundColor: category.color }]} />
+                            <Text style={[styles.subItemName, { color: colors.textSecondary }]} numberOfLines={1}>
+                              {subItem.name}
+                            </Text>
+                          </View>
+                          <View style={styles.subItemRightNode}>
+                            <Text style={[styles.subItemAmount, { color: colors.text }]}>
+                              GH₵ {Number(subItem.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </Text>
+                            <TouchableOpacity style={[styles.microArrowAction, { backgroundColor: colors.backgroundSecondary }]} activeOpacity={0.7}>
+                              <ArrowUpRight size={12} color={colors.textMuted} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         )}
-        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );

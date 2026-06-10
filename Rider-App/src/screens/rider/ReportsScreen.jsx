@@ -126,14 +126,38 @@ async function fetchMetricsForRange(userId, start, end) {
 
   if (inflowError) throw inflowError;
 
+  const { data: outflows, error: outflowError } = await supabase
+    .from("manual_entries")
+    .select("amount, category")
+    .eq("rider_id", userId)
+    .eq("type", "outflow")
+    .gte("occurred_at", startStr)
+    .lt("occurred_at", endStr);
+
+  if (outflowError) throw outflowError;
+
   const deliveryEarnings = (revenue || []).reduce((sum, r) => sum + Number(r.amount), 0);
   const externalIncome = (inflows || []).reduce((sum, r) => sum + Math.abs(Number(r.amount)), 0);
   const totalEarnings = deliveryEarnings + externalIncome;
+  const totalOutflows = (outflows || []).reduce((sum, r) => sum + Math.abs(Number(r.amount)), 0);
   const totalCompletions = (orders || []).filter((o) => o.status === "delivered").length;
   const totalOrders = (orders || []).length;
   const completionRate = totalOrders > 0 ? Math.round((totalCompletions / totalOrders) * 100) : 0;
 
-  return { totalEarnings, totalCompletions, completionRate, totalOrders };
+  const outflowByCategory = { needs: 0, wants: 0, savings: 0 };
+  (outflows || []).forEach((entry) => {
+    const amount = Math.abs(Number(entry.amount) || 0);
+    const cat = entry.category;
+    if (cat === "needs" || cat === "wants" || cat === "savings") {
+      outflowByCategory[cat] += amount;
+    } else {
+      outflowByCategory.needs += amount * 0.5;
+      outflowByCategory.wants += amount * 0.3;
+      outflowByCategory.savings += amount * 0.2;
+    }
+  });
+
+  return { totalEarnings, totalCompletions, completionRate, totalOrders, totalOutflows, outflowByCategory };
 }
 
 export default function ReportsScreen({ route, navigation }) {
@@ -169,6 +193,9 @@ export default function ReportsScreen({ route, navigation }) {
         fetchMetricsForRange(user.id, range.start, range.end),
         fetchMetricsForRange(user.id, range.prevStart, range.prevEnd),
       ]);
+
+      setPeriodOutflows(current.totalOutflows);
+      setOutflowByCategory(current.outflowByCategory);
 
       const earningsDelta = previous.totalEarnings > 0 ? ((current.totalEarnings - previous.totalEarnings) / previous.totalEarnings) * 100 : current.totalEarnings > 0 ? 100 : 0;
       const completionDelta = previous.completionRate > 0 ? ((current.completionRate - previous.completionRate) / previous.completionRate) * 100 : current.completionRate > 0 ? 100 : 0;
@@ -385,9 +412,27 @@ export default function ReportsScreen({ route, navigation }) {
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.budgetRollRow}>
               {earnings > 0 ? [
-                { id: "needs", title: "Needs", allocated: needsAllocated, used: 0, color: "#a855f7" },
-                { id: "wants", title: "Wants", allocated: wantsAllocated, used: 0, color: "#6366f1" },
-                { id: "savings", title: "Savings", allocated: savingsAllocated, used: 0, color: "#10b981" },
+                {
+                  id: "needs",
+                  title: "Needs",
+                  allocated: needsAllocated,
+                  used: outflowByCategory.needs,
+                  color: "#a855f7",
+                },
+                {
+                  id: "wants",
+                  title: "Wants",
+                  allocated: wantsAllocated,
+                  used: outflowByCategory.wants,
+                  color: "#6366f1",
+                },
+                {
+                  id: "savings",
+                  title: "Savings",
+                  allocated: savingsAllocated,
+                  used: outflowByCategory.savings,
+                  color: "#10b981",
+                },
               ].map((bucket) => {
                 const usedPercent = bucket.allocated > 0 ? Math.min(Math.round((bucket.used / bucket.allocated) * 100), 100) : 0;
                 return (

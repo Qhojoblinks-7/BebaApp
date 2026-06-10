@@ -16,6 +16,7 @@ import SignatureScreen from "react-native-signature-canvas";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabaseClient";
 import { computeAndStoreInsights } from "../../services/insightsService";
+import { syncAllFinances } from "../../services/financesSync";
 import { useThemeStore } from "../../store/themeStore";
 
 export default function DeliveryClosureScreen({ route, navigation }) {
@@ -163,6 +164,8 @@ export default function DeliveryClosureScreen({ route, navigation }) {
             console.log(`[DeliveryClosure] Triggering insight recompute for rider ${user.id}`);
             await computeAndStoreInsights(user.id);
             console.log(`[DeliveryClosure] Insight recompute complete`);
+            await syncAllFinances(user.id);
+            console.log(`[DeliveryClosure] Budget + action plan sync complete`);
           } catch (insightErr) {
             console.warn(`[DeliveryClosure] Non-blocking insight recompute failed:`, insightErr.message);
           }

@@ -1,6 +1,5 @@
 {
   "expo": {
-    "scheme": ["beba", "com.beba.rider"],
     "name": "Rider-App",
     "slug": "Rider-App",
     "version": "1.0.0",
@@ -8,6 +7,7 @@
     "icon": "./assets/adaptiveLogo2.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "scheme": "beba",
     "splash": {
       "image": "./assets/notification-icon.png",
       "resizeMode": "contain",
@@ -29,24 +29,28 @@
       }
     },
     "android": {
+      "package": "com.beba.rider",
+      "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptiveLogo2.png",
         "backgroundColor": "#115e59"
       },
-      "edgeToEdgeEnabled": true,
       "permissions": [
         "NOTIFICATIONS",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_BACKGROUND_LOCATION"
-      ],
-      "package": "com.beba.rider"
+        "POST_NOTIFICATIONS",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "plugins": [
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Location required for real-time fleet tracking and route optimization"
+          "locationAlwaysAndWhenInUsePermission": "Location required for real-time fleet tracking and route optimization",
+          "isAndroidBackgroundLocationEnabled": true
         }
       ],
       [
@@ -54,13 +58,13 @@
         {
           "icon": "./assets/notification-icon.png",
           "color": "#115e59",
-          "sounds": ["./assets/magiaz_cash_register_444842.mp3"]
+          "sounds": [
+            "./assets/cash_register.mp3"
+          ]
         }
       ]
     ],
     "extra": {
-      "EXPO_PUBLIC_SUPABASE_URL": "https://tjgutznerztvegoyitex.supabase.co",
-      "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqZ3V0em5lcnp0dmVnb3lpdGV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwMDQ5ODAsImV4cCI6MjA5NDU4MDk4MH0.d1zLEuTHRNUOL3CE5eI4vk9thIGvdApQPTrc4nBTG34",
       "eas": {
         "projectId": "cae0c3f7-6cb6-4b8c-9bec-820dcb54bb5c"
       }

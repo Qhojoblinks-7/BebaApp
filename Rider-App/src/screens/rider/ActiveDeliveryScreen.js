@@ -12,6 +12,7 @@ import { Package, RefreshCw } from "lucide-react-native";
 import { supabase } from "../../services/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
+import useOrderStore from "../../store/orderStore";
 import RiderOrderCard from "../../components/rider/RiderOrderCard";
 import DeliveryDetailsBottomSheet from "../../components/rider/DeliveryDetailsBottomSheet";
 
@@ -20,7 +21,10 @@ export default function ActiveDeliveryScreen({ navigation }) {
   const { colors, isDarkMode } = useThemeStore();
   const insets = useSafeAreaInsets();
 
-  const [itinerary, setItinerary] = useState([]);
+  const orderStore = useOrderStore();
+  const itinerary = orderStore.activeOrders;
+  const fetchActiveOrders = orderStore.fetchActiveOrders;
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -33,15 +37,7 @@ export default function ActiveDeliveryScreen({ navigation }) {
     }
 
     try {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("rider_id", user?.id)
-        .in("status", ["assigned", "picked_up", "in_transit"])
-        .order("route_sequence", { ascending: true });
-
-      if (error) throw error;
-      if (data) setItinerary(data);
+      await fetchActiveOrders(user?.id);
     } catch (err) {
       console.warn("[ActiveDelivery] Itinerary retrieval failed:", err.message);
     } finally {
@@ -54,7 +50,7 @@ export default function ActiveDeliveryScreen({ navigation }) {
     if (user?.id) {
       fetchActiveItinerary();
     }
-  }, [user?.id]);
+  }, [user?.id, fetchActiveOrders]);
 
   const advanceStatus = async (item) => {
     try {
@@ -74,13 +70,12 @@ export default function ActiveDeliveryScreen({ navigation }) {
         navigation.navigate("DeliveryClosure", { orderId: item.id });
         return;
       }
-      fetchActiveItinerary();
+      await fetchActiveItinerary();
     } catch (err) {
       console.warn("[ActiveDelivery] Status progression failed:", err.message);
     }
   };
 
-  // --- Dynamic Style Matrix mapped direct to application theme context ---
   const ui = {
     container: {
       flex: 1,
@@ -122,8 +117,7 @@ export default function ActiveDeliveryScreen({ navigation }) {
       paddingTop: 16,
       paddingBottom: Platform.OS === "ios" ? 100 + insets.bottom : 112,
     },
-    
-    // Non-blocking full layout center structures
+
     feedbackStateFrame: {
       flex: 1,
       justifyContent: "center",
@@ -168,7 +162,6 @@ export default function ActiveDeliveryScreen({ navigation }) {
         translucent
       />
 
-      {/* Persistent Dashboard Navigation Header Frame */}
       <View style={ui.headerWrapper}>
         <Text style={ui.headerTitleTag}>Run Manifest</Text>
         <Text style={ui.headerMainHeading}>
@@ -176,7 +169,6 @@ export default function ActiveDeliveryScreen({ navigation }) {
         </Text>
       </View>
 
-      {/* Unified Conditional Flow Control Layer */}
       {loading && !refreshing ? (
         <View style={ui.feedbackStateFrame}>
           <ActivityIndicator size="small" color={colors.primary} style={ui.loaderElement} />

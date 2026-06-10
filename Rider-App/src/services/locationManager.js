@@ -52,9 +52,8 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
     const statusUpdate = supabase.from("rider_status").upsert({
       id: activeUserId,
       rider_status: 'online',
-      last_latitude: latitude,
-      last_longitude: longitude,
-      last_accuracy: accuracy,
+      current_latitude: latitude,
+      current_longitude: longitude,
       updated_at: new Date().toISOString(),
     });
 
@@ -96,12 +95,11 @@ export const startTrackingEngine = async (userId) => {
     return false;
   }
 
-  // Optimized battery-to-accuracy balance settings
   await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
     accuracy: Location.Accuracy.Balanced, 
-    timeInterval: 15000,        // Checked every 15 seconds to prevent polling flooding
-    distanceInterval: 25,       // Discard noise changes under 25 meters
-    deferredUpdatesInterval: 30000, // Batches location deliveries to save battery power
+    timeInterval: 15000,
+    distanceInterval: 25,
+    deferredUpdatesInterval: 30000,
     deferredUpdatesDistance: 50,
     foregroundService: {
       notificationTitle: "Beba Delivery Service Active",

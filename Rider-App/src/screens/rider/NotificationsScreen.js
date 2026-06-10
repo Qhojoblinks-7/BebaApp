@@ -13,7 +13,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../services/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
-import * as Notifications from "expo-notifications";
+import useNotificationStore from "../../store/notificationStore";
+import notificationService from "../../services/notificationService";
 import { Bell } from "lucide-react-native";
 import DeliveryDetailsBottomSheet from "../../components/rider/DeliveryDetailsBottomSheet";
 
@@ -22,138 +23,43 @@ export default function NotificationsScreen() {
   const { colors, isDarkMode } = useThemeStore();
   const insets = useSafeAreaInsets();
 
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const notificationStore = useNotificationStore();
+  const notifications = notificationStore.notifications;
+  const loading = notificationStore.loading;
+  const refreshing = notificationStore.refreshing;
+  const unreadCount = notificationStore.unreadCount;
+
   const [selectedOrder, setSelectedOrder] = useState(null);
 
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-    }),
-  });
+  const setLoading = notificationStore.setLoading;
+  const setRefreshing = notificationStore.setRefreshing;
+  const setNotifications = notificationStore.setNotifications;
+  const fetchNotifications = notificationStore.fetchNotifications;
 
+  // Initialize service settings globally on screen layout registration
   useEffect(() => {
-    if (Platform.OS === "android") {
-      Notifications.setNotificationChannelAsync("new-orders", {
-        name: "New Order Alerts",
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: "#115e59",
-        sound: "magiaz_cash_register_444842.mp3",
-      }).then(() => {
-        console.log("[Notifications] channel 'new-orders' registered");
-      }).catch((err) => {
-        console.warn("[Notifications] channel registration failed:", err.message);
-      });
-    }
+    notificationService.setupHandler();
+    notificationService.ensureChannel();
   }, []);
 
   useEffect(() => {
     (async () => {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-      if (existingStatus !== "granted") {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-      console.log("[Notifications] permission:", finalStatus);
+      const permitted = await notificationService.requestPermissions();
+      console.log("[NotificationsScreen] permission status:", permitted);
     })();
   }, []);
 
-  const fetchNotifications = useCallback(async (showLoadingIndicator = true) => {
-    console.log('[Notifications] fetchNotifications start', { userId: user?.id, showLoadingIndicator })
-    if (!user?.id) {
-      console.log('[Notifications] abort: no user id')
-      return
-    }
-    if (showLoadingIndicator) setLoading(true);
-
-    try {
-      const { data, error } = await supabase
-        .from("notifications")
-        .select(`
-          id,
-          title,
-          body,
-          rider_id,
-          order_id,
-          is_read,
-          created_at,
-          orders:order_id (
-            id,
-            order_id,
-            item_description,
-            pickup_address,
-            sender_phone,
-            customer_name,
-            customer_phone,
-            delivery_address,
-            delivery_fee,
-            pickup_lat,
-            pickup_lng,
-            delivery_lat,
-            delivery_lng,
-            status
-          )
-        `)
-        .eq("rider_id", user.id)
-        .order("created_at", { ascending: false });
-
-      console.log('[Notifications] query result', { count: data?.length, error: error?.message })
-      if (error) throw error;
-      if (data) setNotifications(data);
-    } catch (err) {
-      console.warn("[Notifications] Query lookup failed:", err.message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [user?.id]);
-
   useEffect(() => {
-    fetchNotifications(true);
-
-    const channel = supabase
-      .channel(`notifications-user-${user?.id}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "notifications" },
-        (payload) => {
-          console.log('[Notifications] realtime INSERT payload:', payload.new)
-          if (payload.new && payload.new.rider_id === user?.id) {
-            fetchNotifications(false);
-            Notifications.scheduleNotificationAsync({
-              content: {
-                title: "New Order Available",
-                body: `Waybill ${payload.new.order_id || payload.new.id}`,
-                channelId: "new-orders",
-                sound: "magiaz_cash_register_444842.mp3",
-              },
-              trigger: null,
-            });
-          }
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchNotifications, user?.id]);
+    fetchNotifications(user?.id);
+  }, [user?.id, fetchNotifications]);
 
   const handleRefresh = () => {
-    setRefreshing(true);
-    fetchNotifications(false);
+    fetchNotifications(user?.id);
   };
 
   const markAsRead = async (notificationId) => {
     try {
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)),
-      );
+      notificationStore.markAsRead(notificationId);
 
       const { error } = await supabase
         .from("notifications")
@@ -272,7 +178,7 @@ export default function NotificationsScreen() {
 
       <FlatList
         data={notifications}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={(item) => item?.id ? String(item.id) : Math.random().toString()} // Fixed: Safe robust type conversion
         renderItem={renderNotification}
         onRefresh={handleRefresh}
         refreshing={refreshing}
@@ -291,11 +197,7 @@ export default function NotificationsScreen() {
         visible={!!selectedOrder}
         onClose={() => setSelectedOrder(null)}
         onAction={(order, status) => {
-          if (status === "pending") {
-            setSelectedOrder(null);
-          } else {
-            setSelectedOrder(null);
-          }
+          setSelectedOrder(null);
         }}
       />
     </View>

@@ -1,12 +1,16 @@
+
 // No external standard library http imports required - using native Deno.serve()
 
-const WHATSAPP_API_URL = "https://graph.facebook.com/v25.0/1195550833634821/messages";
-const WHATSAPP_ACCESS_TOKEN = Deno.env.get("WHATSAPP_SYSTEM_TOKEN");
+const WHATSAPP_API_URL =
+  "https://graph.facebook.com/v25.0/1195550833634821/messages";
+const deno = (globalThis as any).Deno;
+const WHATSAPP_ACCESS_TOKEN = deno?.env?.get("WHATSAPP_SYSTEM_TOKEN");
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-client-info",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, apikey, x-client-info",
 };
 
 /**
@@ -24,7 +28,7 @@ const formatPhoneNumber = (phone: string | null | undefined): string | null => {
   return null;
 };
 
-Deno.serve(async (req) => {
+deno?.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -42,74 +46,92 @@ Deno.serve(async (req) => {
 
     const customerPhone = formatPhoneNumber(record.customer_phone);
     if (!customerPhone) {
-      console.warn("[whatsapp-notify] Aborting: Missing or unparseable customer destination digits.");
-      return new Response(JSON.stringify({ success: true, skipped: "no_valid_phone" }), {
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-        status: 200,
-      });
+      console.warn(
+        "[whatsapp-notify] Aborting: Missing or unparseable customer destination digits.",
+      );
+      return new Response(
+        JSON.stringify({ success: true, skipped: "no_valid_phone" }),
+        {
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+          status: 200,
+        },
+      );
     }
 
     if (!WHATSAPP_ACCESS_TOKEN) {
-      console.error("[whatsapp-notify] Missing WHATSAPP_SYSTEM_TOKEN configuration variable.");
-      return new Response(JSON.stringify({ error: "Server authentication misconfigured" }), {
-        status: 500,
-        headers: corsHeaders,
-      });
+      console.error(
+        "[whatsapp-notify] Missing WHATSAPP_SYSTEM_TOKEN configuration variable.",
+      );
+      return new Response(
+        JSON.stringify({ error: "Server authentication misconfigured" }),
+        {
+          status: 500,
+          headers: corsHeaders,
+        },
+      );
     }
 
     const orderId = record.order_id || record.id;
     const customerName = record.customer_name || "Customer";
-    
+
     // Meta Template Configuration Payload setup
     let templateName = "";
     let templateParameters: Array<{ type: string; text: string }> = [];
 
     // Map database mutations cleanly onto matching Meta-registered business templates
-    if (!old_record && (record.status === "pending" || record.status === "created")) {
+    if (
+      !old_record &&
+      (record.status === "pending" || record.status === "created")
+    ) {
       templateName = "beba_order_received";
       templateParameters = [
         { type: "text", text: customerName },
-        { type: "text", text: orderId }
+        { type: "text", text: orderId },
       ];
     } else if (record.status === "assigned") {
       templateName = "beba_order_assigned";
       templateParameters = [
         { type: "text", text: customerName },
-        { type: "text", text: orderId }
+        { type: "text", text: orderId },
       ];
     } else if (record.status === "picked_up") {
       templateName = "beba_order_picked_up";
       templateParameters = [
         { type: "text", text: customerName },
-        { type: "text", text: orderId }
+        { type: "text", text: orderId },
       ];
     } else if (record.status === "in_transit") {
       templateName = "beba_order_in_transit";
-      const pinCode = record.delivery_pin ? String(record.delivery_pin) : "None Required";
+      const pinCode = record.delivery_pin
+        ? String(record.delivery_pin)
+        : "None Required";
       templateParameters = [
         { type: "text", text: customerName },
         { type: "text", text: orderId },
-        { type: "text", text: pinCode }
+        { type: "text", text: pinCode },
       ];
     } else if (record.status === "delivered") {
       templateName = "beba_order_delivered";
       templateParameters = [
         { type: "text", text: orderId },
-        { type: "text", text: record.received_by || "Recipient" }
+        { type: "text", text: record.received_by || "Recipient" },
       ];
     } else if (record.status === "cancelled") {
       templateName = "beba_order_cancelled";
       templateParameters = [
         { type: "text", text: customerName },
-        { type: "text", text: orderId }
+        { type: "text", text: orderId },
       ];
     }
 
     if (!templateName) {
-      return new Response("No notification template mapped for this state shift condition.", { 
-        status: 200, 
-        headers: corsHeaders 
-      });
+      return new Response(
+        "No notification template mapped for this state shift condition.",
+        {
+          status: 200,
+          headers: corsHeaders,
+        },
+      );
     }
 
     // Constructing compliant Meta Template Component parameters payload
@@ -129,7 +151,9 @@ Deno.serve(async (req) => {
       },
     };
 
-    console.log(`[whatsapp-notify] Dispatching Meta payload for template: ${templateName} to ${customerPhone}`);
+    console.log(
+      `[whatsapp-notify] Dispatching Meta payload for template: ${templateName} to ${customerPhone}`,
+    );
 
     const response = await fetch(WHATSAPP_API_URL, {
       method: "POST",
@@ -143,7 +167,10 @@ Deno.serve(async (req) => {
     const result = await response.json();
 
     if (!response.ok) {
-      console.error("[whatsapp-notify] Meta Graph API processing error response:", result);
+      console.error(
+        "[whatsapp-notify] Meta Graph API processing error response:",
+        result,
+      );
       return new Response(JSON.stringify({ success: false, error: result }), {
         headers: { "Content-Type": "application/json", ...corsHeaders },
         status: response.status,
@@ -154,9 +181,11 @@ Deno.serve(async (req) => {
       headers: { "Content-Type": "application/json", ...corsHeaders },
       status: 200,
     });
-
   } catch (error) {
-    console.error("[whatsapp-notify] Fatal Runtime Catch Exception:", error.message);
+    console.error(
+      "[whatsapp-notify] Fatal Runtime Catch Exception:",
+      error.message,
+    );
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: corsHeaders,

@@ -14,107 +14,22 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../services/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
-import * as Notifications from "expo-notifications";
+import useOrderStore from "../../store/orderStore";
+import notificationService from "../../services/notificationService";
 import { Package, Layers } from "lucide-react-native";
 import RiderOrderCard from "../../components/rider/RiderOrderCard";
 import DeliveryDetailsBottomSheet from "../../components/rider/DeliveryDetailsBottomSheet";
 
-const GEOFENCE_ZONES = [
-  "Mamprobi",
-  "Accra Central",
-  "Circle",
-  "Dansoman",
-  "Kaneshi",
-  "Osu",
-  "General Accra",
-];
-
-const GEOFENCE_POLYGONS = {
-  Dansoman: [
-    [-0.284, 5.5645],
-    [-0.2485, 5.568],
-    [-0.249, 5.5395],
-    [-0.2882, 5.532],
-    [-0.284, 5.5645],
-  ],
-  Mamprobi: [
-    [-0.251, 5.5482],
-    [-0.236, 5.546],
-    [-0.2375, 5.5265],
-    [-0.2522, 5.529],
-    [-0.251, 5.5482],
-  ],
-  "Accra Central": [
-    [-0.216, 5.5562],
-    [-0.1985, 5.553],
-    [-0.201, 5.5375],
-    [-0.2142, 5.534],
-    [-0.216, 5.5562],
-  ],
-  Osu: [
-    [-0.1885, 5.5678],
-    [-0.174, 5.5695],
-    [-0.1712, 5.5442],
-    [-0.1898, 5.542],
-    [-0.1885, 5.5678],
-  ],
-};
-
-// Ray-casting algorithm for checking coordinate containment
-const pointInPolygon = (lng, lat, polygon) => {
-  if (!polygon || polygon.length < 4) return false;
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length - 1; j = i++) {
-    const xi = polygon[i][0], yi = polygon[i][1];
-    const xj = polygon[j][0], yj = polygon[j][1];
-    const intersect =
-      yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
-};
-
-// Active Geofencing Resolution Pipeline
-const resolveOrderZone = (order) => {
-  const { delivery_lng, delivery_lat, delivery_address } = order;
-
-  // Priority 1: Check precise geospatial telemetry data if available
-  if (delivery_lng && delivery_lat) {
-    for (const [zoneName, polygon] of Object.entries(GEOFENCE_POLYGONS)) {
-      if (pointInPolygon(Number(delivery_lng), Number(delivery_lat), polygon)) {
-        return zoneName;
-      }
-    }
-  }
-
-  // Priority 2: Text matching fallback for explicit local target addresses
-  if (delivery_address) {
-    const lowerAddress = delivery_address.toLowerCase();
-    for (const zone of GEOFENCE_ZONES) {
-      if (zone !== "General Accra" && lowerAddress.includes(zone.toLowerCase())) {
-        return zone;
-      }
-    }
-  }
-
-  return "General Accra";
-};
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
-
-export default function JobQueueScreen() {
+export default function JobQueueScreen({ navigation }) {
   const { user } = useAuth();
   const { colors } = useThemeStore();
   const insets = useSafeAreaInsets();
-  
-  const [orders, setOrders] = useState([]);
-  const [zones, setZones] = useState([]);
+
+  const orderStore = useOrderStore();
+  const pendingOrders = orderStore.pendingOrders;
+  const setPendingOrders = orderStore.setPendingOrders;
+  const fetchPendingOrders = orderStore.fetchPendingOrders;
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -126,50 +41,19 @@ export default function JobQueueScreen() {
       fetchTimerRef.current = null;
     }, 800);
     try {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("status", "pending")
-        .is("rider_id", null)
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-
-      if (data) {
-        // Group orders into zones dynamically using our resolution pipeline
-        const groups = data.reduce((acc, currentOrder) => {
-          const zone = resolveOrderZone(currentOrder);
-          if (!acc[zone]) acc[zone] = [];
-          acc[zone].push({ ...currentOrder, zone });
-          return acc;
-        }, {});
-
-        const flattenedOrders = Object.values(groups).flat();
-        setOrders(flattenedOrders);
-        setZones(GEOFENCE_ZONES.filter((z) => groups[z] && groups[z].length > 0));
-      }
+      setLoading(true);
+      await fetchPendingOrders();
     } catch (err) {
       console.error("[JobQueue] Fetch failed:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [fetchPendingOrders, setLoading]);
 
   useEffect(() => {
-    if (Platform.OS === "android") {
-      Notifications.setNotificationChannelAsync("new-orders", {
-        name: "New Order Alerts",
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: "#115e59",
-        sound: "magiaz_cash_register_444842.mp3",
-      }).then(() => {
-        console.log("[JobQueue] Notification channel 'new-orders' registered with sound");
-      }).catch((err) => {
-        console.warn("[JobQueue] Channel registration failed:", err.message);
-      });
-    }
+    notificationService.setupHandler();
+    notificationService.ensureChannel();
   }, []);
 
   useEffect(() => {
@@ -182,14 +66,10 @@ export default function JobQueueScreen() {
         { event: "INSERT", schema: "public", table: "orders" },
         async (payload) => {
           if (payload.new && payload.new.status === "pending") {
-            await Notifications.scheduleNotificationAsync({
-              content: {
-                title: "New Order Available",
-                body: `Order #${payload.new.order_id || payload.new.id} is ready for pickup`,
-                channelId: "new-orders",
-                sound: "magiaz_cash_register_444842.mp3",
-              },
-              trigger: null,
+            await notificationService.scheduleLocalNotification({
+              title: "New Order Available",
+              body: `Order #${payload.new.order_id || payload.new.id} is ready for pickup`,
+              data: { url: "JobQueueTab", orderId: payload.new.id },
             });
             fetchAvailable();
           }
@@ -204,7 +84,11 @@ export default function JobQueueScreen() {
 
   const generateDeliveryPin = () => Math.floor(1000 + Math.random() * 9000).toString();
 
-  if (loading && orders.length === 0) {
+  const zones = useOrderStore.GEOFENCE_ZONES.filter((z) =>
+    pendingOrders.some((o) => o.zone === z)
+  );
+
+  if (loading && pendingOrders.length === 0) {
     return (
       <View style={[styles.center, { backgroundColor: colors.backgroundSecondary }]}>
         <ActivityIndicator size="small" color={colors.secondary} />
@@ -215,11 +99,10 @@ export default function JobQueueScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.backgroundSecondary }]}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primary} translucent />
-      
-      {/* Notch-Aware Structural Header Container */}
+
       <View style={[
-        styles.headerBackground, 
-        { 
+        styles.headerBackground,
+        {
           backgroundColor: colors.primary,
           paddingTop: Platform.OS === "ios" ? Math.max(insets.top, 16) : StatusBar.currentHeight + 14,
           ...Platform.select({
@@ -236,14 +119,14 @@ export default function JobQueueScreen() {
         <View style={styles.headerContent}>
           <Text style={[styles.headingOnBg, { color: colors.textOnPrimary }]}>New Orders Available</Text>
           <Text style={[styles.countText, { color: colors.textOnPrimary }]}>
-            {orders.length} open request{orders.length !== 1 ? "s" : ""}
+            {pendingOrders.length} open request{pendingOrders.length !== 1 ? "s" : ""}
           </Text>
         </View>
       </View>
 
       <FlatList
         contentContainerStyle={{ padding: 16, paddingBottom: zones.length > 0 ? 140 : 40 }}
-        data={orders}
+        data={pendingOrders}
         keyExtractor={(item) => item.id}
         onRefresh={() => {
           setRefreshing(true);
@@ -274,14 +157,13 @@ export default function JobQueueScreen() {
         }
       />
 
-      {/* Floating Bottom Batch Bar */}
       {zones.length > 0 && (
         <View style={[
-          styles.batchClaimBar, 
-          { 
-            backgroundColor: colors.backgroundCard, 
+          styles.batchClaimBar,
+          {
+            backgroundColor: colors.backgroundCard,
             borderTopColor: colors.border,
-            paddingBottom: Platform.OS === "ios" ? Math.max(insets.bottom, 12) : 16 
+            paddingBottom: Platform.OS === "ios" ? Math.max(insets.bottom, 12) : 16,
           }
         ]}>
           <Text style={[styles.batchClaimText, { color: colors.textSecondary }]}>
@@ -289,9 +171,9 @@ export default function JobQueueScreen() {
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingVertical: 4 }}>
             {zones.map((zone) => {
-              const zoneOrders = orders.filter((o) => o.zone === zone);
+              const zoneOrders = pendingOrders.filter((o) => o.zone === zone);
               const zoneFee = zoneOrders.reduce((sum, o) => sum + (Number(o.base_price || 0) + Number(o.distance_fee || 0) + Number(o.surge_fee || 0) || Number(o.delivery_fee || 0)), 0);
-              
+
               return (
                 <TouchableOpacity
                   key={zone}

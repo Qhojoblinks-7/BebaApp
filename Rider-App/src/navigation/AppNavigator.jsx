@@ -1,11 +1,14 @@
-import React from "react";
+import React, { useCallback, useEffect } from "react";
 import { Platform, View } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Home, Briefcase, Route, DollarSign, User } from "lucide-react-native";
 import { useThemeStore } from "../store/themeStore";
+import { useAuth } from "../context/AuthContext";
+import { supabase } from "../services/supabaseClient";
+import { useNotifications } from "../hooks/useNotifications";
 
 // Core Screens
 import DashboardScreen from "../screens/rider/Dashboard";
@@ -141,8 +144,60 @@ function TabNavigator() {
  * 3. Master App Root Navigator
  */
 export default function AppNavigator() {
+  const navigationRef = useNavigationContainerRef();
+  const { user } = useAuth();
+
+  const handleDeepLink = useCallback(
+    (url) => {
+      try {
+        const parsed = new URL(url, "beba://app");
+        const route = parsed.hostname || parsed.pathname.replace("/", "");
+        const params = Object.fromEntries(parsed.searchParams.entries());
+
+        if (route === "JobQueueTab" || route === "Notifications") {
+          navigationRef.navigate(route);
+          return;
+        }
+
+        if (route && navigationRef.canGoBack()) {
+          navigationRef.navigate(route, params);
+        }
+      } catch (e) {
+        console.warn("[AppNavigator] Deep link parse failed:", e.message);
+      }
+    },
+    [navigationRef]
+  );
+
+  const { scheduleNewOrderNotification } = useNotifications(handleDeepLink);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`app-wide-notifications-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `rider_id=eq.${user.id}`,
+        },
+        (payload) => {
+          console.log("[AppNavigator] New notification received:", payload.new);
+          scheduleNewOrderNotification(payload.new);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, scheduleNewOrderNotification]);
+
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator 
         screenOptions={{ 
           headerShown: false,

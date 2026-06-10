@@ -205,7 +205,7 @@ export default function OrderScreen({ onOrderSuccess }) {
         surge_fee: pricing.breakdown.surgeFee,
       })
       if (!error) {
-        try { await supabase.functions.invoke('whatsapp-notify', { body: { record: { order_id: orderId, customer_name: value.recipient, customer_phone: normalizedPhone, status: 'pending' } } }) } catch (fnErr) { console.error(fnErr) }
+          try { await supabase.functions.invoke('whatsapp-notify', { body: { record: { order_id: orderId, customer_name: value.recipient, customer_phone: normalizedRecipientPhone, status: 'pending' } } }) } catch (fnErr) { console.error(fnErr) }
         setSubmittedTotalFee(pricing.breakdown.totalFee)
         setSubmittedOrderId(orderId)
         setSubmitted(true)

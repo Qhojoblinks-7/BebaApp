@@ -13,6 +13,8 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabaseClient";
 import { useThemeStore } from "../../store/themeStore";
+import useRiderStore from "../../store/riderStore";
+import useNotificationStore from "../../store/notificationStore";
 import {
   startTrackingEngine,
   stopTrackingEngine,
@@ -27,14 +29,24 @@ export default function DashboardScreen({ navigation }) {
   const { colors, isDarkMode } = useThemeStore();
   const insets = useSafeAreaInsets();
 
-  const [riderStatus, setRiderStatus] = useState("offline");
-  const [syncing, setSyncing] = useState(true);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [deliveryOrders, setDeliveryOrders] = useState([]);
-  const [profileName, setProfileName] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState("");
-  
-  // Date tracking matrices calculated directly on initialization blocks
+  const riderStore = useRiderStore();
+  const notificationStore = useNotificationStore();
+
+  const riderStatus = riderStore.riderStatus;
+  const syncing = riderStore.syncing;
+  const deliveryOrders = riderStore.activeOrders;
+  const profileName = riderStore.profile.fullName;
+  const avatarUrl = riderStore.profile.avatarUrl;
+  const unreadCount = notificationStore.unreadCount;
+  const dailySummary = riderStore.dailySummary;
+
+  const setRiderStatus = riderStore.setRiderStatus;
+  const setSyncing = riderStore.setSyncing;
+  const setActiveOrders = riderStore.setActiveOrders;
+  const setRiderProfile = riderStore.setProfile;
+  const setUnreadCount = notificationStore.setUnreadCount;
+  const setDailySummary = riderStore.setDailySummary;
+
   const [weekStart, setWeekStart] = useState(() => {
     const today = new Date();
     const day = today.getDay();
@@ -50,14 +62,6 @@ export default function DashboardScreen({ navigation }) {
     return dow === 0 ? 5 : dow - 1;
   });
 
-  const [dailySummary, setDailySummary] = useState({
-    distanceKm: "0.0",
-    earnings: 0,
-    completedDrops: 0,
-    cancelledRate: 0,
-  });
-
-  // Calculate days array matching the current tracking state
   const calendarDays = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(weekStart);
     d.setDate(weekStart.getDate() + i);
@@ -73,6 +77,7 @@ export default function DashboardScreen({ navigation }) {
   const fetchCurrentStatus = useCallback(async () => {
     if (!user?.id) return;
     try {
+      setSyncing(true);
       const { data, error } = await supabase
         .from("rider_status")
         .select("rider_status")
@@ -92,9 +97,9 @@ export default function DashboardScreen({ navigation }) {
     } finally {
       setSyncing(false);
     }
-  }, [user?.id]);
+  }, [user?.id, setRiderStatus, setSyncing]);
 
-  const fetchProfileName = useCallback(async () => {
+  const fetchProfile = useCallback(async () => {
     if (!user?.id) return;
     try {
       const { data, error } = await supabase
@@ -105,13 +110,14 @@ export default function DashboardScreen({ navigation }) {
 
       if (error) throw error;
       if (data) {
-        if (data.full_name) setProfileName(data.full_name);
-        if (data.avatar_url) setAvatarUrl(data.avatar_url);
+        if (data.full_name || data.avatar_url) {
+          setRiderProfile({ fullName: data.full_name || "", avatarUrl: data.avatar_url || "" });
+        }
       }
     } catch (err) {
       console.warn("[Dashboard] Profile query run failure:", err.message);
     }
-  }, [user?.id]);
+  }, [user?.id, setRiderProfile]);
 
   const fetchUnreadCount = useCallback(async () => {
     if (!user?.id) return;
@@ -127,7 +133,7 @@ export default function DashboardScreen({ navigation }) {
     } catch (err) {
       console.warn("[Dashboard] Notification lookup breakdown:", err.message);
     }
-  }, [user?.id]);
+  }, [user?.id, setUnreadCount]);
 
   const fetchDashboardMetrics = useCallback(async () => {
     if (!user?.id) return;
@@ -149,8 +155,8 @@ export default function DashboardScreen({ navigation }) {
       const validOrders = orders?.filter((o) =>
         ["assigned", "picked_up", "in_transit", "delivered"].includes(o.status)
       ) || [];
-      
-      setDeliveryOrders(
+
+      setActiveOrders(
         validOrders.sort((a, b) => (a.route_sequence || 0) - (b.route_sequence || 0))
       );
 
@@ -180,7 +186,7 @@ export default function DashboardScreen({ navigation }) {
     } catch (err) {
       console.warn("[Dashboard] Analytics computation failure:", err.message);
     }
-  }, [user?.id, selectedDate]);
+  }, [user?.id, selectedDate, setActiveOrders, setDailySummary]);
 
   useEffect(() => {
     if (!user) {
@@ -188,13 +194,13 @@ export default function DashboardScreen({ navigation }) {
       return;
     }
     fetchCurrentStatus();
+    fetchProfile();
     fetchUnreadCount();
-    fetchProfileName();
 
     return () => {
       stopTrackingEngine();
     };
-  }, [user, fetchCurrentStatus, fetchUnreadCount, fetchProfileName]);
+  }, [user, fetchCurrentStatus, fetchUnreadCount, fetchProfile, setSyncing]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -303,7 +309,6 @@ export default function DashboardScreen({ navigation }) {
     );
   }
 
-  // --- Dynamic Style Matrix mapped direct to application theme context ---
   const ui = {
     scrollLayout: {
       paddingHorizontal: 16,
@@ -440,10 +445,8 @@ export default function DashboardScreen({ navigation }) {
     },
   };
 
-  // Pre-calculate view elements to keep FlatList performant
   const renderDashboardSections = () => (
     <View>
-      {/* --- STATS SECTION --- */}
       <View style={ui.sectionHeader}>
         <Text style={ui.sectionTitleText}>Performance Hub</Text>
       </View>
@@ -470,7 +473,6 @@ export default function DashboardScreen({ navigation }) {
         </View>
       </View>
 
-      {/* --- BOOKINGS RUN-LIST HEADER --- */}
       <View style={[ui.sectionHeader, { marginTop: 24 }]}>
         <Text style={ui.sectionTitleText}>Selected Manifest</Text>
         <View style={ui.pillCountBadge}>
@@ -506,7 +508,6 @@ export default function DashboardScreen({ navigation }) {
         avatarUri={avatarUrl}
       />
 
-      {/* Core FlatList Engine replacing lazy ScrollView layout logic */}
       <FlatList
         data={deliveryOrders}
         keyExtractor={(item) => item.id}

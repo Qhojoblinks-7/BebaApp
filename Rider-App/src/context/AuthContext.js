@@ -60,24 +60,6 @@ export function AuthProvider({ children }) {
         if (userData) {
           setRole(userData.user_type);
           console.log("[AuthContext] Profile verification synchronized:", userData.user_type);
-
-          // Handle rider onboarding initialization profiles defensively
-          if (userData.user_type === "rider") {
-            // Check if rider state record entry is already present to prevent overwriting active statuses
-            const { data: statusExists } = await supabase
-              .from("rider_status")
-              .select("id")
-              .eq("id", currentSession.user.id)
-              .maybeSingle();
-
-            if (!statusExists && localFetchId === ongoingFetchId.current) {
-              console.log("[AuthContext] Initializing missing state entry for rider ID:", currentSession.user.id);
-              await supabase.from("rider_status").insert({
-                id: currentSession.user.id,
-                 rider_status: 'offline',
-              });
-            }
-          }
         } else {
           setRole(null);
         }

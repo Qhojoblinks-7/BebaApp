@@ -11,6 +11,7 @@ import { supabase } from "../../services/supabaseClient";
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [authLock, setAuthLock] = useState(false);
@@ -25,9 +26,7 @@ export default function LoginScreen() {
   };
 
   const handleAuth = async () => {
-    const normalizedPhone = formatPhoneNumber(phone);
-
-    if (!normalizedPhone || !password || (isRegister && !fullName.trim())) {
+    if (!password || (isRegister && (!fullName.trim() || !email.trim() || !phone.trim()))) {
       setErrorBanner("Please fill in all fields correctly.");
       return;
     }
@@ -35,60 +34,80 @@ export default function LoginScreen() {
     setAuthLock(true);
     setErrorBanner("");
 
-    const mockEmail = `${normalizedPhone}@beba.express`;
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedPhone = formatPhoneNumber(phone);
 
     try {
       if (isRegister) {
-        console.log("[Auth] Registering rider profile via email surrogate:", mockEmail);
+        console.log("[Auth] Registering rider via email:", normalizedEmail);
         
         const { data: authData, error: signUpError } = await supabase.auth.signUp({
-          email: mockEmail,
+          email: normalizedEmail,
           password: password,
         });
 
         if (signUpError) {
-          if (signUpError.message?.includes("already registered")) {
-            throw new Error("Phone number already registered. Try signing in.");
+          if (signUpError.message?.includes("already registered") || signUpError.message?.includes("already exists")) {
+            throw new Error("Email already registered. Try signing in.");
           }
           throw signUpError;
         }
 
         const registeredUser = authData?.user;
 
-        if (registeredUser) {
-          console.log("[Auth] Account created. Generating profile data fields...");
-
-          // Public user profile record setup
-          const { error: profileError } = await supabase.from("users").insert({
-            id: registeredUser.id,
-            phone: normalizedPhone,
-            full_name: fullName.trim(),
-            email: mockEmail,
-            user_type: "rider",
-            // REMOVED plaintext rider_password for security compliance
-          });
-
-          if (profileError) {
-            console.error("[Auth] Public profile link failure:", profileError);
-            throw new Error("Profile provisioning failed. Please contact tech support.");
-          }
-
-          // Initialize default rider configuration state
-          await supabase.from("rider_status").insert({
-            id: registeredUser.id,
-             rider_status: 'offline',
-          });
-
-          console.log("[Auth] Rider onboarding registration complete.");
-        } else {
+        if (!registeredUser) {
           throw new Error("Server confirmation required. Please ensure Auto-Confirm is enabled in Supabase.");
         }
 
+        console.log("[Auth] Account created. Establishing session...");
+
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password: password,
+        });
+
+        if (signInError) {
+          console.error("[Auth] Session bootstrap failure:", signInError);
+          throw new Error("Account created but login failed. Please sign in manually.");
+        }
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          console.error("[Auth] Session not established after sign-in");
+          throw new Error("Session setup failed. Please try again.");
+        }
+
+        console.log("[Auth] Session established. Initializing profile records...");
+
+        const { error: profileError } = await supabase.from("users").upsert({
+          id: registeredUser.id,
+          phone: normalizedPhone,
+          full_name: fullName.trim(),
+          email: normalizedEmail,
+          user_type: "rider",
+        });
+
+        if (profileError) {
+          console.error("[Auth] Profile upsert failure:", profileError);
+          throw new Error("Profile provisioning failed. Please contact tech support.");
+        }
+
+        const { error: statusError } = await supabase.from("rider_status").upsert({
+          id: registeredUser.id,
+          rider_status: "offline",
+        });
+
+        if (statusError) {
+          console.error("[Auth] Rider status upsert failure:", statusError);
+        }
+
+        console.log("[Auth] Rider onboarding registration complete.");
+
       } else {
-        console.log("[Auth] Logging in rider via email surrogate:", mockEmail);
+        console.log("[Auth] Logging in rider via email:", normalizedEmail);
 
         const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-          email: mockEmail,
+          email: normalizedEmail,
           password: password,
         });
 
@@ -99,10 +118,15 @@ export default function LoginScreen() {
           throw loginError;
         }
 
+        const { data: { session: loginSession } } = await supabase.auth.getSession();
+        if (!loginSession) {
+          console.error("[Auth] Session not established after login");
+          throw new Error("Session setup failed. Please try again.");
+        }
+
         const authenticatedUser = loginData?.user;
         console.log("[Auth] Account validated. Verifying rider privileges...");
 
-        // Role verification
         const { data: userData, error: profileError } = await supabase
           .from("users")
           .select("user_type")
@@ -135,27 +159,39 @@ export default function LoginScreen() {
 
       {!!errorBanner && <Text style={styles.errorText}>{errorBanner}</Text>}
 
-      {isRegister && (
-        <TextInput
-          style={styles.input}
-          placeholder="Full Name"
-          placeholderTextColor="#94a3b8"
-          value={fullName}
-          onChangeText={setFullName}
-          autoCorrect={false}
-        />
-      )}
-
       <TextInput
         style={styles.input}
-        placeholder="Phone Number (e.g., 233592558160)"
+        placeholder="Email Address"
         placeholderTextColor="#94a3b8"
-        value={phone}
-        onChangeText={setPhone}
-        keyboardType="phone-pad"
+        value={email}
+        onChangeText={setEmail}
+        keyboardType="email-address"
         autoCapitalize="none"
         autoCorrect={false}
       />
+
+      {isRegister ? (
+        <>
+          <TextInput
+            style={styles.input}
+            placeholder="Full Name"
+            placeholderTextColor="#94a3b8"
+            value={fullName}
+            onChangeText={setFullName}
+            autoCorrect={false}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Phone Number (e.g., +233592558160)"
+            placeholderTextColor="#94a3b8"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </>
+      ) : null}
 
       <TextInput
         style={styles.input}

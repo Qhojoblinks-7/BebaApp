@@ -135,9 +135,8 @@ export async function createOrUpdateBudgetAllocation({
 }
 
 /**
- * Queries all-time revenue + all manual cash flow entries and produces
- * a data-backed 50/30/20 breakdown where "spent" reflects real money
- * logged in manual_entries per category.
+ * Queries server-side budget allocations (admin/auto-generated) OR falls back
+ * to computing a 50/30/20 breakdown from manual_entries outflows.
  */
 export async function getLiveBudgetWithExpenses(userId) {
   const { data: revenue, error: revenueError } = await supabase
@@ -156,67 +155,113 @@ export async function getLiveBudgetWithExpenses(userId) {
   if (inflowError) throw inflowError;
 
   const deliveryEarnings = (revenue || []).reduce((sum, r) => sum + Number(r.amount), 0);
-  const externalIncome = (inflowEntries || []).reduce((sum, r) => sum + Math.abs(Number(r.amount)), 0);
-  const totalEarnings = deliveryEarnings + externalIncome;
+  const manualInflows = (inflowEntries || []).reduce((sum, r) => sum + Math.abs(Number(r.amount)), 0);
+  const totalEarnings = deliveryEarnings + manualInflows;
 
-  if (totalEarnings <= 0) return buildDefaultBudget(0);
+  if (totalEarnings <= 0) return { totalEarnings: 0, manualInflows: 0, categories: buildDefaultBudget(0) };
+
+  const { data: allocations, error: allocError } = await supabase
+    .from("budget_allocations")
+    .select(`
+      *,
+      budget_items (
+        id,
+        name,
+        allocated_amount,
+        spent_amount
+      )
+    `)
+    .eq("rider_id", userId)
+    .order("allocated_percent", { ascending: false });
+
+  if (!allocError && allocations && allocations.length > 0) {
+    return {
+      totalEarnings,
+      manualInflows,
+      categories: allocations.map((alloc) => {
+        const sortedSubItems = (alloc.budget_items || []).sort((a, b) => a.name.localeCompare(b.name));
+        return {
+          id: alloc.category,
+          title: `${alloc.allocated_percent}% ${alloc.category.charAt(0).toUpperCase() + alloc.category.slice(1)}`,
+          allocated: Number(alloc.allocated_amount),
+          spent: Number(alloc.spent_amount),
+          color: alloc.category === "needs" ? "#a855f7" : alloc.category === "wants" ? "#6366f1" : "#10b981",
+          description: getCategoryDescription(alloc.category),
+          icon: getCategoryIcon(alloc.category),
+          subItems: sortedSubItems.map((it) => ({
+            name: it.name,
+            amount: Number(it.allocated_amount),
+            spent: Number(it.spent_amount || 0),
+          })),
+        };
+      }),
+    };
+  }
 
   const { data: entries, error: entriesError } = await supabase
     .from("manual_entries")
-    .select("type, amount")
-    .eq("rider_id", userId);
+    .select("type, category, amount")
+    .eq("rider_id", userId)
+    .eq("type", "outflow");
 
   if (entriesError) throw entriesError;
 
-  const outflowsTotal = (entries || [])
-    .filter((e) => e.type === "outflow")
-    .reduce((sum, e) => sum + Math.abs(Number(e.amount)), 0);
+  const spentAggregates = { needs: 0, wants: 0, savings: 0 };
+  entries.forEach((entry) => {
+    const amount = Math.abs(Number(entry.amount) || 0);
+    const cat = entry.category;
+    if (cat === "needs" || cat === "wants" || cat === "savings") {
+      spentAggregates[cat] += amount;
+    } else {
+      spentAggregates.needs += amount * 0.5;
+      spentAggregates.wants += amount * 0.3;
+      spentAggregates.savings += amount * 0.2;
+    }
+  });
 
-  return [
-    {
-      id: "needs",
-      title: "50% Needs",
-      allocated: totalEarnings * 0.5,
-      spent: 0,
-      color: "#a855f7",
-      description: getCategoryDescription("needs"),
-      icon: getCategoryIcon("needs"),
-      subItems: [
-        { name: "Rent", amount: totalEarnings * 0.15 },
-        { name: "Utilities", amount: totalEarnings * 0.05 },
-        { name: "Fuel", amount: totalEarnings * 0.08 },
-        { name: "Groceries", amount: totalEarnings * 0.12 },
-      ],
-    },
-    {
-      id: "wants",
-      title: "30% Wants",
-      allocated: totalEarnings * 0.3,
-      spent: 0,
-      color: "#6366f1",
-      description: getCategoryDescription("wants"),
-      icon: getCategoryIcon("wants"),
-      subItems: [
-        { name: "Dining Out", amount: totalEarnings * 0.08 },
-        { name: "Hobbies", amount: totalEarnings * 0.05 },
-        { name: "Shopping", amount: totalEarnings * 0.12 },
-      ],
-    },
-    {
-      id: "savings",
-      title: "20% Savings",
-      allocated: totalEarnings * 0.2,
-      spent: 0,
-      saved: 0,
-      color: "#10b981",
-      description: getCategoryDescription("savings"),
-      icon: getCategoryIcon("savings"),
-      subItems: [
-        { name: "Emergency Fund", amount: totalEarnings * 0.1 },
-        { name: "Investments", amount: totalEarnings * 0.1 },
-      ],
-    },
-  ];
+  const allocationRules = { needs: 0.5, wants: 0.3, savings: 0.2 };
+
+  const categories = Object.keys(allocationRules).map((cat) => {
+    const allocated = totalEarnings * allocationRules[cat];
+    const actualSpent = spentAggregates[cat] || 0;
+    return {
+      id: cat,
+      title: `${Math.round(allocationRules[cat] * 100)}% ${cat.charAt(0).toUpperCase() + cat.slice(1)}`,
+      allocated,
+      spent: actualSpent,
+      color: cat === "needs" ? "#a855f7" : cat === "wants" ? "#6366f1" : "#10b981",
+      description: getCategoryDescription(cat),
+      icon: getCategoryIcon(cat),
+      subItems: buildSubItems(cat, allocated),
+    };
+  });
+
+  return { totalEarnings, manualInflows, categories };
+}
+
+function buildSubItems(category, totalAllocated) {
+  const defs = {
+    needs: [
+      { name: "Rent", pct: 0.15 },
+      { name: "Utilities", pct: 0.05 },
+      { name: "Fuel", pct: 0.08 },
+      { name: "Groceries", pct: 0.12 },
+    ],
+    wants: [
+      { name: "Dining Out", pct: 0.08 },
+      { name: "Hobbies", pct: 0.05 },
+      { name: "Shopping", pct: 0.12 },
+    ],
+    savings: [
+      { name: "Emergency Fund", pct: 0.1 },
+      { name: "Investments", pct: 0.1 },
+    ],
+  };
+  return (defs[category] || []).map((item) => ({
+    name: item.name,
+    amount: totalAllocated * item.pct,
+    spent: 0,
+  }));
 }
 
 export function buildDefaultBudget(totalEarnings) {

@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient";
-import { computeAndStoreInsights } from "./insightsService"; // Import engine context directly
+import { computeAndStoreInsights } from "./insightsService";
+import { syncAllFinances } from "./financesSync";
 
 /**
  * Persists a new manual financial log entry and atomic updates insights cache.
@@ -38,11 +39,11 @@ export async function insertManualEntry({
   }
 
   try {
-    // 2. Cascade Side-Effect: Re-calculate insights metrics asynchronously in the background
     console.log("[Manual Entries] Triggering background budget re-calculation for rider:", userId);
     await computeAndStoreInsights(userId);
+    await syncAllFinances(userId);
+    console.log("[Manual Entries] Finance sync complete");
   } catch (insightErr) {
-    // Log the error but don't crash the operation if only the background cache calculation fails
     console.warn("[Manual Entries] Non-blocking insight update failure ignored:", insightErr.message);
   }
 
@@ -89,6 +90,7 @@ export async function removeManualEntry(entryId, userId) {
     try {
       console.log("[Manual Entries] Post-deletion cache refresh executing for rider:", userId);
       await computeAndStoreInsights(userId);
+      await syncAllFinances(userId);
     } catch (insightErr) {
       console.warn("[Manual Entries] Non-blocking insight update failure ignored:", insightErr.message);
     }
