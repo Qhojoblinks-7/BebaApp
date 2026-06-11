@@ -10,6 +10,12 @@ import { Field, FieldLabel } from '@/components/ui/field'
 import LocationSearch from '@/components/LocationSearch'
 import { ChevronLeft, ChevronRight, Loader2, Edit3 } from 'lucide-react'
 
+function generateSecurePin() {
+  const array = new Uint32Array(1)
+  crypto.getRandomValues(array)
+  return (array[0] % 9000 + 1000).toString()
+}
+
 const orderSchema = z.object({
   sender: z.string().min(2, 'Sender name must be at least 2 characters'),
   recipient: z.string().min(2, 'Recipient name must be at least 2 characters'),
@@ -76,7 +82,20 @@ export default function OrderScreen({ onOrderSuccess }) {
   const [submitted, setSubmitted] = useState(false)
   const [submittedOrderId, setSubmittedOrderId] = useState('')
   const [submittedTotalFee, setSubmittedTotalFee] = useState(0)
+  const [submittedDeliveryPin, setSubmittedDeliveryPin] = useState('')
+  const [pinVisible, setPinVisible] = useState(true)
+  const [pinCountdown, setPinCountdown] = useState(30)
   const [step, setStep] = useState(1)
+
+  useEffect(() => {
+    if (!submitted || !pinVisible) return
+    if (pinCountdown <= 1) {
+      setPinVisible(false)
+      return
+    }
+    const timer = setTimeout(() => setPinCountdown(pinCountdown - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [submitted, pinVisible, pinCountdown])
   const [distanceLoading, setDistanceLoading] = useState(false)
   const [distanceError, setDistanceError] = useState('')
   const [distanceMethod, setDistanceMethod] = useState('')
@@ -175,6 +194,7 @@ export default function OrderScreen({ onOrderSuccess }) {
     console.log('[OrderScreen] onSubmit called')
     if (distanceLoading) { console.log('[OrderScreen] submit blocked: distanceLoading'); return }
     const orderId = `BBA-${Math.floor(1000 + Math.random() * 9000)}-XP`
+    const deliveryPin = generateSecurePin()
     const normalizedPhone = normalizePhone(formData.phone)
     const normalizedRecipientPhone = normalizePhone(formData.phone2)
     const distanceVal = currentDistance
@@ -210,11 +230,15 @@ export default function OrderScreen({ onOrderSuccess }) {
         base_price: pricing.breakdown.basePrice,
         distance_fee: pricing.breakdown.distanceFee,
         surge_fee: pricing.breakdown.surgeFee,
+        delivery_pin: deliveryPin,
       }
       const { id } = await insertDocument('orders', orderData)
       if (!id) throw new Error('Order creation failed')
       setSubmittedTotalFee(pricing.breakdown.totalFee)
       setSubmittedOrderId(orderId)
+      setSubmittedDeliveryPin(deliveryPin)
+      setPinVisible(true)
+      setPinCountdown(30)
       setSubmitted(true)
       if (onOrderSuccess) onOrderSuccess(orderId)
 
@@ -223,6 +247,14 @@ export default function OrderScreen({ onOrderSuccess }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, orderDisplayId: orderId }),
       }).catch((err) => console.warn('[OrderScreen] push notify failed:', err.message))
+
+      if (normalizedRecipientPhone) {
+        fetch('/api/sms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId, recipientPhone: normalizedRecipientPhone, deliveryPin }),
+        }).catch((err) => console.warn('[OrderScreen] SMS notify failed:', err.message))
+      }
     } catch (err) {
       console.error('[OrderScreen] insert failed:', err)
       alert('Failed to create order: ' + (err.message || 'Unknown error'))
@@ -238,6 +270,15 @@ export default function OrderScreen({ onOrderSuccess }) {
           </div>
           <h2 className="text-xl font-black text-slate-900 uppercase">Request Logged!</h2>
           <p className="text-xs font-bold text-slate-500 mt-1">Waybill: {submittedOrderId}</p>
+          {pinVisible ? (
+            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-2xl">
+              <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Delivery Verification PIN</p>
+              <p className="text-4xl font-black text-red-600 tracking-wider mt-1">{submittedDeliveryPin}</p>
+              <p className="text-[10px] font-bold text-red-500 mt-2">{pinCountdown}s remaining - Give this code to your recipient</p>
+            </div>
+          ) : (
+            <p className="text-xs font-bold text-red-500 mt-4">Verification code hidden - Check with sender for the PIN</p>
+          )}
           <p className="text-lg font-bold text-red-600 mt-4">Total: GH₵ {submittedTotalFee.toFixed(2)}</p>
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-200 mt-6 flex flex-col gap-2">
             <Button onClick={() => onOrderSuccess?.(submittedOrderId)} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold uppercase rounded-xl">Track Order</Button>
