@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   ScrollView,
+  Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckCircle2, X } from "lucide-react-native";
@@ -31,6 +32,8 @@ export default function DeliveryClosureScreen({ route, navigation }) {
   const [deliveryPin, setDeliveryPin] = useState("");
   const [signature, setSignature] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [pinVerified, setPinVerified] = useState(false);
+  const [pinDialogVisible, setPinDialogVisible] = useState(false);
 
   // Key state to force-reset the WebView canvas touch responders when cleared
   const [sigKey, setSigKey] = useState(0);
@@ -67,25 +70,28 @@ export default function DeliveryClosureScreen({ route, navigation }) {
     signatureRef.current?.readSignature();
   };
 
+  const verifyPin = async () => {
+    if (!deliveryPin.trim() || deliveryPin.length !== 4) {
+      Alert.alert("Error", "Please enter the 4-digit verification code.");
+      return;
+    }
+
+    if (order?.delivery_pin && deliveryPin.trim() === String(order.delivery_pin).trim()) {
+      setPinVerified(true);
+      setPinDialogVisible(true);
+    } else {
+      Alert.alert("Error", "Invalid PIN. Please verify with the recipient.");
+    }
+  };
+
   const finaliseOrderManifest = async () => {
     if (!receiverName.trim()) {
       Alert.alert("Error", "Recipient name is required.");
       return;
     }
 
-    if (!deliveryPin.trim()) {
-      Alert.alert("Error", "Delivery PIN is required.");
-      return;
-    }
-
-    if (
-      order?.delivery_pin &&
-      deliveryPin.trim() !== String(order.delivery_pin).trim()
-    ) {
-      Alert.alert(
-        "Error",
-        "Invalid PIN. Recipient must provide the correct delivery verification code.",
-      );
+    if (!pinVerified) {
+      Alert.alert("Verification Required", "Please verify the PIN first.");
       return;
     }
 
@@ -358,17 +364,42 @@ export default function DeliveryClosureScreen({ route, navigation }) {
         />
 
         {/* PIN Input */}
-        <Text style={ui.label}>Delivery Verification PIN</Text>
+        <Text style={ui.label}>Delivery Verification PIN{pinVerified && <Text style={{ color: "#10b981" }}> ✓ Verified</Text>}</Text>
         <TextInput
           style={ui.input}
           placeholder="Enter 4-digit verification code"
           placeholderTextColor={colors.textDisabled}
           value={deliveryPin}
-          onChangeText={setDeliveryPin}
+          onChangeText={(text) => {
+            setDeliveryPin(text);
+            if (text.length === 4 && !pinVerified) {
+              verifyPin();
+            }
+          }}
           keyboardType="number-pad"
           maxLength={4}
           secureTextEntry
         />
+        <Modal
+          transparent
+          visible={pinDialogVisible}
+          animationType="fade"
+          onRequestClose={() => setPinDialogVisible(false)}
+        >
+          <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)" }}>
+            <View style={{ backgroundColor: colors.backgroundCard, borderRadius: 16, padding: 24, width: "85%", alignItems: "center" }}>
+              <Text style={{ fontSize: 18, fontWeight: "900", color: colors.text, marginBottom: 12 }}>Delivery ID Confirmed</Text>
+              <Text style={{ fontSize: 14, color: colors.textMuted, marginBottom: 4 }}>Waybill: #{order?.order_id}</Text>
+              <Text style={{ fontSize: 14, color: colors.textMuted, marginBottom: 20 }}>Recipient: {order?.customer_name}</Text>
+              <TouchableOpacity
+                style={{ backgroundColor: "#34d399", paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 }}
+                onPress={() => setPinDialogVisible(false)}
+              >
+                <Text style={{ color: "#020617", fontWeight: "900" }}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
 
         {/* Signature Status Info Bar */}
         <View style={ui.signatureLabelRow}>

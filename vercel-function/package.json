@@ -1,16 +1,18 @@
 {
-  "name": "api",
+  "name": "beba-push-function",
   "version": "0.1.0",
   "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "build": "node -e \"console.log('No build step required')\"",
+    "lint": "node --check api/push.js"
   },
   "dependencies": {
     "expo-server-sdk": "6.1.0",
     "firebase-admin": "~13.4.0",
-    "next": "^14.2.5"
+    "africa-talking": "^1.1.0"
   }
 }
