@@ -19,10 +19,14 @@ import {
   Target,
   ChevronDown,
   ChevronUp,
+  Brain,
+  Sparkles,
 } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
 import { getDocuments, where } from "../../services/db";
 import { fetchInsights } from "../../services/insightsService";
+import { useRevenueForecast } from "../../hooks/useRevenueForecast";
+import { generateAndStoreActionPlans } from "../../services/actionPlanService";
 
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = width * 0.44;
@@ -162,9 +166,12 @@ export default function ReportsScreen({ route, navigation }) {
   const [showDateModal, setShowDateModal] = useState(false);
   const [metrics, setMetrics] = useState(null);
   const [insights, setInsights] = useState([]);
+  const [actionPlans, setActionPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [periodOutflows, setPeriodOutflows] = useState(0);
   const [outflowByCategory, setOutflowByCategory] = useState({ needs: 0, wants: 0, savings: 0 });
+
+  const { forecast, loading: forecastLoadingState } = useRevenueForecast(user?.uid, 7);
 
   const range = useMemo(
     () => getPeriodRange(period, startDate, endDate),
@@ -202,6 +209,9 @@ export default function ReportsScreen({ route, navigation }) {
 
       const insightsData = await fetchInsights(user.uid);
       setInsights(insightsData);
+
+      const plans = await generateAndStoreActionPlans(user.uid);
+      setActionPlans(plans);
     } catch (err) {
       console.warn("[Reports] load failed:", err.message);
     } finally {
@@ -439,6 +449,68 @@ export default function ReportsScreen({ route, navigation }) {
                 </View>
               )}
             </ScrollView>
+
+            {forecast && (
+              <>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionTitleText}>AI Forecast</Text>
+                  <View style={[styles.badgePill, { backgroundColor: "#6366f120" }]}>
+                    <Sparkles size={12} color="#6366f1" />
+                    <Text style={[styles.badgeText, { color: "#6366f1", marginLeft: 4 }]}>AI-Powered</Text>
+                  </View>
+                </View>
+
+                <View style={styles.forecastCard}>
+                  <View style={styles.forecastHeaderRow}>
+                    <Brain size={18} color="#6366f1" />
+                    <Text style={styles.forecastTitle}>Next Week Prediction</Text>
+                  </View>
+                  <Text style={styles.forecastValue}>GH₵ {forecast.predictedEarnings?.toLocaleString() || 0}</Text>
+                  <View style={styles.forecastMetaRow}>
+                    <Text style={styles.forecastMeta}>Confidence: {forecast.confidence}%</Text>
+                    <Text style={styles.forecastMeta}>Trend: {forecast.trend}</Text>
+                  </View>
+                  {forecast.recommendations?.length > 0 && (
+                    <View style={styles.recommendationsList}>
+                      {forecast.recommendations.slice(0, 2).map((rec, idx) => (
+                        <Text key={idx} style={styles.recommendationText}>• {rec}</Text>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </>
+            )}
+
+            {actionPlans.length > 0 && (
+              <>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionTitleText}>Action Plans</Text>
+                </View>
+
+                <View style={styles.actionPlansStack}>
+                  {actionPlans.map((plan) => (
+                    <View key={plan.id} style={styles.actionPlanCard}>
+                      <View style={styles.actionPlanHeader}>
+                        <Text style={styles.actionPlanTitle}>{plan.title}</Text>
+                        <View style={[
+                          styles.priorityBadge,
+                          { backgroundColor: plan.priority === "high" ? "#ef444420" : plan.priority === "medium" ? "#facc1520" : "#10b98120" }
+                        ]}>
+                          <Text style={[
+                            styles.priorityText,
+                            { color: plan.priority === "high" ? "#ef4444" : plan.priority === "medium" ? "#facc15" : "#10b981" }
+                          ]}>
+                            {plan.priority.toUpperCase()}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.actionPlanDescription}>{plan.description}</Text>
+                      <Text style={styles.actionPlanSuggestion}>{plan.suggestedAction}</Text>
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
 
             {mappedInsights.length > 0 && (
               <>
@@ -799,4 +871,94 @@ const styles = StyleSheet.create({
     borderColor: "#ffffff10",
   },
   cancelButtonText: { color: "#94a3b8", fontWeight: "800", fontSize: 14 },
+  forecastCard: {
+    backgroundColor: "#16191e",
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#ffffff05",
+    gap: 10,
+    marginBottom: 24,
+  },
+  forecastHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  forecastTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+  forecastValue: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: "#6366f1",
+    letterSpacing: -0.5,
+  },
+  forecastMetaRow: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  forecastMeta: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#94a3b8",
+  },
+  recommendationsList: {
+    marginTop: 4,
+    gap: 4,
+  },
+  recommendationText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#94a3b8",
+    lineHeight: 16,
+  },
+  actionPlansStack: {
+    gap: 12,
+    paddingBottom: 20,
+  },
+  actionPlanCard: {
+    backgroundColor: "#16191e",
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#ffffff05",
+    gap: 8,
+  },
+  actionPlanHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  actionPlanTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#ffffff",
+    flex: 1,
+    letterSpacing: -0.2,
+  },
+  priorityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  priorityText: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  actionPlanDescription: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#94a3b8",
+    lineHeight: 18,
+  },
+  actionPlanSuggestion: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6366f1",
+    marginTop: 4,
+  },
 });
