@@ -9,10 +9,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Package, RefreshCw } from "lucide-react-native";
-import { supabase } from "../../services/supabaseClient";
+import { updateDoc, doc } from "firebase/firestore";
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
 import useOrderStore from "../../store/orderStore";
+import { db } from "../../services/firebaseConfig";
 import RiderOrderCard from "../../components/rider/RiderOrderCard";
 import DeliveryDetailsBottomSheet from "../../components/rider/DeliveryDetailsBottomSheet";
 
@@ -37,7 +38,7 @@ export default function ActiveDeliveryScreen({ navigation }) {
     }
 
     try {
-      await fetchActiveOrders(user?.id);
+      await fetchActiveOrders(user?.uid);
     } catch (err) {
       console.warn("[ActiveDelivery] Itinerary retrieval failed:", err.message);
     } finally {
@@ -47,25 +48,23 @@ export default function ActiveDeliveryScreen({ navigation }) {
   };
 
   useEffect(() => {
-    if (user?.id) {
+    if (user?.uid) {
       fetchActiveItinerary();
     }
-  }, [user?.id, fetchActiveOrders]);
+  }, [user?.uid, fetchActiveOrders]);
 
   const advanceStatus = async (item) => {
     try {
       if (item.status === "assigned") {
-        const { error } = await supabase
-          .from("orders")
-          .update({ status: "picked_up", updated_at: new Date().toISOString() })
-          .eq("id", item.id);
-        if (error) throw error;
+        await updateDoc(doc(db, "orders", item.id), {
+          status: "picked_up",
+          updated_at: new Date().toISOString(),
+        });
       } else if (item.status === "picked_up") {
-        const { error } = await supabase
-          .from("orders")
-          .update({ status: "in_transit", updated_at: new Date().toISOString() })
-          .eq("id", item.id);
-        if (error) throw error;
+        await updateDoc(doc(db, "orders", item.id), {
+          status: "in_transit",
+          updated_at: new Date().toISOString(),
+        });
       } else if (item.status === "in_transit") {
         navigation.navigate("DeliveryClosure", { orderId: item.id });
         return;

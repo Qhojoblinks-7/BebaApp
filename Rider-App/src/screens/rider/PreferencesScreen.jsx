@@ -18,8 +18,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ArrowLeft, Globe, Volume2, Palette, MapPin, Zap, Truck, ChevronRight } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
-import { supabase } from "../../services/supabaseClient";
 import { useThemeStore } from "../../store/themeStore";
+import { getDoc, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../../services/firebaseConfig";
 
 const STORAGE_KEY = "rider_preferences";
 
@@ -53,18 +54,12 @@ export default function PreferencesScreen({ navigation }) {
       console.warn("[Preferences] Failed to extract persistent storage matrix:", err.message);
     }
 
-    if (!user?.id) return;
+    if (!user?.uid) return;
 
     try {
-      const { data, error } = await supabase
-        .from("rider_preferences")
-        .select("*")
-        .eq("rider_id", user.id)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (data) {
+      const snap = await getDoc(doc(db, "rider_preferences", user.uid));
+      if (snap.exists()) {
+        const data = snap.data();
         const loadedPrefs = {
           theme: data.theme ?? defaultPreferences.theme,
           language: data.language ?? defaultPreferences.language,
@@ -79,32 +74,26 @@ export default function PreferencesScreen({ navigation }) {
     } catch (err) {
       console.warn("[Preferences] Failed to fetch remote context maps:", err.message);
     }
-  }, [user?.id, setTheme]);
+  }, [user?.uid, setTheme]);
 
   useEffect(() => {
     loadPreferences();
   }, [loadPreferences]);
 
   const savePreferences = async (newPrefs) => {
-    if (!user?.id) return;
+    if (!user?.uid) return;
     try {
-      const { error } = await supabase
-        .from("rider_preferences")
-        .upsert(
-          {
-            rider_id: user.id,
-            theme: newPrefs.theme,
-            language: newPrefs.language,
-            volume: newPrefs.volume,
-            default_vehicle: newPrefs.defaultVehicle,
-            max_distance: newPrefs.maxDistance,
-            auto_accept: newPrefs.autoAccept,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "rider_id" }
-        );
+      await setDoc(doc(db, "rider_preferences", user.uid), {
+        rider_id: user.uid,
+        theme: newPrefs.theme,
+        language: newPrefs.language,
+        volume: newPrefs.volume,
+        default_vehicle: newPrefs.defaultVehicle,
+        max_distance: newPrefs.maxDistance,
+        auto_accept: newPrefs.autoAccept,
+        updated_at: serverTimestamp(),
+      }, { merge: true });
 
-      if (error) throw error;
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newPrefs));
     } catch (err) {
       console.warn("[Preferences] Sync pipeline exception encountered:", err.message);

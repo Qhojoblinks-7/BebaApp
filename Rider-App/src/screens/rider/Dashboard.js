@@ -11,7 +11,19 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowUpRight, Inbox } from "lucide-react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../../context/AuthContext";
-import { supabase } from "../../services/supabaseClient";
+import {
+  getDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  doc,
+  collection,
+  setDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+import { db } from "../../services/firebaseConfig";
 import { useThemeStore } from "../../store/themeStore";
 import useRiderStore from "../../store/riderStore";
 import useNotificationStore from "../../store/notificationStore";
@@ -75,18 +87,15 @@ export default function DashboardScreen({ navigation }) {
   const selectedDate = calendarDays[selectedDayIndex]?.date || new Date().toISOString().split("T")[0];
 
   const fetchCurrentStatus = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.uid) {
+      setSyncing(false);
+      return;
+    }
     try {
       setSyncing(true);
-      const { data, error } = await supabase
-        .from("rider_status")
-        .select("rider_status")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (error) throw error;
-      if (data) {
-        const status = data.rider_status || "offline";
+      const snap = await getDoc(doc(db, "rider_status", user.uid));
+      if (snap.exists()) {
+        const status = snap.data().rider_status || "offline";
         setRiderStatus(status);
         if (status === "online") {
           await startTrackingEngine();
@@ -97,19 +106,14 @@ export default function DashboardScreen({ navigation }) {
     } finally {
       setSyncing(false);
     }
-  }, [user?.id, setRiderStatus, setSyncing]);
+  }, [user?.uid, setRiderStatus, setSyncing]);
 
   const fetchProfile = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.uid) return;
     try {
-      const { data, error } = await supabase
-        .from("users")
-        .select("full_name, avatar_url")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (error) throw error;
-      if (data) {
+      const snap = await getDoc(doc(db, "users", user.uid));
+      if (snap.exists()) {
+        const data = snap.data();
         if (data.full_name || data.avatar_url) {
           setRiderProfile({ fullName: data.full_name || "", avatarUrl: data.avatar_url || "" });
         }
@@ -117,64 +121,63 @@ export default function DashboardScreen({ navigation }) {
     } catch (err) {
       console.warn("[Dashboard] Profile query run failure:", err.message);
     }
-  }, [user?.id, setRiderProfile]);
+  }, [user?.uid, setRiderProfile]);
 
   const fetchUnreadCount = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.uid) return;
     try {
-      const { count, error } = await supabase
-        .from("notifications")
-        .select("*", { count: "exact", head: true })
-        .eq("rider_id", user.id)
-        .eq("is_read", false);
-
-      if (error) throw error;
-      setUnreadCount(count || 0);
+      const q = query(
+        collection(db, "notifications"),
+        where("rider_id", "==", user.uid),
+        where("is_read", "==", false)
+      );
+      const snap = await getDocs(q);
+      setUnreadCount(snap.size);
     } catch (err) {
       console.warn("[Dashboard] Notification lookup breakdown:", err.message);
     }
-  }, [user?.id, setUnreadCount]);
+  }, [user?.uid, setUnreadCount]);
 
   const fetchDashboardMetrics = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.uid) return;
     try {
       const startOfDay = new Date(`${selectedDate}T00:00:00`);
       const endOfDay = new Date(`${selectedDate}T23:59:59`);
       const startStr = startOfDay.toISOString();
       const endStr = endOfDay.toISOString();
 
-      const { data: orders, error: ordersError } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("rider_id", user.id)
-        .gte("created_at", startStr)
-        .lt("created_at", endStr);
+      const q = query(
+        collection(db, "orders"),
+        where("rider_id", "==", user.uid),
+        where("created_at", ">=", startStr),
+        where("created_at", "<", endStr)
+      );
+      const snap = await getDocs(q);
+      const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-      if (ordersError) throw ordersError;
-
-      const validOrders = orders?.filter((o) =>
+      const validOrders = orders.filter((o) =>
         ["assigned", "picked_up", "in_transit", "delivered"].includes(o.status)
-      ) || [];
+      );
 
       setActiveOrders(
         validOrders.sort((a, b) => (a.route_sequence || 0) - (b.route_sequence || 0))
       );
 
-      const completedDrops = orders?.filter((o) => o.status === "delivered").length || 0;
-      const cancelledCount = orders?.filter((o) => o.status === "cancelled").length || 0;
-      const totalBookings = orders?.length || 0;
+      const completedDrops = orders.filter((o) => o.status === "delivered").length || 0;
+      const cancelledCount = orders.filter((o) => o.status === "cancelled").length || 0;
+      const totalBookings = orders.length || 0;
       const cancelledRate = totalBookings > 0 ? Math.round((cancelledCount / totalBookings) * 100) : 0;
 
-      const { data: revenue, error: revenueError } = await supabase
-        .from("revenue")
-        .select("amount")
-        .eq("rider_id", user.id)
-        .gte("order_completed_at", startStr)
-        .lt("order_completed_at", endStr);
+      const revenueQ = query(
+        collection(db, "revenue"),
+        where("rider_id", "==", user.uid),
+        where("order_completed_at", ">=", startStr),
+        where("order_completed_at", "<", endStr)
+      );
+      const revenueSnap = await getDocs(revenueQ);
+      const revenue = revenueSnap.docs.map((d) => d.data());
 
-      if (revenueError) throw revenueError;
-
-      const earnings = revenue?.reduce((sum, r) => sum + Number(r.amount), 0) || 0;
+      const earnings = revenue.reduce((sum, r) => sum + Number(r.amount || 0), 0);
       const distanceKm = completedDrops * 5.4;
 
       setDailySummary({
@@ -186,7 +189,7 @@ export default function DashboardScreen({ navigation }) {
     } catch (err) {
       console.warn("[Dashboard] Analytics computation failure:", err.message);
     }
-  }, [user?.id, selectedDate, setActiveOrders, setDailySummary]);
+  }, [user?.uid, selectedDate, setActiveOrders, setDailySummary]);
 
   useEffect(() => {
     if (!user) {
@@ -203,65 +206,63 @@ export default function DashboardScreen({ navigation }) {
   }, [user, fetchCurrentStatus, fetchUnreadCount, fetchProfile, setSyncing]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.uid) return;
 
-    const channel = supabase
-      .channel(`notifications-${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `rider_id=eq.${user.id}`,
-        },
-        () => fetchUnreadCount(),
-      )
-      .subscribe();
+    const q = query(
+      collection(db, "notifications"),
+      where("rider_id", "==", user.uid),
+      orderBy("created_at", "desc")
+    );
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user?.id, fetchUnreadCount]);
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const notifications = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setUnreadCount(notifications.filter((n) => !n.is_read).length);
+      },
+      (err) => console.warn("[Dashboard] notifications listen failed:", err.message)
+    );
+
+    return () => unsub();
+  }, [user?.uid, setUnreadCount]);
 
   useFocusEffect(
     useCallback(() => {
-      if (!user?.id) return;
+      if (!user?.uid) return;
 
       fetchDashboardMetrics();
 
-      const channel = supabase
-        .channel(`dashboard-metrics-${user.id}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "orders",
-            filter: `rider_id=eq.${user.id}`,
-          },
-          () => {
-            fetchDashboardMetrics();
-          }
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "revenue",
-            filter: `rider_id=eq.${user.id}`,
-          },
-          () => {
-            fetchDashboardMetrics();
-          }
-        )
-        .subscribe();
+      const ordersQ = query(
+        collection(db, "orders"),
+        where("rider_id", "==", user.uid)
+      );
+
+      const revenueQ = query(
+        collection(db, "revenue"),
+        where("rider_id", "==", user.uid)
+      );
+
+      const unsubOrders = onSnapshot(
+        ordersQ,
+        () => {
+          fetchDashboardMetrics();
+        },
+        (err) => console.warn("[Dashboard] orders listen failed:", err.message)
+      );
+
+      const unsubRevenue = onSnapshot(
+        revenueQ,
+        () => {
+          fetchDashboardMetrics();
+        },
+        (err) => console.warn("[Dashboard] revenue listen failed:", err.message)
+      );
 
       return () => {
-        supabase.removeChannel(channel);
+        unsubOrders();
+        unsubRevenue();
       };
-    }, [user?.id, fetchDashboardMetrics])
+    }, [user?.uid, fetchDashboardMetrics])
   );
 
   const statusConfig = {
@@ -286,13 +287,7 @@ export default function DashboardScreen({ navigation }) {
         await stopTrackingEngine();
       }
 
-      const { error } = await supabase.from("rider_status").upsert({
-        id: user.id,
-        rider_status: nextState,
-        updated_at: new Date().toISOString(),
-      });
-
-      if (error) throw error;
+      await riderStore.setRiderStatusInFirebase(user.uid, nextState);
       setRiderStatus(nextState);
     } catch (err) {
       console.warn("[Dashboard] Presence sync pipeline failed:", err.message);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -24,7 +24,14 @@ import {
   ClipboardList 
 } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
-import { supabase } from "../../services/supabaseClient";
+import {
+  getDocs,
+  query,
+  where,
+  collection,
+  onSnapshot,
+} from "firebase/firestore";
+import { db } from "../../services/firebaseConfig";
 import { useNavigation } from "@react-navigation/native";
 import { getLiveBudgetWithExpenses, buildDefaultBudget } from "../../services/budgetService";
 import { useThemeStore } from "../../store/themeStore";
@@ -80,23 +87,18 @@ export default function FinancesScreen() {
   const [budgetData, setBudgetData] = useState([]);
 
   useEffect(() => {
-    if (!user?.id) {
+    if (!user?.uid) {
       setSyncing(false);
+      setLoadingWeekly(false);
       return;
     }
     fetchFinancialData();
-  }, [user?.id]);
+  }, [user?.uid]);
 
-  useEffect(() => {
-    if (user?.id && financeSummary.totalEarnings > 0) {
-      loadBudgetData();
-    }
-  }, [user?.id, financeSummary.totalEarnings]);
-
-  const loadBudgetData = async () => {
-    if (!user?.id) return;
+  const loadBudgetData = useCallback(async () => {
+    if (!user?.uid) return;
     try {
-      const data = await getLiveBudgetWithExpenses(user.id);
+      const data = await getLiveBudgetWithExpenses(user.uid);
       if (data && data.length > 0) {
         setBudgetData(data);
       } else {
@@ -106,41 +108,41 @@ export default function FinancesScreen() {
       console.warn("[Finances] budget load failed:", e.message);
       setBudgetData(buildDefaultBudget(financeSummary.totalEarnings));
     }
-  };
+  }, [user?.uid, financeSummary.totalEarnings]);
+
+  useEffect(() => {
+    if (user?.uid && financeSummary.totalEarnings > 0) {
+      loadBudgetData();
+    }
+  }, [user?.uid, financeSummary.totalEarnings, loadBudgetData]);
 
   async function fetchFinancialData() {
     try {
-      const { data: revenue, error } = await supabase
-        .from("revenue")
-        .select("amount, order_completed_at")
-        .eq("rider_id", user.id);
+      const revenueQ = query(collection(db, "revenue"), where("rider_id", "==", user.uid));
+      const revenueSnap = await getDocs(revenueQ);
+      const revenue = revenueSnap.docs.map((d) => d.data());
 
-      if (error) throw error;
-
-      const totalEarnings = revenue?.reduce((sum, r) => sum + Number(r.amount), 0) || 0;
-      const deliveriesCompleted = revenue?.length || 0;
+      const totalEarnings = revenue.reduce((sum, r) => sum + Number(r.amount || 0), 0) || 0;
+      const deliveriesCompleted = revenue.length || 0;
       const avgPerDelivery = deliveriesCompleted > 0 ? (totalEarnings / deliveriesCompleted).toFixed(2) : 0;
 
-      const { data: orders, error: ordersError } = await supabase
-        .from("orders")
-        .select("id")
-        .eq("rider_id", user.id);
+      const ordersQ = query(collection(db, "orders"), where("rider_id", "==", user.uid));
+      const ordersSnap = await getDocs(ordersQ);
+      const orders = ordersSnap.docs.map((d) => d.data());
 
-      if (ordersError) throw ordersError;
-
-      const totalOrders = orders?.length || 0;
+      const totalOrders = orders.length || 0;
       const completionRate = totalOrders > 0 ? Math.round((deliveriesCompleted / totalOrders) * 100) : 0;
 
       const thisMonday = getMonday(new Date());
       const lastMonday = new Date(thisMonday);
       lastMonday.setDate(lastMonday.getDate() - 7);
 
-      const lastWeekEarnings = (revenue || []).reduce((sum, r) => {
+      const lastWeekEarnings = revenue.reduce((sum, r) => {
         const d = new Date(r.order_completed_at);
         return d >= lastMonday && d < thisMonday ? sum + Number(r.amount) : sum;
       }, 0);
 
-      const thisWeekEarnings = (revenue || []).reduce((sum, r) => {
+      const thisWeekEarnings = revenue.reduce((sum, r) => {
         const d = new Date(r.order_completed_at);
         return d >= thisMonday ? sum + Number(r.amount) : sum;
       }, 0);
@@ -167,24 +169,21 @@ export default function FinancesScreen() {
   }
 
   async function fetchWeeklyData() {
-    if (!user?.id) return;
+    if (!user?.uid) return;
     setLoadingWeekly(true);
     try {
       const weekStart = getMonday(new Date());
       const weekDays = buildWeekDays(weekStart);
 
-      const { data: revenue, error } = await supabase
-        .from("revenue")
-        .select("amount, order_completed_at")
-        .eq("rider_id", user.id);
-
-      if (error) throw error;
+      const revenueQ = query(collection(db, "revenue"), where("rider_id", "==", user.uid));
+      const revenueSnap = await getDocs(revenueQ);
+      const revenue = revenueSnap.docs.map((d) => d.data());
 
       const weeklyPromises = weekDays.map(async (day) => {
         const dayStart = new Date(day.date + "T00:00:00");
         const dayEnd = new Date(day.date + "T23:59:59.999");
 
-        const dayEarnings = (revenue || []).reduce((sum, r) => {
+        const dayEarnings = revenue.reduce((sum, r) => {
           const d = new Date(r.order_completed_at || r.created_at);
           return d >= dayStart && d <= dayEnd ? sum + Number(r.amount) : sum;
         }, 0);
@@ -206,7 +205,7 @@ export default function FinancesScreen() {
 
   useEffect(() => {
     fetchWeeklyData();
-  }, [user?.id]);
+  }, [user?.uid]);
 
   // --- Dynamic Style Matrix mapped direct to application theme context ---
   const ui = {

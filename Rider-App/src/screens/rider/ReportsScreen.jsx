@@ -21,7 +21,7 @@ import {
   ChevronUp,
 } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
-import { supabase } from "../../services/supabaseClient";
+import { getDocuments, where } from "../../services/db";
 import { fetchInsights } from "../../services/insightsService";
 
 const { width } = Dimensions.get("window");
@@ -95,58 +95,43 @@ function getPeriodRange(period, startDate, endDate) {
 }
 
 async function fetchMetricsForRange(userId, start, end) {
-  const startStr = start.toISOString();
-  const endStr = end.toISOString();
+  const revenue = await getDocuments("revenue", [where("rider_id", "==", userId)]);
+  const orders = await getDocuments("orders", [where("rider_id", "==", userId)]);
+  const inflows = await getDocuments("manual_entries", [where("rider_id", "==", userId), where("type", "==", "inflow")]);
+  const outflows = await getDocuments("manual_entries", [where("rider_id", "==", userId), where("type", "==", "outflow")]);
 
-  const { data: revenue, error: revenueError } = await supabase
-    .from("revenue")
-    .select("amount")
-    .eq("rider_id", userId)
-    .gte("order_completed_at", startStr)
-    .lt("order_completed_at", endStr);
+  const startMs = start.getTime();
+  const endMs = end.getTime();
 
-  if (revenueError) throw revenueError;
+  const inRange = (item) => {
+    const t = item.order_completed_at ? new Date(item.order_completed_at).getTime() : 0;
+    return t >= startMs && t < endMs;
+  };
+  const inRangeOrder = (item) => {
+    const t = item.created_at ? new Date(item.created_at).getTime() : 0;
+    return t >= startMs && t < endMs;
+  };
+  const inRangeEntry = (item) => {
+    const t = item.occurred_at ? new Date(item.occurred_at).getTime() : 0;
+    return t >= startMs && t < endMs;
+  };
 
-  const { data: orders, error: ordersError } = await supabase
-    .from("orders")
-    .select("id, status")
-    .eq("rider_id", userId)
-    .gte("created_at", startStr)
-    .lt("created_at", endStr);
+  const filteredRevenue = (revenue || []).filter(inRange);
+  const filteredOrders = (orders || []).filter(inRangeOrder);
+  const filteredInflows = (inflows || []).filter(inRangeEntry);
+  const filteredOutflows = (outflows || []).filter(inRangeEntry);
 
-  if (ordersError) throw ordersError;
-
-  const { data: inflows, error: inflowError } = await supabase
-    .from("manual_entries")
-    .select("amount")
-    .eq("rider_id", userId)
-    .eq("type", "inflow")
-    .gte("occurred_at", startStr)
-    .lt("occurred_at", endStr);
-
-  if (inflowError) throw inflowError;
-
-  const { data: outflows, error: outflowError } = await supabase
-    .from("manual_entries")
-    .select("amount, category")
-    .eq("rider_id", userId)
-    .eq("type", "outflow")
-    .gte("occurred_at", startStr)
-    .lt("occurred_at", endStr);
-
-  if (outflowError) throw outflowError;
-
-  const deliveryEarnings = (revenue || []).reduce((sum, r) => sum + Number(r.amount), 0);
-  const externalIncome = (inflows || []).reduce((sum, r) => sum + Math.abs(Number(r.amount)), 0);
+  const deliveryEarnings = (filteredRevenue || []).reduce((sum, r) => sum + Number(r.amount || 0), 0);
+  const externalIncome = (filteredInflows || []).reduce((sum, r) => sum + Math.abs(Number(r.amount || 0)), 0);
   const totalEarnings = deliveryEarnings + externalIncome;
-  const totalOutflows = (outflows || []).reduce((sum, r) => sum + Math.abs(Number(r.amount)), 0);
-  const totalCompletions = (orders || []).filter((o) => o.status === "delivered").length;
-  const totalOrders = (orders || []).length;
+  const totalOutflows = (filteredOutflows || []).reduce((sum, r) => sum + Math.abs(Number(r.amount || 0)), 0);
+  const totalCompletions = (filteredOrders || []).filter((o) => o.status === "delivered").length;
+  const totalOrders = (filteredOrders || []).length;
   const completionRate = totalOrders > 0 ? Math.round((totalCompletions / totalOrders) * 100) : 0;
 
   const outflowByCategory = { needs: 0, wants: 0, savings: 0 };
-  (outflows || []).forEach((entry) => {
-    const amount = Math.abs(Number(entry.amount) || 0);
+  (filteredOutflows || []).forEach((entry) => {
+    const amount = Math.abs(Number(entry.amount || 0));
     const cat = entry.category;
     if (cat === "needs" || cat === "wants" || cat === "savings") {
       outflowByCategory[cat] += amount;
@@ -179,6 +164,7 @@ export default function ReportsScreen({ route, navigation }) {
   const [insights, setInsights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [periodOutflows, setPeriodOutflows] = useState(0);
+  const [outflowByCategory, setOutflowByCategory] = useState({ needs: 0, wants: 0, savings: 0 });
 
   const range = useMemo(
     () => getPeriodRange(period, startDate, endDate),
@@ -186,12 +172,12 @@ export default function ReportsScreen({ route, navigation }) {
   );
 
   const loadData = async () => {
-    if (!user?.id) return;
+    if (!user?.uid) return;
     setLoading(true);
     try {
       const [current, previous] = await Promise.all([
-        fetchMetricsForRange(user.id, range.start, range.end),
-        fetchMetricsForRange(user.id, range.prevStart, range.prevEnd),
+        fetchMetricsForRange(user.uid, range.start, range.end),
+        fetchMetricsForRange(user.uid, range.prevStart, range.prevEnd),
       ]);
 
       setPeriodOutflows(current.totalOutflows);
@@ -214,7 +200,7 @@ export default function ReportsScreen({ route, navigation }) {
         completionsDelta,
       });
 
-      const insightsData = await fetchInsights(user.id);
+      const insightsData = await fetchInsights(user.uid);
       setInsights(insightsData);
     } catch (err) {
       console.warn("[Reports] load failed:", err.message);
@@ -225,7 +211,7 @@ export default function ReportsScreen({ route, navigation }) {
 
   useEffect(() => {
     loadData();
-  }, [user?.id, period, startDate, endDate]);
+  }, [user?.uid, period, startDate, endDate]);
 
   const earnings = metrics?.totalEarnings || 0;
   const totalOutflows = periodOutflows;

@@ -10,12 +10,12 @@ import {
   Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { supabase } from "../../services/supabaseClient";
+import { Bell, BellOff } from "lucide-react-native";
+import { updateDoc, doc } from "firebase/firestore";
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
 import useNotificationStore from "../../store/notificationStore";
-import notificationService from "../../services/notificationService";
-import { Bell } from "lucide-react-native";
+import { db } from "../../services/firebaseConfig";
 import DeliveryDetailsBottomSheet from "../../components/rider/DeliveryDetailsBottomSheet";
 
 export default function NotificationsScreen() {
@@ -29,6 +29,7 @@ export default function NotificationsScreen() {
   const refreshing = notificationStore.refreshing;
   const unreadCount = notificationStore.unreadCount;
 
+
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   const setLoading = notificationStore.setLoading;
@@ -36,37 +37,23 @@ export default function NotificationsScreen() {
   const setNotifications = notificationStore.setNotifications;
   const fetchNotifications = notificationStore.fetchNotifications;
 
-  // Initialize service settings globally on screen layout registration
   useEffect(() => {
-    notificationService.setupHandler();
-    notificationService.ensureChannel();
-  }, []);
+    if (user?.uid) {
+      fetchNotifications(user.uid);
+    }
+  }, [user?.uid, fetchNotifications]);
 
-  useEffect(() => {
-    (async () => {
-      const permitted = await notificationService.requestPermissions();
-      console.log("[NotificationsScreen] permission status:", permitted);
-    })();
-  }, []);
-
-  useEffect(() => {
-    fetchNotifications(user?.id);
-  }, [user?.id, fetchNotifications]);
-
-  const handleRefresh = () => {
-    fetchNotifications(user?.id);
-  };
+  const handleRefresh = useCallback(() => {
+    if (user?.uid) fetchNotifications(user.uid);
+  }, [user?.uid, fetchNotifications]);
 
   const markAsRead = async (notificationId) => {
     try {
+      await updateDoc(doc(db, "notifications", notificationId), {
+        is_read: true,
+        updated_at: new Date().toISOString(),
+      });
       notificationStore.markAsRead(notificationId);
-
-      const { error } = await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("id", notificationId);
-
-      if (error) throw error;
     } catch (err) {
       console.warn("[Notifications] Mark status change failed:", err.message);
     }

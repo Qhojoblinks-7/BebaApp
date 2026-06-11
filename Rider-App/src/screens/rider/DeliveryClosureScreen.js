@@ -14,10 +14,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckCircle2, X } from "lucide-react-native";
 import SignatureScreen from "react-native-signature-canvas";
 import { useAuth } from "../../context/AuthContext";
-import { supabase } from "../../services/supabaseClient";
+import { getDoc, doc, updateDoc, setDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { computeAndStoreInsights } from "../../services/insightsService";
 import { syncAllFinances } from "../../services/financesSync";
 import { useThemeStore } from "../../store/themeStore";
+import { db } from "../../services/firebaseConfig";
 
 export default function DeliveryClosureScreen({ route, navigation }) {
   const { orderId } = route.params || {};
@@ -37,14 +38,13 @@ export default function DeliveryClosureScreen({ route, navigation }) {
 
   useEffect(() => {
     if (orderId) {
-      supabase
-        .from("orders")
-        .select("order_id, delivery_pin")
-        .eq("id", orderId)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (data) setOrder(data);
-        });
+      getDoc(doc(db, "orders", orderId))
+        .then((snap) => {
+          if (snap.exists()) {
+            setOrder({ id: snap.id, ...snap.data() });
+          }
+        })
+        .catch((err) => console.warn("[DeliveryClosure] fetch order failed:", err.message));
     }
   }, [orderId]);
 
@@ -102,32 +102,17 @@ export default function DeliveryClosureScreen({ route, navigation }) {
       console.log(`[DeliveryClosure] Starting finalise | orderId=${orderId} receiver=${receiverName}`);
       const now = new Date().toISOString();
       console.log(`[DeliveryClosure] Timestamp: ${now}`);
-      const { error } = await supabase
-        .from("orders")
-        .update({
-          status: "delivered",
-          received_by: receiverName.trim(),
-          received_at: now,
-          signature: signature,
-          updated_at: now,
-        })
-        .eq("id", orderId);
-
-      if (error) {
-        console.error(`[DeliveryClosure] Order update failed | orderId=${orderId}:`, error.message);
-        throw error;
-      }
+      await updateDoc(doc(db, "orders", orderId), {
+        status: "delivered",
+        received_by: receiverName.trim(),
+        received_at: now,
+        signature: signature,
+        updated_at: now,
+      });
       console.log(`[DeliveryClosure] Order status set to delivered | orderId=${orderId}`);
 
-      const { data: orderData, error: fetchError } = await supabase
-        .from("orders")
-        .select("delivery_fee, base_price, distance_fee, surge_fee")
-        .eq("id", orderId)
-        .maybeSingle();
-
-      if (fetchError) {
-        console.warn(`[DeliveryClosure] Fee fetch failed | orderId=${orderId}:`, fetchError.message);
-      }
+      const orderSnap = await getDoc(doc(db, "orders", orderId));
+      const orderData = orderSnap.exists() ? orderSnap.data() : {};
       console.log(`[DeliveryClosure] Fee columns | orderId=${orderId}`, {
         delivery_fee: orderData?.delivery_fee,
         base_price: orderData?.base_price,
@@ -149,26 +134,22 @@ export default function DeliveryClosureScreen({ route, navigation }) {
 
       if (fee > 0) {
         const revenuePayload = {
-          rider_id: user.id,
+          rider_id: user.uid,
           order_id: orderId,
           amount: fee,
           order_completed_at: now,
         };
         console.log(`[DeliveryClosure] Inserting revenue | orderId=${orderId}`, revenuePayload);
-        const { error: revenueError } = await supabase.from("revenue").insert(revenuePayload);
-        if (revenueError) {
-          console.error(`[DeliveryClosure] Revenue insert failed | orderId=${orderId}:`, revenueError.message);
-        } else {
-          console.log(`[DeliveryClosure] Revenue inserted successfully | orderId=${orderId} fee=GHS ${fee.toFixed(2)}`);
-          try {
-            console.log(`[DeliveryClosure] Triggering insight recompute for rider ${user.id}`);
-            await computeAndStoreInsights(user.id);
-            console.log(`[DeliveryClosure] Insight recompute complete`);
-            await syncAllFinances(user.id);
-            console.log(`[DeliveryClosure] Budget + action plan sync complete`);
-          } catch (insightErr) {
-            console.warn(`[DeliveryClosure] Non-blocking insight recompute failed:`, insightErr.message);
-          }
+        await setDoc(doc(db, "revenue", `${orderId}_${Date.now()}`), revenuePayload);
+        console.log(`[DeliveryClosure] Revenue inserted successfully | orderId=${orderId} fee=GHS ${fee.toFixed(2)}`);
+        try {
+          console.log(`[DeliveryClosure] Triggering insight recompute for rider ${user.uid}`);
+          await computeAndStoreInsights(user.uid);
+          console.log(`[DeliveryClosure] Insight recompute complete`);
+          await syncAllFinances(user.uid);
+          console.log(`[DeliveryClosure] Budget + action plan sync complete`);
+        } catch (insightErr) {
+          console.warn(`[DeliveryClosure] Non-blocking insight recompute failed:`, insightErr.message);
         }
       } else {
         console.warn(`[DeliveryClosure] Fee is zero, skipping revenue insert | orderId=${orderId}`);

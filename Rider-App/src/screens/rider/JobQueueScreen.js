@@ -9,13 +9,15 @@ import {
   ActivityIndicator,
   StatusBar,
   Platform,
+  Alert, // FIX: Imported native Alert engine interface
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { supabase } from "../../services/supabaseClient";
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
-import useOrderStore from "../../store/orderStore";
+import useOrderStore, { GEOFENCE_ZONES } from "../../store/orderStore";
 import notificationService from "../../services/notificationService";
+import { onSnapshot, collection, query, where, limit, getDocs, updateDoc, doc } from "firebase/firestore";
+import { db } from "../../services/firebaseConfig";
 import { Package, Layers } from "lucide-react-native";
 import RiderOrderCard from "../../components/rider/RiderOrderCard";
 import DeliveryDetailsBottomSheet from "../../components/rider/DeliveryDetailsBottomSheet";
@@ -27,7 +29,6 @@ export default function JobQueueScreen({ navigation }) {
 
   const orderStore = useOrderStore();
   const pendingOrders = orderStore.pendingOrders;
-  const setPendingOrders = orderStore.setPendingOrders;
   const fetchPendingOrders = orderStore.fetchPendingOrders;
 
   const [loading, setLoading] = useState(true);
@@ -35,11 +36,15 @@ export default function JobQueueScreen({ navigation }) {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const fetchTimerRef = useRef(null);
 
+  // FIX: Safety check mapping to correct Firebase Auth token unique uid string
+  const userId = user?.uid;
+
   const fetchAvailable = useCallback(async () => {
     if (fetchTimerRef.current) return;
     fetchTimerRef.current = setTimeout(() => {
       fetchTimerRef.current = null;
     }, 800);
+    
     try {
       setLoading(true);
       await fetchPendingOrders();
@@ -49,42 +54,38 @@ export default function JobQueueScreen({ navigation }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [fetchPendingOrders, setLoading]);
+  }, [fetchPendingOrders]);
+
+  useEffect(() => {
+    if (!userId) return;
+    fetchPendingOrders();
+  }, [userId, fetchPendingOrders]);
 
   useEffect(() => {
     notificationService.setupHandler();
     notificationService.ensureChannel();
   }, []);
 
+  // Sync real-time notification streams independently from data fetching hooks
   useEffect(() => {
-    fetchAvailable();
+    if (!userId) return;
 
-    const channel = supabase
-      .channel("orders-channel")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "orders" },
-        async (payload) => {
-          if (payload.new && payload.new.status === "pending") {
-            await notificationService.scheduleLocalNotification({
-              title: "New Order Available",
-              body: `Order #${payload.new.order_id || payload.new.id} is ready for pickup`,
-              data: { url: "JobQueueTab", orderId: payload.new.id },
-            });
-            fetchAvailable();
-          }
-        },
-      )
-      .subscribe();
+    const unsub = notificationService.listenForNewOrders((incomingOrder) => {
+      notificationService.scheduleLocalNotification({
+        title: incomingOrder.title || "New Order Available",
+        body: incomingOrder.body || `Order #${incomingOrder.orderIdDisplay || incomingOrder.orderId} is ready for pickup`,
+        data: incomingOrder.data || { url: "JobQueueTab", orderId: incomingOrder.orderId },
+      });
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      if (typeof unsub === "function") unsub();
     };
-  }, [fetchAvailable]);
+  }, [userId]);
 
   const generateDeliveryPin = () => Math.floor(1000 + Math.random() * 9000).toString();
 
-  const zones = useOrderStore.GEOFENCE_ZONES.filter((z) =>
+  const zones = GEOFENCE_ZONES.filter((z) =>
     pendingOrders.some((o) => o.zone === z)
   );
 
@@ -169,7 +170,7 @@ export default function JobQueueScreen({ navigation }) {
           <Text style={[styles.batchClaimText, { color: colors.textSecondary }]}>
             Tap a zone to claim dispatches in that area:
           </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingVertical: 4 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
             {zones.map((zone) => {
               const zoneOrders = pendingOrders.filter((o) => o.zone === zone);
               const zoneFee = zoneOrders.reduce((sum, o) => sum + (Number(o.base_price || 0) + Number(o.distance_fee || 0) + Number(o.surge_fee || 0) || Number(o.delivery_fee || 0)), 0);
@@ -200,8 +201,7 @@ export default function JobQueueScreen({ navigation }) {
         visible={!!selectedOrder}
         onClose={() => setSelectedOrder(null)}
         onAction={async (order, status) => {
-          if (!order?.id) return;
-          console.log(`[JobQueue] Action triggered | order=${order.orderId || order.id} status=${status}`);
+          if (!order?.id || !userId) return;
 
           const nextStatus = {
             pending: "assigned",
@@ -211,51 +211,41 @@ export default function JobQueueScreen({ navigation }) {
           }[status];
 
           if (!nextStatus) {
-            console.log(`[JobQueue] No next status for ${status}, closing sheet`);
             setSelectedOrder(null);
             return;
           }
 
           if (nextStatus === "delivered") {
-            console.log(`[JobQueue] Navigating to DeliveryClosure | orderId=${order.id}`);
             setSelectedOrder(null);
             navigation.navigate("DeliveryClosure", { orderId: order.id });
             return;
           }
 
           try {
-            console.log(`[JobQueue] Advancing ${order.orderId || order.id} : ${status} → ${nextStatus}`);
             setLoading(true);
             const updates = { status: nextStatus, updated_at: new Date().toISOString() };
 
             if (nextStatus === "assigned") {
               const deliveryPin = generateDeliveryPin();
-              const { count } = await supabase
-                .from("orders")
-                .select("*", { count: "exact", head: true })
-                .eq("rider_id", user.id)
-                .in("status", ["assigned", "picked_up", "in_transit"]);
-              const seq = (count || 0) + 1;
-              updates.rider_id = user.id;
+              // FIX: Point queries at accurate uid keys safely
+              const q = query(
+                collection(db, "orders"), 
+                where("rider_id", "==", userId), 
+                where("status", "in", ["assigned", "picked_up", "in_transit"])
+              );
+              const snap = await getDocs(q);
+              const seq = snap.size + 1;
+              updates.rider_id = userId;
               updates.route_sequence = seq;
               updates.delivery_pin = deliveryPin;
-              console.log(`[JobQueue] Assigned | pin=${deliveryPin} routeSequence=${seq}`);
             }
 
-            const { error } = await supabase
-              .from("orders")
-              .update(updates)
-              .eq("id", order.id);
-
-            if (error) {
-              console.error(`[JobQueue] Status advance failed for ${order.orderId || order.id}:`, error.message);
-              throw error;
-            }
-            console.log(`[JobQueue] Update success | order=${order.orderId || order.id} newStatus=${nextStatus}`);
+            await updateDoc(doc(db, "orders", order.id), updates);
             fetchAvailable();
           } catch (err) {
             console.error(`[JobQueue] Status advance error for ${order.orderId || order.id}:`, err);
-            alert(`Failed to update order status: ${err.message}`);
+            // FIX: Uses safe native Alert module diagnostics wrapper layouts
+            Alert.alert("Status Error", `Failed to update order status: ${err.message}`);
           } finally {
             setLoading(false);
             setSelectedOrder(null);
@@ -288,4 +278,5 @@ const styles = StyleSheet.create({
   batchClaimBtn: { borderRadius: 12, padding: 12, minWidth: 135, justifyContent: "center" },
   batchClaimZone: { fontSize: 13, fontWeight: "800", letterSpacing: -0.2 },
   batchClaimMeta: { fontSize: 11, fontWeight: "600", marginTop: 1, opacity: 0.95 },
+  horizontalScroll: { gap: 8, paddingHorizontal: 16, paddingVertical: 4 }
 });

@@ -1,5 +1,16 @@
 import { create } from "zustand";
-import { supabase } from "../services/supabaseClient";
+import {
+  getDocs,
+  query,
+  where,
+  orderBy,
+  updateDoc,
+  doc,
+  serverTimestamp,
+  writeBatch,
+} from "firebase/firestore";
+import { collection } from "firebase/firestore";
+import { db } from "../services/firebaseConfig";
 
 const useOrderStore = create((set, get) => ({
   pendingOrders: [],
@@ -16,33 +27,27 @@ const useOrderStore = create((set, get) => ({
 
   setSelectedOrder: (order) => set({ selectedOrder: order }),
   setJobZones: (zones) => set({ jobZones: zones }),
-
   setPendingOrders: (orders) => set({ pendingOrders: orders }),
-
   setActiveOrders: (orders) => set({ activeOrders: orders }),
-
   setDeliveryHistory: (history) => set({ deliveryHistory: history }),
-
   setDailySummary: (summary) => set({ dailySummary: summary }),
 
   fetchPendingOrders: async () => {
     try {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("status", "pending")
-        .is("rider_id", null)
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-      
-      if (data) {
-        const ordersWithZones = data.map((order) => ({
+      const q = query(
+        collection(db, "orders"),
+        where("status", "==", "pending"),
+        orderBy("created_at", "asc")
+      );
+      const snap = await getDocs(q);
+      const allPending = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const ordersWithZones = allPending
+        .filter((o) => !o.rider_id)
+        .map((order) => ({
           ...order,
-          zone: get().resolveOrderZone(order),
+          zone: resolveOrderZone(order),
         }));
-        set({ pendingOrders: ordersWithZones });
-      }
+      set({ pendingOrders: ordersWithZones });
     } catch (err) {
       console.warn("[orderStore] fetchPendingOrders failed:", err.message);
     }
@@ -51,15 +56,16 @@ const useOrderStore = create((set, get) => ({
   fetchActiveOrders: async (userId) => {
     if (!userId) return;
     try {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("rider_id", userId)
-        .in("status", ["assigned", "picked_up", "in_transit"])
-        .order("route_sequence", { ascending: true });
-
-      if (error) throw error;
-      set({ activeOrders: data || [] });
+      const q = query(
+        collection(db, "orders"),
+        where("rider_id", "==", userId),
+        orderBy("route_sequence", "asc")
+      );
+      const snap = await getDocs(q);
+      const active = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((o) => ["assigned", "picked_up", "in_transit"].includes(o.status));
+      set({ activeOrders: active });
     } catch (err) {
       console.warn("[orderStore] fetchActiveOrders failed:", err.message);
     }
@@ -68,22 +74,23 @@ const useOrderStore = create((set, get) => ({
   fetchDeliveryHistory: async (userId, dateRange) => {
     if (!userId) return;
     try {
-      let query = supabase
-        .from("orders")
-        .select("*")
-        .eq("rider_id", userId)
-        .in("status", ["delivered", "cancelled"]);
+      let q = query(
+        collection(db, "orders"),
+        where("rider_id", "==", userId),
+        orderBy("created_at", "desc")
+      );
+      const snap = await getDocs(q);
+      let history = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((o) => ["delivered", "cancelled"].includes(o.status));
 
       if (dateRange) {
-        query = query
-          .gte("created_at", dateRange.start)
-          .lt("created_at", dateRange.end);
+        history = history.filter((o) => {
+          const t = o.created_at?.toMillis?.() || new Date(o.created_at).getTime();
+          return t >= dateRange.start.getTime() && t < dateRange.end.getTime();
+        });
       }
-
-      const { data, error } = await query.order("created_at", { ascending: false });
-
-      if (error) throw error;
-      set({ deliveryHistory: data || [] });
+      set({ deliveryHistory: history });
     } catch (err) {
       console.warn("[orderStore] fetchDeliveryHistory failed:", err.message);
     }
@@ -93,16 +100,10 @@ const useOrderStore = create((set, get) => ({
     try {
       const finalUpdates = {
         status: nextStatus,
-        updated_at: new Date().toISOString(),
+        updated_at: serverTimestamp(),
         ...updates,
       };
-
-      const { error } = await supabase
-        .from("orders")
-        .update(finalUpdates)
-        .eq("id", orderId);
-
-      if (error) throw error;
+      await updateDoc(doc(db, "orders", orderId), finalUpdates);
 
       set((state) => {
         const updatedPending = state.pendingOrders.filter((o) => o.id !== orderId);
@@ -187,7 +188,6 @@ const pointInPolygon = (lng, lat, polygon) => {
 
 const resolveOrderZone = (order) => {
   const { delivery_lng, delivery_lat, delivery_address } = order;
-
   if (delivery_lng && delivery_lat) {
     for (const [zoneName, polygon] of Object.entries(GEOFENCE_POLYGONS)) {
       if (
@@ -201,7 +201,6 @@ const resolveOrderZone = (order) => {
       }
     }
   }
-
   if (delivery_address) {
     const lowerAddress = delivery_address.toLowerCase();
     for (const zone of GEOFENCE_ZONES) {
@@ -210,10 +209,8 @@ const resolveOrderZone = (order) => {
       }
     }
   }
-
   return "General Accra";
 };
 
 useOrderStore.resolveOrderZone = resolveOrderZone;
-
 export default useOrderStore;

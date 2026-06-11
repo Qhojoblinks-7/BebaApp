@@ -4,13 +4,13 @@ import { NavigationContainer, useNavigationContainerRef } from "@react-navigatio
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Home, Briefcase, Route, DollarSign, User } from "lucide-react-native";
+import { Home, Briefcase, Route, DollarSign } from "lucide-react-native";
 import { useThemeStore } from "../store/themeStore";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../services/supabaseClient";
 import { useNotifications } from "../hooks/useNotifications";
+import useNotificationStore from "../store/notificationStore";
+import notificationService, { CHANNEL_ID } from "../services/notificationService";
 
-// Core Screens
 import DashboardScreen from "../screens/rider/Dashboard";
 import JobQueueScreen from "../screens/rider/JobQueueScreen";
 import ActiveDeliveryScreen from "../screens/rider/ActiveDeliveryScreen";
@@ -31,13 +31,11 @@ import ManualCashFlowScreen from "../screens/rider/ManualCashFlowScreen";
 import QuickAddEntryScreen from "../screens/rider/QuickAddEntryScreen";
 import DeliveryHistoryScreen from "../screens/rider/DeliveryHistoryScreen";
 import DeliveryDetailScreen from "../screens/rider/DeliveryDetailScreen";
+import DriverWalletScreen from "../screens/rider/DriverWalletScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-/**
- * 1. Active Itinerary Stack
- */
 function ActiveDeliveryStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -47,14 +45,10 @@ function ActiveDeliveryStack() {
   );
 }
 
-/**
- * 2. Main Premium Floating Tab Layout
- */
 function TabNavigator() {
   const { colors, isDarkMode } = useThemeStore();
   const insets = useSafeAreaInsets();
 
-  // Compute total safe height padding to isolate device native home indicators
   const bottomBarHeight = Platform.OS === "ios" ? 64 + Math.max(insets.bottom - 8, 0) : 68;
 
   return (
@@ -65,16 +59,11 @@ function TabNavigator() {
         tabBarInactiveTintColor: colors.textMuted,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          position: "absolute",
-          bottom: Platform.OS === "ios" ? Math.max(insets.bottom, 12) : 16,
-          left: 16,
-          right: 16,
           backgroundColor: colors.backgroundCard,
           borderTopWidth: 1,
           borderWidth: 1,
           borderColor: colors.borderLight,
           borderTopColor: colors.borderLight,
-          borderRadius: 24,
           height: bottomBarHeight,
           paddingBottom: Platform.OS === "ios" ? Math.max(insets.bottom / 2, 8) : 12,
           paddingTop: 10,
@@ -140,9 +129,6 @@ function TabNavigator() {
   );
 }
 
-/**
- * 3. Master App Root Navigator
- */
 export default function AppNavigator() {
   const navigationRef = useNavigationContainerRef();
   const { user } = useAuth();
@@ -172,47 +158,62 @@ export default function AppNavigator() {
   const { scheduleNewOrderNotification } = useNotifications(handleDeepLink);
 
   useEffect(() => {
-    if (!user?.id) return;
+    notificationService.setupHandler();
+    notificationService.ensureChannel();
 
-    const channel = supabase
-      .channel(`app-wide-notifications-${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `rider_id=eq.${user.id}`,
-        },
-        (payload) => {
-          console.log("[AppNavigator] New notification received:", payload.new);
-          scheduleNewOrderNotification(payload.new);
+    const subscription = notificationService.addListenerResponse((response) => {
+      const data = response?.notification?.request?.content?.data || {};
+      const targetUrl = data.url;
+      const orderId = data.orderId;
+
+      if (targetUrl && navigationRef.current?.isReady()) {
+        if (!targetUrl.includes("://")) {
+          navigationRef.current.navigate(targetUrl);
+          return;
         }
-      )
-      .subscribe();
+        const cleanUrl = targetUrl.replace("beba://app/", "");
+        const [routePath] = cleanUrl.split("?");
+        const currentRoute = navigationRef.current.getCurrentRoute()?.name;
+        if (routePath && routePath !== currentRoute) {
+          navigationRef.current.navigate(routePath, orderId ? { orderId } : undefined);
+        }
+      }
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      if (typeof subscription?.remove === "function") {
+        subscription.remove();
+      }
     };
-  }, [user?.id, scheduleNewOrderNotification]);
+  }, [navigationRef]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = useNotificationStore.getState().subscribeToNotifications(user.uid);
+    return () => {
+      if (typeof unsub === "function") {
+        unsub();
+      }
+    };
+  }, [user?.uid]);
 
   return (
     <NavigationContainer ref={navigationRef}>
-      <Stack.Navigator 
-        screenOptions={{ 
+      <Stack.Navigator
+        screenOptions={{
           headerShown: false,
           animation: "slide_from_right",
-          animationDuration: 220
+          animationDuration: 220,
         }}
       >
         <Stack.Screen name="MainTabs" component={TabNavigator} />
-        
+
         <Stack.Screen
           name="Notifications"
           component={NotificationsScreen}
           options={{ animation: "slide_from_bottom" }}
         />
-        
+
         <Stack.Screen name="BudgetBreakdown" component={BudgetBreakdownScreen} />
         <Stack.Screen name="SmartInsights" component={SmartInsightsScreen} />
         <Stack.Screen name="BudgetInsightDetail" component={BudgetInsightDetailScreen} />
@@ -227,6 +228,7 @@ export default function AppNavigator() {
         <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
         <Stack.Screen name="TermsPrivacyPolicy" component={TermsPrivacyPolicyScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="DriverWallet" component={DriverWalletScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

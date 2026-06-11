@@ -20,8 +20,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ArrowLeft, Shield, Lock, Eye, EyeOff, Trash2, ChevronRight, Moon, Sun } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
-import { supabase } from "../../services/supabaseClient";
 import { useThemeStore } from "../../store/themeStore";
+import { getDoc, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { updatePassword } from "firebase/auth";
+import { db } from "../../services/firebaseConfig";
+import { auth } from "../../services/firebaseConfig";
 
 const STORAGE_KEY = "security_settings";
 
@@ -59,18 +62,12 @@ export default function PrivacySecurityScreen({ navigation }) {
       console.warn("[PrivacySecurity] Failed to unpack local metadata payload:", err.message);
     }
 
-    if (!user?.id) return;
+    if (!user?.uid) return;
 
     try {
-      const { data, error } = await supabase
-        .from("privacy_security_settings")
-        .select("*")
-        .eq("rider_id", user.id)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (data) {
+      const snap = await getDoc(doc(db, "privacy_security_settings", user.uid));
+      if (snap.exists()) {
+        const data = snap.data();
         setSettings({
           shareLocation: data.share_location ?? defaultSettings.shareLocation,
           profileVisible: data.profile_visible ?? defaultSettings.profileVisible,
@@ -81,30 +78,24 @@ export default function PrivacySecurityScreen({ navigation }) {
     } catch (err) {
       console.warn("[PrivacySecurity] Remote database synchronization exception:", err.message);
     }
-  }, [user?.id, setTheme]);
+  }, [user?.uid, setTheme]);
 
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
 
   const saveSettings = async (newSettings) => {
-    if (!user?.id) return;
+    if (!user?.uid) return;
     try {
-      const { error } = await supabase
-        .from("privacy_security_settings")
-        .upsert(
-          {
-            rider_id: user.id,
-            share_location: newSettings.shareLocation,
-            profile_visible: newSettings.profileVisible,
-            two_factor_enabled: newSettings.twoFactorEnabled,
-            biometric_enabled: newSettings.biometricEnabled,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "rider_id" }
-        );
+      await setDoc(doc(db, "privacy_security_settings", user.uid), {
+        rider_id: user.uid,
+        share_location: newSettings.shareLocation,
+        profile_visible: newSettings.profileVisible,
+        two_factor_enabled: newSettings.twoFactorEnabled,
+        biometric_enabled: newSettings.biometricEnabled,
+        updated_at: serverTimestamp(),
+      }, { merge: true });
 
-      if (error) throw error;
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings));
     } catch (err) {
       console.warn("[PrivacySecurity] Remote commit failed:", err.message);
@@ -129,13 +120,16 @@ export default function PrivacySecurityScreen({ navigation }) {
       Alert.alert("Invalid Format", "Security credentials must consist of 6 or more characters.");
       return;
     }
-    const { error } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
-    if (error) {
-      Alert.alert("Security Update Failed", error.message);
-    } else {
+    try {
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        Alert.alert("Error", "No authenticated user found.");
+        return;
+      }
+      await updatePassword(firebaseUser, newPassword);
       Alert.alert("Success", "Account password updated successfully.");
+    } catch (err) {
+      Alert.alert("Security Update Failed", err.message);
     }
     setPasswordModalVisible(false);
     setNewPassword("");

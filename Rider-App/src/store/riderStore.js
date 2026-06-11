@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import { supabase } from "../services/supabaseClient";
+import { getDoc, getDocs, query, where, orderBy, limit, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, collection } from "firebase/firestore";
+import { auth, db } from "../services/firebaseConfig";
 
 const useRiderStore = create((set, get) => ({
   riderStatus: "offline",
@@ -20,6 +22,25 @@ const useRiderStore = create((set, get) => ({
   syncing: true,
 
   setRiderStatus: (status) => set({ riderStatus: status }),
+  setRiderStatusInFirebase: async (userId, status) => {
+    if (!userId) return;
+    try {
+      await setDoc(doc(db, "rider_status", userId), {
+        rider_status: status,
+        updated_at: serverTimestamp(),
+      }, { merge: true });
+    } catch (err) {
+      console.warn("[riderStore] setRiderStatusInFirebase failed:", err.message);
+    }
+  },
+  toggleRiderStatus: async (userId) => {
+    if (!userId) return;
+    const current = get().riderStatus;
+    const newStatus = current === "online" ? "offline" : "online";
+    set({ riderStatus: newStatus });
+    await get().setRiderStatusInFirebase(userId, newStatus);
+    return newStatus;
+  },
   setSyncing: (value) => set({ syncing: value }),
 
   setProfile: (profile) =>
@@ -34,24 +55,18 @@ const useRiderStore = create((set, get) => ({
   fetchProfile: async (userId) => {
     if (!userId) return;
     try {
-      const { data, error } = await supabase
-        .from("users")
-        .select("full_name, phone, email, avatar_url")
-        .eq("id", userId)
-        .maybeSingle();
-
-      if (error) throw error;
-      if (data) {
-        set({
-          profile: {
-            fullName: data.full_name || "",
-            phone: data.phone || "",
-            email: data.email || "",
-            riderId: userId.slice(0, 8).toUpperCase(),
-            avatarUrl: data.avatar_url || "",
-          },
-        });
-      }
+      const snap = await getDoc(doc(db, "users", userId));
+      if (!snap.exists()) return;
+      const data = snap.data();
+      set({
+        profile: {
+          fullName: data.full_name || "",
+          phone: data.phone || "",
+          email: data.email || "",
+          riderId: userId.slice(0, 8).toUpperCase(),
+          avatarUrl: data.avatar_url || "",
+        },
+      });
     } catch (err) {
       console.warn("[riderStore] fetchProfile failed:", err.message);
     }
@@ -60,15 +75,16 @@ const useRiderStore = create((set, get) => ({
   fetchActiveOrders: async (userId) => {
     if (!userId) return;
     try {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("rider_id", userId)
-        .in("status", ["assigned", "picked_up", "in_transit"])
-        .order("route_sequence", { ascending: true });
-
-      if (error) throw error;
-      set({ activeOrders: data || [] });
+      const q = query(
+        collection(db, "orders"),
+        where("rider_id", "==", userId),
+        orderBy("route_sequence")
+      );
+      const snap = await getDocs(q);
+      const rows = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((o) => ["assigned", "picked_up", "in_transit"].includes(o.status));
+      set({ activeOrders: rows || [] });
     } catch (err) {
       console.warn("[riderStore] fetchActiveOrders failed:", err.message);
     }
@@ -77,14 +93,9 @@ const useRiderStore = create((set, get) => ({
   fetchRiderStatus: async (userId) => {
     if (!userId) return;
     try {
-      const { data, error } = await supabase
-        .from("rider_status")
-        .select("rider_status")
-        .eq("id", userId)
-        .maybeSingle();
-
-      if (error) throw error;
-      if (data) set({ riderStatus: data.rider_status || "offline" });
+      const snap = await getDoc(doc(db, "rider_status", userId));
+      if (!snap.exists()) return;
+      set({ riderStatus: snap.data().rider_status || "offline" });
     } catch (err) {
       console.warn("[riderStore] fetchRiderStatus failed:", err.message);
     }

@@ -1,9 +1,13 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from "react";
-import { supabase } from "../services/supabaseClient";
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
+import { signOut, onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "../services/firebaseConfig";
+import notificationService from "../services/notificationService";
 
 const AuthContext = createContext({
   session: null,
   user: null,
+  profile: null,
   role: null,
   loading: true,
   signOut: async () => {},
@@ -12,31 +16,19 @@ const AuthContext = createContext({
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
-  
-  // Track continuous runtime shifts to block out-of-order execution states
   const ongoingFetchId = useRef(0);
 
   useEffect(() => {
-    console.log("[AuthContext] Initializing Supabase Auth Stream Listener...");
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-      // Increment the current execution cycle ID to discard outdated async tasks
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       const localFetchId = ++ongoingFetchId.current;
-      
-      console.log("[AuthContext] Event intercept:", {
-        event,
-        userId: currentSession?.user?.id,
-      });
+      setSession(firebaseUser);
+      setUser(firebaseUser);
 
-      // Instantly update basic identity values to keep UI responsive
-      setSession(currentSession);
-      setUser(currentSession?.user ?? null);
-
-      if (!currentSession?.user) {
+      if (!firebaseUser) {
+        setProfile(null);
         setRole(null);
         setLoading(false);
         return;
@@ -44,58 +36,48 @@ export function AuthProvider({ children }) {
 
       try {
         setLoading(true);
-
-        // Retrieve core user configuration details
-        const { data: userData, error } = await supabase
-          .from("users")
-          .select("user_type, full_name")
-          .eq("id", currentSession.user.id)
-          .maybeSingle();
-
-        if (error) throw error;
-
-        // Abort state mutation updates if a newer auth change has already taken place
+        notificationService.setupHandler();
+        const tokenPromise = notificationService.registerPushToken(firebaseUser.uid);
+        const snap = await getDoc(doc(db, "users", firebaseUser.uid));
         if (localFetchId !== ongoingFetchId.current) return;
 
-        if (userData) {
-          setRole(userData.user_type);
-          console.log("[AuthContext] Profile verification synchronized:", userData.user_type);
-        } else {
+        const userData = snap.exists() ? snap.data() : {};
+        setProfile(userData);
+        setRole(userData.user_type || null);
+        await tokenPromise;
+      } catch (err) {
+        console.warn("[AuthContext Error]:", err.message);
+        if (localFetchId === ongoingFetchId.current) {
+          setProfile(null);
           setRole(null);
         }
-      } catch (err) {
-        console.warn("[AuthContext Error]: Sync exception caught ->", err.message);
       } finally {
         if (localFetchId === ongoingFetchId.current) {
           setLoading(false);
         }
       }
     });
-
-    return () => {
-      console.log("[AuthContext] Cleaning up context resources...");
-      subscription.unsubscribe();
-    };
+    return () => unsub();
   }, []);
 
-  const signOut = async () => {
+  const signOutHandler = useCallback(async () => {
     try {
       setLoading(true);
-      // Increment execution counter to disregard downstream updates from the listener
       ongoingFetchId.current++;
-      await supabase.auth.signOut();
+      await signOut(auth);
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      setRole(null);
     } catch (err) {
       console.warn("[AuthContext SignOut Warning]:", err.message);
     } finally {
-      setSession(null);
-      setUser(null);
-      setRole(null);
       setLoading(false);
     }
-  };
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ session, user, role, loading, signOut }}>
+    <AuthContext.Provider value={{ session, user, profile, role, loading, signOut: signOutHandler }}>
       {children}
     </AuthContext.Provider>
   );

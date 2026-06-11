@@ -14,8 +14,10 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
-import { supabase } from "../../services/supabaseClient";
 import { useThemeStore } from "../../store/themeStore";
+import { getDoc, doc, updateDoc, setDoc } from "firebase/firestore";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "../../services/firebaseConfig";
 import * as ImagePicker from "expo-image-picker";
 import {
   ArrowLeft,
@@ -54,25 +56,19 @@ export default function ProfileScreen({ navigation }) {
 
   useEffect(() => {
     fetchProfile();
-  }, [user?.id]);
+  }, [user?.uid]);
 
   const fetchProfile = async () => {
-    if (!user?.id) return;
+    if (!user?.uid) return;
     try {
-      const { data, error } = await supabase
-        .from("users")
-        .select("full_name, phone, email, id, avatar_url")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (data) {
+      const snap = await getDoc(doc(db, "users", user.uid));
+      if (snap.exists()) {
+        const data = snap.data();
         setProfileData({
           full_name: data.full_name || "",
           phone: data.phone || user.phone || "",
           email: data.email || user.email || "",
-          rider_id: user.id?.slice(0, 8).toUpperCase() || "",
+          rider_id: user.uid?.slice(0, 8).toUpperCase() || "",
           avatar_url: data.avatar_url || "",
         });
         setEditName(data.full_name || "");
@@ -92,12 +88,10 @@ export default function ProfileScreen({ navigation }) {
     }
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("users")
-        .update({ full_name: editName.trim(), phone: editPhone.trim() })
-        .eq("id", user.id);
-
-      if (error) throw error;
+      await updateDoc(doc(db, "users", user.uid), {
+        full_name: editName.trim(),
+        phone: editPhone.trim(),
+      });
 
       setProfileData((prev) => ({
         ...prev,
@@ -134,30 +128,21 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const uploadAvatar = async (uri) => {
-    if (!user?.id) return;
+    if (!user?.uid) return;
     setUploadingAvatar(true);
     try {
       const response = await fetch(uri);
       const blob = await response.blob();
       const fileExt = uri.split(".").pop();
-      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+      const fileName = `${user.uid}-${Date.now()}.${fileExt}`;
+      const storageRef = ref(storage, `avatars/${fileName}`);
 
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(fileName, blob, { contentType: "image/*", upsert: true });
+      await uploadBytes(storageRef, blob, { contentType: "image/*" });
+      const publicUrl = await getDownloadURL(storageRef);
 
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(fileName);
-
-      const { error: updateError } = await supabase
-        .from("users")
-        .update({ avatar_url: publicUrl })
-        .eq("id", user.id);
-
-      if (updateError) throw updateError;
+      await updateDoc(doc(db, "users", user.uid), {
+        avatar_url: publicUrl,
+      });
 
       setProfileData((prev) => ({ ...prev, avatar_url: publicUrl }));
       Alert.alert("Success", "Profile picture updated");

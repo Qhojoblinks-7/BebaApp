@@ -39,39 +39,36 @@ export default function BudgetBreakdownScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (serverBudgetData) {
-      const categoriesWithIcons = serverBudgetData.categories
-        ? serverBudgetData.categories
-        : Array.isArray(serverBudgetData)
-          ? serverBudgetData
-          : [];
-      setCategories(categoriesWithIcons.map((cat) => ({ ...cat, icon: cat.icon && ICON_MAP[cat.icon] ? cat.icon : "Wallet" })));
-      setTotalEarnings(serverBudgetData.totalEarnings || 0);
-      setManualInflows(serverBudgetData.manualInflows || 0);
-      setLoading(false);
-    } else if (user?.id) {
-      loadBudget();
-    } else {
-      setLoading(false);
+    async function loadBudgetData() {
+      try {
+        if (serverBudgetData) {
+          const categoriesWithIcons = serverBudgetData.categories
+            ? serverBudgetData.categories
+            : Array.isArray(serverBudgetData)
+              ? serverBudgetData
+              : [];
+          setCategories(categoriesWithIcons.map((cat) => ({ ...cat, icon: cat.icon && ICON_MAP[cat.icon] ? cat.icon : "Wallet" })));
+          setTotalEarnings(serverBudgetData.totalEarnings || 0);
+          setManualInflows(serverBudgetData.manualInflows || 0);
+        } else if (user?.uid) {
+          const result = await getLiveBudgetWithExpenses(user.uid);
+          const cats = result.categories || result;
+          setCategories(cats.map((cat) => ({ ...cat, icon: cat.icon && ICON_MAP[cat.icon] ? cat.icon : "Wallet" })));
+          setTotalEarnings(result.totalEarnings || 0);
+          setManualInflows(result.manualInflows || 0);
+        }
+      } catch (e) {
+        console.warn("[BudgetBreakdown] load failed:", e.message);
+        setCategories(buildDefaultBudget(0).map((cat) => ({ ...cat, icon: cat.icon && ICON_MAP[cat.icon] ? cat.icon : "Wallet" })));
+        setTotalEarnings(0);
+        setManualInflows(0);
+      } finally {
+        setLoading(false);
+      }
     }
-  }, [user?.id, serverBudgetData]);
 
-  const loadBudget = async () => {
-    try {
-      const result = await getLiveBudgetWithExpenses(user.id);
-      const cats = result.categories || result;
-      setCategories(cats.map((cat) => ({ ...cat, icon: cat.icon && ICON_MAP[cat.icon] ? cat.icon : "Wallet" })));
-      setTotalEarnings(result.totalEarnings || 0);
-      setManualInflows(result.manualInflows || 0);
-    } catch (e) {
-      console.warn("[BudgetBreakdown] load failed:", e.message);
-      setCategories(buildDefaultBudget(0).map((cat) => ({ ...cat, icon: cat.icon && ICON_MAP[cat.icon] ? cat.icon : "Wallet" })));
-      setTotalEarnings(0);
-      setManualInflows(0);
-    } finally {
-      setLoading(false);
-    }
-  };
+    loadBudgetData();
+  }, [user?.uid, serverBudgetData]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: 12 }]}>

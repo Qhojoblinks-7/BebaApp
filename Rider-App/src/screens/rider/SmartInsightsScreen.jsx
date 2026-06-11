@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -20,9 +20,10 @@ import {
   Check,
 } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
-import { supabase } from "../../services/supabaseClient";
+import { getDocuments, where } from "../../services/db";
 import { fetchInsights, fetchActionPlans } from "../../services/insightsService";
 import { getLocalDateBounds } from "../../services/budgetService";
+import { useFocusEffect } from "@react-navigation/native";
 
 export default function SmartInsightsScreen({ navigation }) {
   const { user } = useAuth();
@@ -38,33 +39,31 @@ export default function SmartInsightsScreen({ navigation }) {
   const [actions, setActions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (user?.id) loadData();
-  }, [user?.id]);
-
-  const loadData = async () => {
-    if (!user?.id) return;
+  const loadData = useCallback(async () => {
+    if (!user?.uid) return;
     setLoading(true);
     try {
       const [revenueResult, manualResult, insightsData, actionsData] = await Promise.all([
-        supabase.from("revenue").select("amount, order_completed_at").eq("rider_id", user.id),
-        supabase.from("manual_entries").select("type, amount").eq("rider_id", user.id),
-        fetchInsights(user.id),
-        fetchActionPlans(user.id),
+        getDocuments("revenue", [where("rider_id", "==", user.uid)]),
+        getDocuments("manual_entries", [where("rider_id", "==", user.uid)]),
+        fetchInsights(user.uid),
+        fetchActionPlans(user.uid),
       ]);
 
-      const revenue = revenueResult.data || [];
-      const manualEntries = manualResult.data || [];
-      const totalEarnings = revenue.reduce((sum, r) => sum + Number(r.amount), 0);
+      const revenue = revenueResult || [];
+      const manualEntries = manualResult || [];
+      const deliveryEarnings = revenue.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+      const inflowEarnings = manualEntries.filter((e) => e.type === "inflow").reduce((sum, e) => sum + Number(e.amount || 0), 0);
+      const totalEarnings = deliveryEarnings + inflowEarnings;
       const totalDeliveries = revenue.length;
-      const outflowTotal = manualEntries.filter((e) => e.type === "outflow").reduce((sum, e) => sum + Number(e.amount), 0);
+      const outflowTotal = manualEntries.filter((e) => e.type === "outflow").reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
       console.log("[SmartInsights] Data loaded", {
         totalEarnings,
         totalDeliveries,
         outflowTotal,
-        revenueCount: revenueResult.data?.length,
-        manualCount: manualResult.data?.length,
+        revenueCount: revenue.length,
+        manualCount: manualEntries.length,
       });
 
       const avgCost = totalDeliveries > 0 ? (outflowTotal / totalDeliveries).toFixed(2) : "0.00";
@@ -84,13 +83,23 @@ export default function SmartInsightsScreen({ navigation }) {
       setMetricsEarnings(totalEarnings);
       setOutflows(outflowTotal);
       setInsights(insightsData);
-      setActions(actionsData.filter((a) => a.rider_id === user.id));
+      setActions((actionsData || []).filter((a) => a.rider_id === user.uid));
     } catch (e) {
       console.warn("[SmartInsights] load failed:", e.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (user?.uid) loadData();
+  }, [user?.uid, loadData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   const recentInsights = insights.slice(0, 4);
   const actionPlans = actions.slice(0, 3);

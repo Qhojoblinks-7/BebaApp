@@ -1,17 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { supabase } from '../lib/supabaseClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Bike, BookOpen, UserX, Wifi } from 'lucide-react';
+import { Search } from 'lucide-react';
 import TrackingCard from '@/components/TrackingCard';
-
-const STATUS_CONFIG = {
-  online:    { label: 'Rider Available',     color: 'bg-emerald-500', textColor: 'text-emerald-700',  icon: Wifi },
-  in_class:  { label: 'Rider In Class',       color: 'bg-amber-500',  textColor: 'text-amber-700',   icon: BookOpen },
-  offline:   { label: 'Rider Offline',        color: 'bg-slate-400',  textColor: 'text-slate-600',   icon: UserX },
-  on_route:  { label: 'Rider On Route',       color: 'bg-blue-500',   textColor: 'text-blue-700',    icon: Bike },
-};
+import { getDocument, getDocuments, subscribeToDocument, where, limit } from '@/lib/db';
 
 export default function TrackerScreen({ initialWaybill = '', onBookAnother }) {
   const safeInitial = typeof initialWaybill === 'string' && initialWaybill.trim().length > 0 ? initialWaybill.trim() : ''
@@ -34,49 +27,44 @@ const handleSearch = useCallback(async (waybillOverride) => {
     setRiderStatus(null);
 
     try {
-      console.log('[Tracker] Query params:', { table: 'orders', column: 'order_id', value: cleanWaybill })
-      const { data, error: supabaseError } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('order_id', cleanWaybill)
-        .maybeSingle();
+      const orderDoc = await getDocument('orders', cleanWaybill);
 
-      console.log('[Tracker] Query result:', { data, error: supabaseError, waybill: cleanWaybill })
+      console.log('[Tracker] Query result:', { orderDoc, waybill: cleanWaybill })
 
-      // If not found, try a broader search as fallback
-      if (!data && !supabaseError) {
-        console.log('[Tracker] Order not found by eq, trying ilike...')
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('orders')
-          .select('order_id, status, rider_id, customer_name, delivery_address')
-          .ilike('order_id', `%${cleanWaybill}%`)
-          .limit(5);
-        console.log('[Tracker] Fallback query result:', { fallbackData, fallbackError })
-      }
-
-      if (supabaseError) {
-        console.error('[Tracker] Order lookup error:', supabaseError);
-        throw supabaseError;
-      }
-      if (data) {
-        setOrder(data);
-
-        if (data.rider_id) {
-          setRiderStatusLoading(true);
-          const { data: statusData, error: statusError } = await supabase
-            .from('rider_status')
-            .select('rider_status')
-            .eq('id', data.rider_id)
-            .maybeSingle();
-          if (statusError) {
-            console.error('[Tracker] Rider status lookup error:', statusError);
+      // If not found by direct ID match, try a broader search as fallback
+      if (!orderDoc) {
+        console.log('[Tracker] Order not found by doc ID, trying order_id field search...')
+        const fallbackOrders = await getDocuments('orders', [
+          where('order_id', '>=', cleanWaybill),
+          where('order_id', '<=', cleanWaybill + '\uf8ff'),
+          where('order_id', '!=', ''),
+          limit(5),
+        ]);
+        const matched = fallbackOrders.filter((o) =>
+          (o.order_id || '').toUpperCase().includes(cleanWaybill)
+        );
+        console.log('[Tracker] Fallback query result:', { matchedCount: matched.length })
+        if (matched.length > 0) {
+          setOrder(matched[0]);
+          if (matched[0].rider_id) {
+            setRiderStatusLoading(true);
+            const statusDoc = await getDocument('rider_status', matched[0].rider_id);
+            setRiderStatus(statusDoc?.rider_status || 'offline');
+            setRiderStatusLoading(false);
           }
-          setRiderStatus(statusData?.rider_status || 'offline');
-          setRiderStatusLoading(false);
+        } else {
+          setError('Waybill reference code not found. Please verify the code or contact support.');
+          setOrder(null);
         }
       } else {
-        setError('Waybill reference code not found. Please verify the code or contact support.');
-        setOrder(null);
+        setOrder(orderDoc);
+
+        if (orderDoc.rider_id) {
+          setRiderStatusLoading(true);
+          const statusDoc = await getDocument('rider_status', orderDoc.rider_id);
+          setRiderStatus(statusDoc?.rider_status || 'offline');
+          setRiderStatusLoading(false);
+        }
       }
     } catch (err) {
       console.error('[Tracker] Search error:', err);
@@ -99,39 +87,25 @@ const handleSearch = useCallback(async (waybillOverride) => {
       return;
     }
 
+    setRiderStatusLoading(true);
     const fetchRiderStatus = async () => {
-      setRiderStatusLoading(true);
-      const { data, error: statusError } = await supabase
-        .from('rider_status')
-        .select('rider_status')
-        .eq('id', order.rider_id)
-        .maybeSingle();
-      if (statusError) {
-        console.error('[Tracker] Rider status fetch error:', statusError);
-      }
-      setRiderStatus(data?.rider_status || 'offline');
+      const statusDoc = await getDocument('rider_status', order.rider_id);
+      setRiderStatus(statusDoc?.rider_status || 'offline');
       setRiderStatusLoading(false);
     };
 
     fetchRiderStatus();
 
-    const channelName = `rider_status_${order.rider_id}_${order.id}`;
-    const statusSubscription = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'rider_status', filter: `id=eq.${order.rider_id}` },
-        (payload) => {
-          console.log('[Tracker] Real-time status update:', payload)
-          setRiderStatus(payload.new.rider_status);
-        }
-      )
-      .subscribe();
+    const unsubscribe = subscribeToDocument('rider_status', order.rider_id, (statusDoc) => {
+      console.log('[Tracker] Real-time status update:', statusDoc);
+      setRiderStatus(statusDoc?.rider_status || 'offline');
+      setRiderStatusLoading(false);
+    });
 
     return () => {
-      supabase.removeChannel(statusSubscription);
+      if (unsubscribe) unsubscribe();
     };
-  }, [order?.rider_id, order?.id]);
+  }, [order?.rider_id]);
 
   // Utility to handle formatting and status display logic consistently
   const statusHelpers = {

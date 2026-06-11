@@ -1,4 +1,6 @@
-import { supabase } from "./supabaseClient";
+import { getDocuments, insertDocumentWithId, upsertDocument } from "./db";
+import { where } from "firebase/firestore";
+import { getLocalDateBounds } from "./budgetService";
 
 export async function syncBudgetAllocations(userId) {
   if (!userId) return;
@@ -6,26 +8,20 @@ export async function syncBudgetAllocations(userId) {
   const { periodStart, periodEnd } = getLocalDateBounds();
 
   const [revenueRes, manualRes] = await Promise.all([
-    supabase.from("revenue").select("amount").eq("rider_id", userId),
-    supabase
-      .from("manual_entries")
-      .select("type, category, amount")
-      .eq("rider_id", userId),
+    getDocuments("revenue", [where("rider_id", "==", userId)]),
+    getDocuments("manual_entries", [where("rider_id", "==", userId)]),
   ]);
 
-  if (revenueRes.error) throw revenueRes.error;
-  if (manualRes.error) throw manualRes.error;
-
-  const deliveryEarnings = (revenueRes.data || []).reduce((sum, r) => sum + Number(r.amount), 0);
-  const manualInflows = (manualRes.data || [])
+  const deliveryEarnings = (revenueRes || []).reduce((sum, r) => sum + Number(r.amount || 0), 0);
+  const manualInflows = (manualRes || [])
     .filter((e) => e.type === "inflow")
-    .reduce((sum, e) => sum + Math.abs(Number(e.amount)), 0);
+    .reduce((sum, e) => sum + Math.abs(Number(e.amount || 0)), 0);
 
   const totalEarnings = deliveryEarnings + manualInflows;
   if (totalEarnings <= 0) return;
 
   const spentAggregates = { needs: 0, wants: 0, savings: 0 };
-  (manualRes.data || []).forEach((entry) => {
+  (manualRes || []).forEach((entry) => {
     if (entry.type === "outflow") {
       const amount = Math.abs(Number(entry.amount) || 0);
       if (entry.category === "needs" || entry.category === "wants" || entry.category === "savings") {
@@ -39,47 +35,39 @@ export async function syncBudgetAllocations(userId) {
   });
 
   const allocationRules = [
-    { key: "needs", percent: 50, color: "#a855f7", icon: "Home", description: "Rent, utilities, fuel, maintenance" },
-    { key: "wants", percent: 30, color: "#6366f1", icon: "ShoppingBag", description: "Dining out, hobbies, shopping" },
-    { key: "savings", percent: 20, color: "#10b981", icon: "PiggyBank", description: "Emergency fund, investments" },
+    { key: "needs", percent: 50 },
+    { key: "wants", percent: 30 },
+    { key: "savings", percent: 20 },
   ];
 
-  const allocations = allocationRules.map((rule) => {
-    const allocatedAmount = totalEarnings * (rule.percent / 100);
-    const spentAmount = spentAggregates[rule.key] || 0;
-    return {
-      rider_id: userId,
-      category: rule.key,
-      allocated_percent: rule.percent,
-      allocated_amount: allocatedAmount,
-      spent_amount: spentAmount,
-      period_start: periodStart,
-      period_end: periodEnd,
-    };
-  });
+  const allocations = allocationRules.map((rule) => ({
+    rider_id: userId,
+    category: rule.key,
+    allocated_percent: rule.percent,
+    allocated_amount: totalEarnings * (rule.percent / 100),
+    spent_amount: spentAggregates[rule.key] || 0,
+    period_start: periodStart,
+    period_end: periodEnd,
+  }));
 
-  const { error: allocError } = await supabase
-    .from("budget_allocations")
-    .upsert(allocations, { onConflict: "rider_id,category,period_start,period_end" });
-
-  if (allocError) throw allocError;
+  for (const alloc of allocations) {
+    const id = `${userId}_${alloc.category}_${periodStart}`;
+    await upsertDocument("budget_allocations", id, alloc);
+  }
 }
 
 export async function syncInsightActions(userId) {
   if (!userId) return;
 
-  const { data: insights, error: insightsError } = await supabase
-    .from("insights")
-    .select("*")
-    .eq("rider_id", userId)
-    .order("computed_at", { ascending: false })
-    .limit(10);
+  const insights = await getDocuments("insights", [
+    where("rider_id", "==", userId),
+  ]);
 
-  if (insightsError) throw insightsError;
-  if (!insights || insights.length === 0) return;
+  const recent = (insights || []).slice(0, 10);
+  if (recent.length === 0) return;
 
   const actions = [];
-  insights.forEach((insight) => {
+  recent.forEach((insight) => {
     if (insight.type === "danger") {
       actions.push({
         rider_id: userId,
@@ -98,10 +86,10 @@ export async function syncInsightActions(userId) {
   });
 
   if (actions.length > 0) {
-    const { error } = await supabase.from("insight_actions").upsert(actions, {
-      onConflict: "rider_id,category,title",
-    });
-    if (error) throw error;
+    for (const action of actions) {
+      const id = `${userId}_${action.category}_${action.title}`;
+      await upsertDocument("insight_actions", id, action);
+    }
   }
 }
 
@@ -109,12 +97,4 @@ export async function syncAllFinances(userId) {
   if (!userId) return;
   await syncBudgetAllocations(userId);
   await syncInsightActions(userId);
-}
-
-function getLocalDateBounds() {
-  const now = new Date();
-  const periodStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const periodEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
-  return { periodStart, periodEnd };
 }

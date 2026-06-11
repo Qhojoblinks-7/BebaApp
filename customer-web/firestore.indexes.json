@@ -1,0 +1,87 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "rider_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "rider_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "rider_id", "order": "ASCENDING" },
+        { "fieldPath": "route_sequence", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "revenue",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "rider_id", "order": "ASCENDING" },
+        { "fieldPath": "order_completed_at", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "rider_id", "order": "ASCENDING" },
+        { "fieldPath": "is_read", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "rider_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "budget_allocations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "rider_id", "order": "ASCENDING" },
+        { "fieldPath": "period_start", "order": "ASCENDING" },
+        { "fieldPath": "period_end", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "budget_allocations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "rider_id", "order": "ASCENDING" },
+        { "fieldPath": "allocated_percent", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "manual_entries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "rider_id", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "database": "default"
+}

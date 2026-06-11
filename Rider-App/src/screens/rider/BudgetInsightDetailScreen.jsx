@@ -19,6 +19,8 @@ import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
 import { fetchInsightsByCategory, fetchActionPlans } from "../../services/insightsService";
 import { getLiveBudgetWithExpenses, buildDefaultBudget } from "../../services/budgetService";
+import { onSnapshot, doc } from "firebase/firestore";
+import { db } from "../../services/firebaseConfig";
 
 // Static mapping layout configuration safely pulled outside render lifecycle scope
 const INSIGHT_DATA_MAP = {
@@ -63,51 +65,19 @@ export default function BudgetInsightDetailScreen({ route, navigation }) {
     let isMounted = true;
 
     async function loadCategoryData() {
-      if (!user?.id) return;
-      setLoading(true);
+      if (!user?.uid) return;
       try {
-        let breakdownData = null;
+        const liveData = await getLiveBudgetWithExpenses(user.uid);
+        const insightsData = await fetchInsightsByCategory(user.uid, categoryId);
+        const actionsData = await fetchActionPlans(user.uid);
 
-        if (serverBudgetData && serverBudgetData[categoryId]) {
-          breakdownData = { [categoryId]: serverBudgetData[categoryId] };
-        } else if (serverBudgetData && Array.isArray(serverBudgetData) && serverBudgetData.length > 0) {
-          breakdownData = serverBudgetData.reduce((acc, cat) => {
-            acc[cat.id] = cat;
-            return acc;
-          }, {});
-        } else {
-          const liveData = await getLiveBudgetWithExpenses(user.id);
-          if (liveData && Array.isArray(liveData) && liveData.length > 0) {
-            breakdownData = liveData.reduce((acc, cat) => {
-              acc[cat.id] = cat;
-              return acc;
-            }, {});
-          } else {
-            const fallback = buildDefaultBudget(0);
-            breakdownData = fallback.reduce((acc, cat) => {
-              acc[cat.id] = cat;
-              return acc;
-            }, {});
-          }
+        if (isMounted) {
+          setCategoryData(liveData);
+          setInsights(insightsData || []);
+          setActions((actionsData || []).filter((a) => a.rider_id === user.uid));
         }
-
-        if (!isMounted) return;
-
-        if (breakdownData && breakdownData[categoryId]) {
-          setCategoryData(breakdownData[categoryId]);
-        } else {
-          setCategoryData(null);
-        }
-
-        const [rawInsights, rawActions] = await Promise.all([
-          fetchInsightsByCategory(user.id, categoryId),
-          fetchActionPlans(user.id),
-        ]);
-
-        setInsights(rawInsights);
-        setActions(rawActions.filter((a) => a.category === categoryId));
       } catch (e) {
-        console.warn("[BudgetInsightDetail] Async pipeline error load crash:", e.message);
+        if (isMounted) console.warn("[BudgetInsightDetail] load failed:", e.message);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -118,7 +88,7 @@ export default function BudgetInsightDetailScreen({ route, navigation }) {
     return () => {
       isMounted = false;
     };
-  }, [user?.id, categoryId]);
+  }, [user?.uid, categoryId]);
 
   // Transform raw row models into sanitized UI arrays via structural useMemo memoizations
   const leaks = useMemo(() => insights.map((ins) => ({

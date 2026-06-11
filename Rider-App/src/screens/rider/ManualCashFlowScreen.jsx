@@ -27,9 +27,8 @@ export default function ManualCashFlowScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const loadEntries = useCallback(async (isInitial = true) => {
-    if (isInitial) setLoading(true);
     try {
-      const data = await fetchManualEntries(user.id);
+      const data = await fetchManualEntries(user.uid);
       setEntries(data || []);
     } catch (e) {
       console.warn("[ManualCashFlow] load failed:", e.message);
@@ -37,16 +36,16 @@ export default function ManualCashFlowScreen({ navigation }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user?.id]);
+  }, [user?.uid]);
 
   useEffect(() => {
-    if (user?.id) loadEntries(true);
-  }, [user?.id, loadEntries]);
+    if (user?.uid) loadEntries(true);
+  }, [user?.uid]);
 
   useFocusEffect(
     useCallback(() => {
-      if (user?.id) loadEntries(false);
-    }, [user?.id, loadEntries])
+      if (user?.uid) loadEntries(false);
+    }, [user?.uid, loadEntries])
   );
 
   const handleRefresh = () => {

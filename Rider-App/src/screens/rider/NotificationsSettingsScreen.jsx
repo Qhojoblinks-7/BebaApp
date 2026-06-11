@@ -1,167 +1,133 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   View,
   Text,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
-  Switch,
+  Platform,
   StatusBar,
   Alert,
   ActivityIndicator,
-  Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ArrowLeft, Plus, TrendingUp, TrendingDown, Trash2 } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
-import { supabase } from "../../services/supabaseClient";
-import { ArrowLeft, Bell, BellOff } from "lucide-react-native";
+import { fetchManualEntries, removeManualEntry } from "../../services/manualEntries";
+import { useFocusEffect } from "@react-navigation/native";
 
-const STORAGE_KEY = "notification_settings";
-
-const defaultSettings = {
-  pushEnabled: true,
-  soundEnabled: true,
-  vibrationEnabled: true,
-  newJobs: true,
-  jobUpdates: true,
-  earningsAlerts: true,
-  promotions: false,
-  weeklyReport: true,
-  deliveryComplete: true,
-};
-
-export default function NotificationsSettingsScreen({ navigation }) {
+export default function ManualCashFlowScreen({ navigation }) {
   const { user } = useAuth();
   const { colors, isDarkMode } = useThemeStore();
   const insets = useSafeAreaInsets();
 
-  const [settings, setSettings] = useState(defaultSettings);
+  const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Use a mutable reference block to prevent parallel pipeline execution on rapid selection mutations
-  const activeSettingsRef = useRef(settings);
-  useEffect(() => {
-    activeSettingsRef.current = settings;
-  }, [settings]);
-
-  const loadSettings = useCallback(async () => {
+  const loadEntries = useCallback(async (isInitial = true) => {
+    if (isInitial) setLoading(true);
     try {
-      const saved = await AsyncStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        setSettings(JSON.parse(saved));
-      }
-    } catch (err) {
-      console.warn("[NotificationSettings] Failed to parse local store runtime tags:", err.message);
-    }
-
-    if (!user?.id) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from("notification_settings")
-        .select("*")
-        .eq("rider_id", user.id)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (data) {
-        setSettings({
-          pushEnabled: data.push_enabled ?? defaultSettings.pushEnabled,
-          soundEnabled: data.sound_enabled ?? defaultSettings.soundEnabled,
-          vibrationEnabled: data.vibration_enabled ?? defaultSettings.vibrationEnabled,
-          newJobs: data.new_jobs ?? defaultSettings.newJobs,
-          jobUpdates: data.job_updates ?? defaultSettings.jobUpdates,
-          earningsAlerts: data.earnings_alerts ?? defaultSettings.earningsAlerts,
-          promotions: data.promotions ?? defaultSettings.promotions,
-          weeklyReport: data.weekly_report ?? defaultSettings.weeklyReport,
-          deliveryComplete: data.delivery_complete ?? defaultSettings.deliveryComplete,
-        });
-      }
-    } catch (err) {
-      console.warn("[NotificationSettings] Database configuration fallback execution handled:", err.message);
+      const data = await fetchManualEntries(user.uid);
+      setEntries(data || []);
+    } catch (e) {
+      console.warn("[ManualCashFlow] load failed:", e.message);
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
+      setRefreshing(false);
     }
-  }, [user?.id]);
+  }, [user?.uid]);
 
-  useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.uid) loadEntries(false);
+    }, [user?.uid, loadEntries])
+  );
 
-  const saveSettingsToServer = async (targetSettings) => {
-    if (!user?.id) return;
-    setSaving(true);
-    try {
-      const payload = {
-        rider_id: user.id,
-        push_enabled: targetSettings.pushEnabled,
-        sound_enabled: targetSettings.soundEnabled,
-        vibration_enabled: targetSettings.vibrationEnabled,
-        new_jobs: targetSettings.newJobs,
-        job_updates: targetSettings.jobUpdates,
-        earnings_alerts: targetSettings.earningsAlerts,
-        promotions: targetSettings.promotions,
-        weekly_report: targetSettings.weeklyReport,
-        delivery_complete: targetSettings.deliveryComplete,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error } = await supabase
-        .from("notification_settings")
-        .upsert(payload, { onConflict: "rider_id" });
-
-      if (error) throw error;
-
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(targetSettings));
-    } catch (err) {
-      console.warn("[NotificationSettings] Core infrastructure synch failure:", err.message);
-      Alert.alert("Connection Error", "Changes saved locally but failed to sync to remote profile.");
-      // Soft recover to historical persistent layer configuration states
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(targetSettings));
-    } finally {
-      setSaving(false);
-    }
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadEntries(false);
   };
 
-  const toggleSetting = (key) => {
-    const updated = {
-      ...activeSettingsRef.current,
-      [key]: !activeSettingsRef.current[key],
-    };
-    setSettings(updated);
-    saveSettingsToServer(updated);
+  const handleDelete = async (entry) => {
+    Alert.alert("Delete entry", "Remove this manual cash flow entry?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await removeManualEntry(entry.id);
+            setEntries((prev) => prev.filter((item) => item.id !== entry.id));
+          } catch (e) {
+            console.warn("[ManualCashFlow] delete failed:", e.message);
+            Alert.alert("Error", "Could not delete this transaction. Please retry.");
+          }
+        },
+      },
+    ]);
   };
 
-  if (loading) {
+  const formatCurrency = (value) => {
+    const formatted = Number(value || 0).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    return `GH₵ ${formatted}`;
+  };
+
+  const renderEntryCard = ({ item }) => {
+    const isInflow = item.type === "inflow";
+    const dateLabel = new Date(item.occurred_at).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+
     return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor="transparent" translucent />
-        <View style={[styles.headerRow, { paddingTop: Platform.OS === "ios" ? Math.max(insets.top, 16) : StatusBar.currentHeight + 14, backgroundColor: colors.background }]}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation?.goBack()} activeOpacity={0.7}>
-            <ArrowLeft size={22} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitleText, { color: colors.text }]}>Notifications</Text>
-          <View style={styles.headerRightSpacer} />
+      <View style={[styles.entryCard, { backgroundColor: colors.backgroundCard || colors.backgroundSecondary, borderColor: colors.borderLight || "rgba(255,255,255,0.05)" }]}>
+        <View style={styles.entryLeft}>
+          <View style={[styles.iconPill, { backgroundColor: isInflow ? (colors.successAlpha || "#10b98120") : (colors.errorAlpha || "#ef444420") }]}>
+            {isInflow ? (
+              <TrendingUp size={16} color={colors.success || "#10b981"} />
+            ) : (
+              <TrendingDown size={16} color={colors.error || "#ef4444"} />
+            )}
+          </View>
+          <View style={styles.entryTextBlock}>
+            <Text style={[styles.entryTitle, { color: colors.text }]} numberOfLines={1}>
+              {item.note || (isInflow ? "Inflow" : "Outflow")}
+            </Text>
+            <Text style={[styles.entryMeta, { color: colors.textMuted || "#64748b" }]}>{dateLabel}</Text>
+          </View>
         </View>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="small" color={colors.primary || "#115e59"} />
-          <Text style={[styles.loadingText, { color: colors.textMuted || "#64748b" }]}>Loading settings...</Text>
+
+        <View style={styles.entryRight}>
+          <Text style={[styles.amountText, { color: isInflow ? (colors.success || "#10b981") : (colors.error || "#ef4444") }]}>
+            {isInflow ? "+" : "-"} {formatCurrency(item.amount)}
+          </Text>
+          <TouchableOpacity 
+            style={[styles.deleteAction, { backgroundColor: colors.background, borderColor: colors.borderLight || "rgba(255,255,255,0.08)" }]} 
+            activeOpacity={0.7} 
+            onPress={() => handleDelete(item)}
+          >
+            <Trash2 size={13} color={colors.textMuted || "#64748b"} />
+          </TouchableOpacity>
         </View>
       </View>
     );
-  }
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor="transparent" translucent />
+      <StatusBar 
+        barStyle={isDarkMode ? "light-content" : "dark-content"} 
+        backgroundColor="transparent" 
+        translucent 
+      />
       
+      {/* Dynamic Native-Safe Structural Header */}
       <View style={[
         styles.headerRow, 
         { 
@@ -169,144 +135,50 @@ export default function NotificationsSettingsScreen({ navigation }) {
           backgroundColor: colors.background 
         }
       ]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation?.goBack()} activeOpacity={0.7}>
-          <ArrowLeft size={22} color={colors.text} />
+        <TouchableOpacity 
+          style={[styles.backButton, { backgroundColor: colors.backgroundCard || colors.backgroundSecondary, borderColor: colors.borderLight || "rgba(255,255,255,0.05)" }]} 
+          onPress={() => navigation?.goBack()} 
+          activeOpacity={0.7}
+        >
+          <ArrowLeft size={20} color={colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitleText, { color: colors.text }]}>Notifications</Text>
-        <View style={styles.headerRightSpacer} />
+        <Text style={[styles.headerTitleText, { color: colors.text }]}>Manual Cash Flow</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView 
-        style={styles.scrollContent} 
+      <FlatList
+        data={entries}
+        keyExtractor={(item) => item.id.toString()}
+        renderItem={renderEntryCard}
+        onRefresh={handleRefresh}
+        refreshing={refreshing}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: Platform.OS === "ios" ? insets.bottom + 30 : 50 }}
-      >
-        <View style={[styles.infoCard, { backgroundColor: colors.backgroundCard || colors.backgroundSecondary, borderColor: colors.borderLight || "rgba(255,255,255,0.04)" }]}>
-          <Bell size={18} color={colors.primary || "#115e59"} />
-          <Text style={[styles.infoText, { color: colors.textSecondary || "#94a3b8" }]}>
-            Choose what notifications you receive. Push notifications are sent directly to your active service devices.
-          </Text>
-        </View>
-
-        {/* Section: General Subsystems */}
-        <View style={[styles.sectionCard, { backgroundColor: colors.backgroundCard || colors.backgroundSecondary, borderColor: colors.borderLight || "rgba(255,255,255,0.04)" }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>General</Text>
-
-          {/* Toggle Block: Push Notifications */}
-          <View style={styles.settingRow}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.iconBadge, { backgroundColor: settings.pushEnabled ? (colors.primaryAlpha || "rgba(17,94,89,0.15)") : "rgba(100,116,139,0.15)" }]}>
-                {settings.pushEnabled ? (
-                  <Bell size={15} color={colors.primary || "#115e59"} />
-                ) : (
-                  <BellOff size={15} color={colors.textMuted || "#64748b"} />
-                )}
-              </View>
-              <View style={styles.settingTexts}>
-                <Text style={[styles.settingLabel, { color: colors.text }]}>Push Notifications</Text>
-                <Text style={[styles.settingDesc, { color: colors.textMuted || "#64748b" }]}>Receive alerts on this device</Text>
-              </View>
-            </View>
-            <Switch
-              value={settings.pushEnabled}
-              onValueChange={() => toggleSetting("pushEnabled")}
-              trackColor={{ false: colors.borderDark || "#334155", true: (colors.primaryAlpha || "#115e5980") }}
-              thumbColor={settings.pushEnabled ? (colors.primary || "#115e59") : (colors.textMuted || "#64748b")}
-            />
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Platform.OS === "ios" ? insets.bottom + 40 : 60 }]}
+        ListHeaderComponent={
+          <View style={styles.sectionRow}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Entries</Text>
+            <TouchableOpacity
+              style={[styles.addButton, { backgroundColor: colors.primary || "#115e59" }]}
+              activeOpacity={0.8}
+              onPress={() =>
+                navigation.navigate("QuickAddEntry")
+              }
+            >
+              <Plus size={16} color={colors.textOnPrimary || "#ffffff"} />
+              <Text style={[styles.addButtonText, { color: colors.textOnPrimary || "#ffffff" }]}>Add Entry</Text>
+            </TouchableOpacity>
           </View>
-
-          <View style={[styles.divider, { backgroundColor: colors.borderLight || "rgba(255,255,255,0.08)" }]} />
-
-          {/* Toggle Block: Sound Subsystem */}
-          <View style={styles.settingRow}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.iconBadge, { backgroundColor: "rgba(250,204,21,0.12)" }]}>
-                <Bell size={15} color="#facc15" />
-              </View>
-              <View style={styles.settingTexts}>
-                <Text style={[styles.settingLabel, { color: colors.text }]}>Sound</Text>
-                <Text style={[styles.settingDesc, { color: colors.textMuted || "#64748b" }]}>Play standard audio alerts</Text>
-              </View>
-            </View>
-            <Switch
-              value={settings.soundEnabled}
-              onValueChange={() => toggleSetting("soundEnabled")}
-              trackColor={{ false: colors.borderDark || "#334155", true: (colors.primaryAlpha || "#115e5980") }}
-              thumbColor={settings.soundEnabled ? (colors.primary || "#115e59") : (colors.textMuted || "#64748b")}
-            />
-          </View>
-
-          <View style={[styles.divider, { backgroundColor: colors.borderLight || "rgba(255,255,255,0.08)" }]} />
-
-          {/* Toggle Block: Vibration */}
-          <View style={styles.settingRow}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.iconBadge, { backgroundColor: "rgba(168,85,247,0.12)" }]}>
-                <Bell size={15} color="#a855f7" />
-              </View>
-              <View style={styles.settingTexts}>
-                <Text style={[styles.settingLabel, { color: colors.text }, !settings.vibrationEnabled && { color: colors.textMuted || "#475569" }]}>
-                  Vibration
-                </Text>
-                <Text style={[styles.settingDesc, { color: colors.textMuted || "#64748b" }]}>Haptic vibrations for requests</Text>
-              </View>
-            </View>
-            <Switch
-              value={settings.vibrationEnabled}
-              onValueChange={() => toggleSetting("vibrationEnabled")}
-              trackColor={{ false: colors.borderDark || "#334155", true: (colors.primaryAlpha || "#115e5980") }}
-              thumbColor={settings.vibrationEnabled ? (colors.primary || "#115e59") : (colors.textMuted || "#64748b")}
-            />
-          </View>
-        </View>
-
-        {/* Section: Operational Pipeline Categories */}
-        <View style={[styles.sectionCard, { backgroundColor: colors.backgroundCard || colors.backgroundSecondary, borderColor: colors.borderLight || "rgba(255,255,255,0.04)" }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Categories</Text>
-
-          {[
-            { key: "newJobs", label: "New Job Opportunities", desc: "New delivery requests in your area" },
-            { key: "jobUpdates", label: "Job Updates", desc: "Status changes on assigned jobs" },
-            { key: "earningsAlerts", label: "Earnings Alerts", desc: "Payment confirmations and summaries" },
-            { key: "promotions", label: "Promotions & Offers", desc: "Special incentives and bonus modules" },
-            { key: "weeklyReport", label: "Weekly Summary", desc: "Your weekly performance analytics" },
-            { key: "deliveryComplete", label: "Delivery Complete", desc: "Confirmation when a waybill cycle completes" },
-          ].map((item, idx) => {
-            const isRowEnabled = settings[item.key];
-            return (
-              <React.Fragment key={item.key}>
-                {idx > 0 && <View style={[styles.divider, { backgroundColor: colors.borderLight || "rgba(255,255,255,0.08)" }]} />}
-                <View style={styles.settingRow}>
-                  <View style={styles.settingLeft}>
-                    <View style={[styles.iconBadge, { backgroundColor: isRowEnabled ? (colors.primaryAlpha || "rgba(17,94,89,0.12)") : "rgba(100,116,139,0.12)" }]}>
-                      <Bell size={15} color={isRowEnabled ? (colors.primary || "#115e59") : (colors.textMuted || "#64748b")} />
-                    </View>
-                    <View style={styles.settingTexts}>
-                      <Text style={[styles.settingLabel, { color: colors.text }, !isRowEnabled && { color: colors.textMuted || "#475569" }]}>
-                        {item.label}
-                      </Text>
-                      <Text style={[styles.settingDesc, { color: colors.textMuted || "#64748b" }]}>{item.desc}</Text>
-                    </View>
-                  </View>
-                  <Switch
-                    value={isRowEnabled}
-                    onValueChange={() => toggleSetting(item.key)}
-                    trackColor={{ false: colors.borderDark || "#334155", true: (colors.primaryAlpha || "#115e5980") }}
-                    thumbColor={isRowEnabled ? (colors.primary || "#115e59") : (colors.textMuted || "#64748b")}
-                  />
-                </View>
-              </React.Fragment>
-            );
-          })}
-        </View>
-
-        {saving && (
-          <View style={styles.savingRow}>
-            <ActivityIndicator size="small" color={colors.primary || "#115e59"} />
-            <Text style={[styles.savingText, { color: colors.textMuted || "#94a3b8" }]}>Saving changes...</Text>
-          </View>
-        )}
-      </ScrollView>
+        }
+        ListEmptyComponent={
+          loading ? (
+            <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 40 }} />
+          ) : (
+            <Text style={[styles.statusText, { color: colors.textMuted || "#64748b" }]}>
+              No manual entries yet.
+            </Text>
+          )
+        }
+      />
     </View>
   );
 }
@@ -320,61 +192,67 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingBottom: 14,
   },
-  backButton: { width: 40, height: 40, justifyContent: "center", alignItems: "flex-start" },
-  headerTitleText: { fontSize: 18, fontWeight: "800", letterSpacing: -0.3 },
-  headerRightSpacer: { width: 40 },
-  scrollContent: { flex: 1, paddingHorizontal: 18 },
-  loadingWrap: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
-  loadingText: { fontSize: 13, fontWeight: "600" },
-  infoCard: {
-    flexDirection: "row",
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: "center",
     alignItems: "center",
-    gap: 12,
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 8,
-    marginBottom: 20,
     borderWidth: 1,
   },
-  infoText: { flex: 1, fontSize: 13, fontWeight: "500", lineHeight: 18 },
-  sectionCard: {
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    gap: 4,
+  headerTitleText: {
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: -0.3,
   },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: -0.2,
-    marginBottom: 8,
-  },
-  settingRow: {
+  scrollContent: { paddingHorizontal: 18 },
+  sectionRow: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 10,
-    gap: 12,
-  },
-  settingLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
-  iconBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: "center",
     alignItems: "center",
+    marginTop: 14,
+    marginBottom: 16,
   },
-  settingTexts: { flex: 1, gap: 2 },
-  settingLabel: { fontSize: 14, fontWeight: "600" },
-  settingDesc: { fontSize: 12, fontWeight: "500" },
-  divider: { height: 1, marginLeft: 44 },
-  savingRow: {
+  sectionTitle: { fontSize: 16, fontWeight: "700" },
+  addButton: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    paddingVertical: 12,
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
   },
-  savingText: { fontSize: 13, fontWeight: "600" },
+  addButtonText: { fontWeight: "800", fontSize: 13 },
+  statusText: { fontSize: 14, fontWeight: "500", textAlign: "center", marginTop: 40 },
+  entryCard: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderRadius: 20,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    gap: 12,
+  },
+  entryLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
+  iconPill: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  entryTextBlock: { flex: 1 },
+  entryTitle: { fontSize: 14, fontWeight: "700" },
+  entryMeta: { fontSize: 12, fontWeight: "600", marginTop: 2 },
+  entryRight: { alignItems: "flex-end", gap: 8 },
+  amountText: { fontSize: 15, fontWeight: "800", letterSpacing: -0.3 },
+  deleteAction: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+  },
 });

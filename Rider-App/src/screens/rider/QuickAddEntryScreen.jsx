@@ -58,7 +58,7 @@ export default function QuickAddEntryScreen({ route, navigation }) {
     try {
       setSaving(true);
       await insertManualEntry({
-        userId: user.id,
+        userId: user.uid,
         type,
         category,
         amount: parsedAmount,

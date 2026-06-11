@@ -1,16 +1,12 @@
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
-import { supabase } from "./supabaseClient";
+import { auth } from "./firebaseConfig";
+import { doc, setDoc, serverTimestamp, collection } from "firebase/firestore";
+import { db } from "./firebaseConfig";
 
 const BACKGROUND_LOCATION_TASK = "BACKGROUND_FLEET_TELEMETRY";
-
-// In-memory runtime fallback anchor to safeguard tracking when storage is locked
 let memoizedRiderId = null;
 
-/**
- * Explicit global setter to safely pass credentials from the 
- * active UI context layer into the headless worker container.
- */
 export const setTelemetrySessionCache = (userId) => {
   memoizedRiderId = userId;
   console.log(`[Telemetry Cache] Identity anchor synchronized: ${userId}`);
@@ -21,23 +17,20 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
     console.error(`[Location Task Error]:`, error.message);
     return;
   }
-  
   if (!data) return;
 
   try {
     const { locations } = data;
     if (!locations || locations.length === 0) return;
 
-    // FIX 3: Capture the LATEST position marker rather than the oldest cached record
     const latestLocation = locations[locations.length - 1];
     const { latitude, longitude, accuracy, speed } = latestLocation.coords;
 
-    // FIX 2: Resolve token lockouts by verifying the in-memory cache fallback first
     let activeUserId = memoizedRiderId;
-    
+
     if (!activeUserId) {
-      const { data: { session } } = await supabase.auth.getSession();
-      activeUserId = session?.user?.id;
+      const firebaseUser = auth.currentUser;
+      activeUserId = firebaseUser?.uid;
       if (activeUserId) memoizedRiderId = activeUserId;
     }
 
@@ -48,29 +41,30 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
 
     console.log(`[Telemetry Sync] Pushing live ping -> Lat: ${latitude.toFixed(5)}, Lon: ${longitude.toFixed(5)}`);
 
-    // 1. Live Telemetry: Update the active coordinate on the live status board
-    const statusUpdate = supabase.from("rider_status").upsert({
+    const statusRef = doc(db, "rider_status", activeUserId);
+    const locationRef = doc(collection(db, "rider_locations"));
+
+    const statusUpdate = setDoc(statusRef, {
       id: activeUserId,
-      rider_status: 'online',
+      rider_status: "online",
       current_latitude: latitude,
       current_longitude: longitude,
-      updated_at: new Date().toISOString(),
+      updated_at: serverTimestamp(),
     });
 
-    // 2. Historical Trail Tracking: Log spatial paths, skipping minor noise updates
     let trailLog = Promise.resolve();
-    const isMovingSignificantly = speed === null || speed > 0.5; // Only log breadcrumbs if moving > 1.8 km/h
+    const isMovingSignificantly = speed === null || speed > 0.5;
 
     if (isMovingSignificantly) {
-      trailLog = supabase.from("rider_locations").insert({
+      trailLog = setDoc(locationRef, {
         rider_id: activeUserId,
         latitude,
         longitude,
         accuracy,
+        updated_at: serverTimestamp(),
       });
     }
 
-    // Run both network queries concurrently to keep the worker thread fast
     await Promise.all([statusUpdate, trailLog]);
 
   } catch (err) {
@@ -96,7 +90,7 @@ export const startTrackingEngine = async (userId) => {
   }
 
   await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-    accuracy: Location.Accuracy.Balanced, 
+    accuracy: Location.Accuracy.Balanced,
     timeInterval: 15000,
     distanceInterval: 25,
     deferredUpdatesInterval: 30000,

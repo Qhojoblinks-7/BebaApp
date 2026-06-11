@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   Platform,
   StatusBar,
   Image,
-  Dimensions,
 } from "react-native";
 import {
   ChevronLeft,
@@ -17,30 +16,13 @@ import {
   BookOpen,
 } from "lucide-react-native";
 import { useThemeStore } from "../../store/themeStore";
+import { useAuth } from "../../context/AuthContext";
+// FIX: Added the missing "doc" reference model import natively
+import { doc, query, where, collection, onSnapshot } from "firebase/firestore";
+import { db } from "../../services/firebaseConfig";
 
 export function CalendarDay({ item, isSelected, onPress, colors }) {
-  // Enhanced dynamic card container theme mapping
-  const cardStyle = {
-    flex: 1,
-    height: isSelected ? 82 : 68,
-    borderRadius: isSelected ? 20 : 14,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: isSelected ? colors.primary : colors.backgroundCard,
-    borderWidth: 1,
-    borderColor: isSelected ? colors.primary : colors.borderLight,
-    ...Platform.select({
-      ios: isSelected ? {
-        shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      } : null,
-      android: isSelected ? {
-        elevation: 6,
-      } : null,
-    }),
-  };
+  const cardStyle = getCalendarDayStyles(isSelected, colors);
 
   return (
     <TouchableOpacity
@@ -144,7 +126,7 @@ export function Avatar({ uri, colors }) {
   if (uri) {
     return <Image source={{ uri }} style={avatarStyle} />;
   }
-  return <View style={[avatarStyle, { backgroundColor: colors.border }]} />;
+  return <View style={[avatarStyle, { backgroundColor: colors.border || '#ccc' }]} />;
 }
 
 export function ProfileBadge({ onPress, profileName, avatarUri, colors }) {
@@ -186,9 +168,9 @@ export function ActionButtons({ riderStatus, unreadCount, onToggleOnline, onNavi
   const statusStyles = {
     online: {
       bg: isDarkMode ? "rgba(16, 185, 129, 0.15)" : "#e6f4ea",
-      border: colors.success,
-      dot: colors.success,
-      text: colors.success,
+      border: colors.success || "#10b981",
+      dot: colors.success || "#10b981",
+      text: colors.success || "#10b981",
       label: "Go Offline",
       Icon: Wifi,
     },
@@ -203,7 +185,7 @@ export function ActionButtons({ riderStatus, unreadCount, onToggleOnline, onNavi
     offline: {
       bg: colors.backgroundCard,
       border: colors.borderLight,
-      dot: colors.textDisabled,
+      dot: colors.textDisabled || "#9ca3af",
       text: colors.textSecondary,
       label: "Go Online",
       Icon: WifiOff,
@@ -229,26 +211,12 @@ export function ActionButtons({ riderStatus, unreadCount, onToggleOnline, onNavi
         onPress={onToggleOnline}
         activeOpacity={0.8}
       >
-        <View
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: 3,
-            backgroundColor: style.dot,
-          }}
-        />
-        <Text
-          style={{
-            fontSize: 13,
-            fontWeight: "700",
-            color: style.text,
-          }}
-        >
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: style.dot }} />
+        <Text style={{ fontSize: 13, fontWeight: "700", color: style.text }}>
           {style.label}
         </Text>
       </TouchableOpacity>
 
-      {/* Styled Icon Notification Trigger Container */}
       <TouchableOpacity
         style={{
           width: 40,
@@ -274,7 +242,7 @@ export function ActionButtons({ riderStatus, unreadCount, onToggleOnline, onNavi
               width: 6,
               height: 6,
               borderRadius: 3,
-              backgroundColor: colors.danger,
+              backgroundColor: colors.danger || "#ef4444",
             }}
           />
         )}
@@ -284,8 +252,8 @@ export function ActionButtons({ riderStatus, unreadCount, onToggleOnline, onNavi
 }
 
 export default function DashboardHeader({
-  riderStatus = "offline",
-  unreadCount = 0,
+  riderStatus: propRiderStatus,
+  unreadCount: propUnreadCount,
   onToggleOnline,
   onNavigateNotifications,
   onNavigateProfile,
@@ -295,38 +263,70 @@ export default function DashboardHeader({
   calendarDays = [],
   selectedDayIndex,
   onSelectDay,
-  profileName,
-  avatarUri,
+  profileName: propProfileName,
+  avatarUri: propAvatarUri,
 }) {
+  const { user } = useAuth();
   const { colors, isDarkMode } = useThemeStore();
 
+  const [riderStatus, setRiderStatus] = useState(propRiderStatus || "offline");
+  const [unreadCount, setUnreadCount] = useState(propUnreadCount || 0);
+  const [profileName, setProfileName] = useState(propProfileName || "Rider");
+  const [avatarUri, setAvatarUri] = useState(propAvatarUri || "");
+
+  // FIX: Map identifier to true internal custom Firebase Auth string uid references
+  const userId = user?.uid;
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const statusUnsub = onSnapshot(
+      doc(db, "rider_status", userId),
+      (snap) => {
+        if (snap.exists()) {
+          setRiderStatus(snap.data().rider_status || "offline");
+        }
+      },
+      (err) => console.warn("[DashboardHeader] rider_status listen failed:", err.message)
+    );
+
+    const profileUnsub = onSnapshot(
+      doc(db, "users", userId),
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setProfileName(data.full_name || "Rider");
+          setAvatarUri(data.avatar_url || "");
+        }
+      },
+      (err) => console.warn("[DashboardHeader] users listen failed:", err.message)
+    );
+
+    const notifQ = query(
+      collection(db, "notifications"),
+      where("rider_id", "==", userId),
+      where("is_read", "==", false)
+    );
+
+    const notifUnsub = onSnapshot(
+      notifQ,
+      (snap) => setUnreadCount(snap.size),
+      (err) => console.warn("[DashboardHeader] notifications listen failed:", err.message)
+    );
+
+    // FIX: Functional evaluations prevent errors during unmounting routines
+    return () => {
+      if (typeof statusUnsub === "function") statusUnsub();
+      if (typeof profileUnsub === "function") profileUnsub();
+      if (typeof notifUnsub === "function") notifUnsub();
+    };
+  }, [userId]);
+
   const monthLabel = weekStart
-    ? weekStart.toLocaleDateString("en-US", {
-        month: "long",
-        year: "numeric",
-      })
+    ? weekStart.toLocaleDateString("en-US", { month: "long", year: "numeric" })
     : "";
 
-  const containerStyle = {
-    backgroundColor: colors.backgroundSecondary,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-    paddingBottom: 24,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-    ...Platform.select({
-      ios: {
-        shadowColor: colors.shadow,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: isDarkMode ? 0.2 : 0.04,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  };
+  const containerStyle = getContainerStyles(colors, isDarkMode);
 
   return (
     <View style={containerStyle}>
@@ -336,7 +336,6 @@ export default function DashboardHeader({
         translucent
       />
       <View style={{ paddingTop: Platform.OS === "android" ? StatusBar.currentHeight + 12 : 16 }}>
-        {/* Profile Identity and Utility Layout */}
         <View
           style={{
             flexDirection: "row",
@@ -357,10 +356,8 @@ export default function DashboardHeader({
           />
         </View>
 
-        {/* Calendar Management Controls */}
         <MonthSelector monthLabel={monthLabel} onPrev={onMonthPrev} onNext={onMonthNext} colors={colors} />
         
-        {/* Horizon Calendar Carousel Strip */}
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", width: "100%", gap: 8 }}>
           {calendarDays.map((dayItem, index) => (
             <CalendarDay
@@ -378,3 +375,49 @@ export default function DashboardHeader({
     </View>
   );
 }
+
+/**
+ * Isolated Structural Performance Stylesheets (Declared outside render cycles)
+ */
+const getCalendarDayStyles = (isSelected, colors) => ({
+  flex: 1,
+  height: isSelected ? 82 : 68,
+  borderRadius: isSelected ? 20 : 14,
+  justifyContent: "center",
+  alignItems: "center",
+  backgroundColor: isSelected ? colors.primary : colors.backgroundCard,
+  borderWidth: 1,
+  borderColor: isSelected ? colors.primary : colors.borderLight,
+  ...Platform.select({
+    ios: isSelected ? {
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+    } : null,
+    android: isSelected ? {
+      elevation: 6,
+    } : null,
+  }),
+});
+
+const getContainerStyles = (colors, isDarkMode) => ({
+  backgroundColor: colors.backgroundSecondary,
+  borderBottomLeftRadius: 32,
+  borderBottomRightRadius: 32,
+  paddingBottom: 24,
+  paddingHorizontal: 20,
+  borderBottomWidth: 1,
+  borderColor: colors.border,
+  ...Platform.select({
+    ios: {
+      shadowColor: colors.shadow || "#000",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: isDarkMode ? 0.2 : 0.04,
+      shadowRadius: 12,
+    },
+    android: {
+      elevation: 4,
+    },
+  }),
+});

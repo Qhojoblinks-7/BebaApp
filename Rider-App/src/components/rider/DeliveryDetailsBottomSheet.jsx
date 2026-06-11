@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -22,6 +22,9 @@ import {
   Navigation,
 } from "lucide-react-native";
 import { useThemeStore } from "../../store/themeStore";
+import { useAuth } from "../../context/AuthContext";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "../../services/firebaseConfig";
 import RiderOrderCard from "./RiderOrderCard";
 
 const STAGES = [

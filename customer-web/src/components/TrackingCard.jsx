@@ -1,11 +1,11 @@
 import React from 'react';
-import { MapPin, Box, Bike, Users } from 'lucide-react';
+import { MapPin, Box, Bike, Users, Wifi, BookOpen, UserX } from 'lucide-react';
 
 const STATUS_CONFIG = {
-  online:    { label: 'Rider Available',     color: 'bg-emerald-500', textColor: 'text-emerald-700' },
-  in_class:  { label: 'Rider In Class',       color: 'bg-amber-500',  textColor: 'text-amber-700' },
-  offline:   { label: 'Rider Offline',        color: 'bg-slate-400',  textColor: 'text-slate-600' },
-  on_route:  { label: 'Rider On Route',       color: 'bg-blue-500',   textColor: 'text-blue-700' },
+  online:    { label: 'Rider Available',     color: 'bg-emerald-500', textColor: 'text-emerald-700', icon: Wifi },
+  in_class:  { label: 'Rider In Class',       color: 'bg-amber-500',  textColor: 'text-amber-700',  icon: BookOpen },
+  offline:   { label: 'Rider Offline',        color: 'bg-slate-400',  textColor: 'text-slate-600',  icon: UserX },
+  on_route:  { label: 'Rider On Route',       color: 'bg-blue-500',   textColor: 'text-blue-700',   icon: Bike },
 };
 
 export default function TrackingCard({ waybill, location, status, riderStatus, riderAssigned }) {
@@ -28,6 +28,7 @@ export default function TrackingCard({ waybill, location, status, riderStatus, r
         {/* Rider Status */}
         {conf && (
           <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full ${conf.color} bg-opacity-20`}>
+            {conf.icon && <conf.icon className={`w-3.5 h-3.5 ${conf.textColor}`} />}
             <span className={`text-xs font-bold uppercase tracking-wide ${conf.textColor}`}>
               {conf.label}
             </span>

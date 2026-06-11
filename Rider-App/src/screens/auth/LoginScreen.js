@@ -7,7 +7,14 @@ import {
   View,
   ActivityIndicator,
 } from "react-native";
-import { supabase } from "../../services/supabaseClient";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
+  sendEmailVerification,
+} from "firebase/auth";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "../../services/firebaseConfig";
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState("");
@@ -18,7 +25,6 @@ export default function LoginScreen() {
   const [errorBanner, setErrorBanner] = useState("");
   const [isRegister, setIsRegister] = useState(false);
 
-  // Normalizes numbers to E.164 standard (e.g., +233592558160)
   const formatPhoneNumber = (input) => {
     const clean = input.trim().replace(/\s+/g, "");
     if (!clean) return "";
@@ -39,107 +45,34 @@ export default function LoginScreen() {
 
     try {
       if (isRegister) {
-        console.log("[Auth] Registering rider via email:", normalizedEmail);
-        
-        const { data: authData, error: signUpError } = await supabase.auth.signUp({
-          email: normalizedEmail,
-          password: password,
-        });
+        const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+        await updateProfile(cred.user, { displayName: fullName.trim() });
+        await sendEmailVerification(cred.user);
 
-        if (signUpError) {
-          if (signUpError.message?.includes("already registered") || signUpError.message?.includes("already exists")) {
-            throw new Error("Email already registered. Try signing in.");
-          }
-          throw signUpError;
-        }
-
-        const registeredUser = authData?.user;
-
-        if (!registeredUser) {
-          throw new Error("Server confirmation required. Please ensure Auto-Confirm is enabled in Supabase.");
-        }
-
-        console.log("[Auth] Account created. Establishing session...");
-
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: normalizedEmail,
-          password: password,
-        });
-
-        if (signInError) {
-          console.error("[Auth] Session bootstrap failure:", signInError);
-          throw new Error("Account created but login failed. Please sign in manually.");
-        }
-
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          console.error("[Auth] Session not established after sign-in");
-          throw new Error("Session setup failed. Please try again.");
-        }
-
-        console.log("[Auth] Session established. Initializing profile records...");
-
-        const { error: profileError } = await supabase.from("users").upsert({
-          id: registeredUser.id,
+        await setDoc(doc(db, "users", cred.user.uid), {
           phone: normalizedPhone,
           full_name: fullName.trim(),
           email: normalizedEmail,
           user_type: "rider",
+          avatar_url: null,
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
         });
 
-        if (profileError) {
-          console.error("[Auth] Profile upsert failure:", profileError);
-          throw new Error("Profile provisioning failed. Please contact tech support.");
-        }
-
-        const { error: statusError } = await supabase.from("rider_status").upsert({
-          id: registeredUser.id,
+        await setDoc(doc(db, "rider_status", cred.user.uid), {
           rider_status: "offline",
+          updated_at: serverTimestamp(),
         });
 
-        if (statusError) {
-          console.error("[Auth] Rider status upsert failure:", statusError);
-        }
-
-        console.log("[Auth] Rider onboarding registration complete.");
-
+        await signInWithEmailAndPassword(auth, normalizedEmail, password);
       } else {
-        console.log("[Auth] Logging in rider via email:", normalizedEmail);
-
-        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-          email: normalizedEmail,
-          password: password,
-        });
-
-        if (loginError) {
-          if (loginError.message?.includes("Invalid login credentials")) {
-            throw new Error("Incorrect phone number or password.");
-          }
-          throw loginError;
-        }
-
-        const { data: { session: loginSession } } = await supabase.auth.getSession();
-        if (!loginSession) {
-          console.error("[Auth] Session not established after login");
-          throw new Error("Session setup failed. Please try again.");
-        }
-
-        const authenticatedUser = loginData?.user;
-        console.log("[Auth] Account validated. Verifying rider privileges...");
-
-        const { data: userData, error: profileError } = await supabase
-          .from("users")
-          .select("user_type")
-          .eq("id", authenticatedUser.id)
-          .maybeSingle();
-
-        if (profileError || !userData || userData.user_type !== "rider") {
-          console.warn("[Auth] Access denied: User account is not verified as a rider.");
-          await supabase.auth.signOut();
+        const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+        const snap = await getDoc(doc(db, "users", cred.user.uid));
+        const userData = snap.exists() ? snap.data() : {};
+        if (userData.user_type !== "rider") {
+          await signOut(auth);
           throw new Error("This account is not registered as a rider.");
         }
-
-        console.log("[Auth] Rider entry clearance granted.");
       }
     } catch (err) {
       console.log("[Auth Exception Handler]:", err.message);
@@ -226,9 +159,7 @@ export default function LoginScreen() {
         }}
       >
         <Text style={styles.toggleText}>
-          {isRegister
-            ? "Already registered? Sign In"
-            : "New rider? Register here"}
+          {isRegister ? "Already registered? Sign In" : "New rider? Register here"}
         </Text>
       </TouchableOpacity>
     </View>
@@ -274,9 +205,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 8,
   },
-  btnDisabled: {
-    opacity: 0.6,
-  },
+  btnDisabled: { opacity: 0.6 },
   btnText: { color: "#020617", fontSize: 14, fontWeight: "800" },
   errorText: {
     color: "#ef4444",

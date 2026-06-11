@@ -11,7 +11,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowLeft, ClipboardList, Clock, MapPin, ChevronRight, TrendingUp } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
-import { supabase } from "../../services/supabaseClient";
+import { getDocs, query, where, collection, doc, getDoc } from "firebase/firestore";
+import { db } from "../../services/firebaseConfig";
 import { useThemeStore } from "../../store/themeStore";
 
 export default function DeliveryHistoryScreen({ navigation }) {
@@ -24,6 +25,8 @@ export default function DeliveryHistoryScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const loadDeliveries = async (isRefreshing = false) => {
+    if (!user?.uid) return;
+
     if (isRefreshing) {
       setRefreshing(true);
     } else {
@@ -31,27 +34,31 @@ export default function DeliveryHistoryScreen({ navigation }) {
     }
 
     try {
-      const { data, error } = await supabase
-        .from("revenue")
-        .select(`
-          id, amount, order_completed_at, order_id,
-          orders!inner(
-            order_id, pickup_address, delivery_address,
-            customer_name, customer_phone,
-            sender_name, sender_phone,
-            pickup_zone, delivery_zone,
-            item_description, delivery_instructions,
-            delivery_fee, base_price, distance_fee, surge_fee,
-            status, received_by, received_at,
-            delivery_pin, signature,
-            created_at, updated_at
-          )
-        `)
-        .eq("rider_id", user?.id)
-        .order("order_completed_at", { ascending: false });
+      const q = query(
+        collection(db, "revenue"),
+        where("rider_id", "==", user?.uid)
+      );
+      const snap = await getDocs(q);
+      const revenueDocs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-      if (error) throw error;
-      setDeliveries(data || []);
+      const deliveries = [];
+      for (const rev of revenueDocs) {
+        const orderSnap = await getDoc(doc(db, "orders", rev.order_id));
+        if (orderSnap.exists()) {
+          deliveries.push({
+            ...rev,
+            orders: [{ id: orderSnap.id, ...orderSnap.data() }],
+          });
+        }
+      }
+
+      deliveries.sort((a, b) => {
+        const dateA = new Date(a.order_completed_at || 0);
+        const dateB = new Date(b.order_completed_at || 0);
+        return dateB - dateA;
+      });
+
+      setDeliveries(deliveries);
     } catch (e) {
       console.warn("[DeliveryHistory] Execution run halted:", e.message);
     } finally {
@@ -61,8 +68,8 @@ export default function DeliveryHistoryScreen({ navigation }) {
   };
 
   useEffect(() => {
-    if (user?.id) loadDeliveries();
-  }, [user?.id]);
+    if (user?.uid) loadDeliveries();
+  }, [user?.uid]);
 
   const formatDate = (iso) => {
     if (!iso) return "—";

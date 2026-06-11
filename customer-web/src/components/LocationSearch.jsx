@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Input } from '@/components/ui/input';
 
 export default function LocationSearch({ value, onChange, placeholder }) {
@@ -7,37 +8,29 @@ export default function LocationSearch({ value, onChange, placeholder }) {
   const [showResults, setShowResults] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [activeIndex, setActiveIndex] = useState(-1); // For keyboard navigation
+  const [activeIndex, setActiveIndex] = useState(-1);
   
-  // Tracks if the query change came from explicit user typing
   const [shouldSearch, setShouldSearch] = useState(false);
   const isSelectingRef = useRef(false);
   
   const timeoutRef = useRef();
   const wrapperRef = useRef();
+  const inputRef = useRef(null);
 
-  const STADIA_API_KEY = import.meta.env.VITE_STADIA_API_KEY || import.meta.env.REACT_APP_STADIA_API_KEY;
-
-  // 1. Safe External State Synchronization
   useEffect(() => {
     if (isSelectingRef.current) {
       if (value === query) {
-        console.log('[LocationSearch] shield lowered: parent caught up')
         isSelectingRef.current = false;
-      } else {
-        console.log('[LocationSearch] shield held: parent not caught up yet')
       }
       return; 
     }
 
     if (value !== undefined && value !== query) {
-      console.log('[LocationSearch] syncing parent value:', value)
       setQuery(value || '');
       setShouldSearch(false); 
     }
   }, [value, query]);
 
-  // 2. Debounced API Autocomplete Fetching with AbortController
   useEffect(() => {
     if (!shouldSearch || !query || query.length < 3) {
       setResults([]);
@@ -47,43 +40,46 @@ export default function LocationSearch({ value, onChange, placeholder }) {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     const controller = new AbortController();
     
-  timeoutRef.current = setTimeout(async () => {
-    console.log('[LocationSearch] fetching autocomplete for:', query)
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(
-        `https://api.stadiamaps.com/geocoding/v2/autocomplete?text=${encodeURIComponent(query)}&country=GH&api_key=${STADIA_API_KEY}`,
-        { signal: controller.signal }
-      );
-      if (!response.ok) throw new Error('Failed to fetch locations');
-      const data = await response.json();
-      
-      console.log('[LocationSearch] autocomplete results:', data.features?.length || 0, 'items')
-      setResults(data.features || []);
-      setShowResults(true);
-      setActiveIndex(-1); // Reset keyboard focus index on new results
-    } catch (err) {
-      if (err.name !== 'AbortError') {
-        console.error('Location search error:', err);
-        setError('Could not load locations.');
+    timeoutRef.current = setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&countrycodes=GH&format=json&limit=5&addressdetails=1`,
+          {
+            signal: controller.signal,
+            headers: { 'User-Agent': 'BebaApp/1.0 (contact@beba.app)' },
+          }
+        );
+        if (!response.ok) throw new Error('Failed to fetch locations');
+        const data = await response.json();
+        setResults(data || []);
+        setShowResults(true);
+        setActiveIndex(-1);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('Location search error:', err);
+          setError('Could not load locations.');
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
       }
-    } finally {
-      console.log('[LocationSearch] loading done, aborted:', controller.signal.aborted)
-      if (!controller.signal.aborted) setLoading(false);
-    }
-  }, 400); // Slightly faster debounce for snappier UX
+    }, 400);
 
     return () => {
       clearTimeout(timeoutRef.current);
       controller.abort();
     };
-  }, [query, shouldSearch, STADIA_API_KEY]);
+  }, [query, shouldSearch]);
 
-  // 3. Click Outside Handler
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+      const dropdown = document.getElementById('location-search-portal');
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(e.target) &&
+        (!dropdown || !dropdown.contains(e.target))
+      ) {
         setShowResults(false);
       }
     };
@@ -91,9 +87,18 @@ export default function LocationSearch({ value, onChange, placeholder }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const getCoordsFromItem = (item) => {
+    const lat = parseFloat(item.lat);
+    const lon = parseFloat(item.lon);
+    if (!isNaN(lat) && !isNaN(lon)) {
+      return { lat, lon };
+    }
+    return null;
+  };
+
   const handleSelect = (item) => {
-    const displayName = (item.properties?.label || item.properties?.name || '').trim();
-    console.log('[LocationSearch] selected:', { gid: item.properties?.gid, name: item.properties?.name, label: item.properties?.label, displayName })
+    const displayName = (item.display_name || '').trim();
+    const coords = getCoordsFromItem(item);
     
     isSelectingRef.current = true;
     setQuery(displayName);
@@ -102,10 +107,9 @@ export default function LocationSearch({ value, onChange, placeholder }) {
     setShowResults(false);
     setActiveIndex(-1);
     
-    onChange?.(displayName); 
+    onChange?.(displayName, coords); 
   };
 
-  // 4. Keyboard Interaction Handler
   const handleKeyDown = (e) => {
     if (!showResults || results.length === 0) return;
 
@@ -125,9 +129,22 @@ export default function LocationSearch({ value, onChange, placeholder }) {
     }
   };
 
+  const getPortalStyle = () => {
+    if (!inputRef.current) return {};
+    const rect = inputRef.current.getBoundingClientRect();
+    return {
+      position: 'fixed',
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      zIndex: 9999,
+    };
+  };
+
   return (
     <div ref={wrapperRef} className="relative w-full">
       <Input
+        ref={inputRef}
         type="text"
         value={query}
         onChange={(e) => { 
@@ -135,7 +152,7 @@ export default function LocationSearch({ value, onChange, placeholder }) {
           setShouldSearch(true);
           onChange?.(e.target.value); 
         }}
-        onFocus={() => { console.log('[LocationSearch] input focused, query length:', query.length); query.length >= 3 && setShowResults(true); }}
+        onFocus={() => { query.length >= 3 && setShowResults(true); }}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         autoComplete="off"
@@ -148,26 +165,31 @@ export default function LocationSearch({ value, onChange, placeholder }) {
         </div>
       )}
       
-      {showResults && (results.length > 0 || error) && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-2xl shadow-xl max-h-60 overflow-y-auto unique-scrollbar">
+      {showResults && (results.length > 0 || error) && typeof document !== 'undefined' && createPortal(
+        <div
+          id="location-search-portal"
+          className="bg-white border border-slate-200 rounded-b-2xl shadow-xl max-h-60 overflow-y-auto unique-scrollbar -mt-1"
+          style={getPortalStyle()}
+        >
           {error ? (
             <div className="px-4 py-3 text-sm text-red-500">{error}</div>
           ) : (
             results.map((item, idx) => (
               <button
-                key={`${item.properties?.gid}-${idx}`}
+                key={`${item.place_id}-${idx}`}
                 type="button"
                 className={`w-full px-4 py-3 text-left border-b border-slate-100 last:border-b-0 transition-colors block ${
                   idx === activeIndex ? 'bg-slate-50' : 'hover:bg-slate-50/50'
                 }`}
                 onClick={() => handleSelect(item)}
               >
-                <div className="font-bold text-sm text-slate-800">{item.properties?.name}</div>
-                <div className="text-xs text-slate-400 truncate mt-0.5">{item.properties?.label}</div>
+                <div className="font-bold text-sm text-slate-800">{item.display_name.split(',')[0]}</div>
+                <div className="text-xs text-slate-400 truncate mt-0.5">{item.display_name}</div>
               </button>
             ))
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

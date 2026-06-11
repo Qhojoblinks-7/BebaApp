@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from "react";
 import notificationService from "../services/notificationService";
 
 const NEW_ORDER_DEEP_LINK = "JobQueueTab";
+let hasProcessedInitialResponse = false;
 
 export function useNotifications(onDeepLink) {
   const receivedSub = useRef(null);
@@ -20,9 +21,16 @@ export function useNotifications(onDeepLink) {
   useEffect(() => {
     notificationService.setupHandler();
 
-    const response = notificationService.getLastNotificationResponse();
-    if (response?.notification) {
-      handleNotificationNavigate(response.notification);
+    // Only process initial notification response once to prevent loops
+    if (!hasProcessedInitialResponse) {
+      const response = notificationService.getLastNotificationResponse();
+      if (response?.notification) {
+        const url = response.notification.request.content.data?.url;
+        if (typeof url === "string") {
+          onDeepLink?.(url);
+        }
+      }
+      hasProcessedInitialResponse = true;
     }
 
     receivedSub.current = notificationService.addListenerReceived((notification) => {
@@ -37,8 +45,9 @@ export function useNotifications(onDeepLink) {
     return () => {
       notificationService.removeListener(receivedSub.current);
       notificationService.removeListener(responseSub.current);
+      hasProcessedInitialResponse = false;
     };
-  }, [handleNotificationNavigate]);
+  }, [handleNotificationNavigate, onDeepLink]);
 
   const scheduleNewOrderNotification = useCallback((order) => {
     notificationService.scheduleLocalNotification({

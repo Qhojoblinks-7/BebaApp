@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { supabase } from '../lib/supabaseClient'
+import { insertDocument } from '../lib/db'
 import { z } from 'zod'
 import { calculateDeliveryFee } from '../lib/pricing'
 import { calculateDistance } from '../lib/distanceService'
@@ -58,7 +58,7 @@ function PricePreview({ distance }) {
         </div>
         {pricing.breakdown.distanceFee > 0 && (
           <div className="flex justify-between text-xs">
-            <span className="text-slate-400">Distance ({Math.max(0, (distance || 0) - 2).toFixed(1)} km × GH₵8)</span>
+            <span className="text-slate-400">Distance fee</span>
             <span className="font-bold text-slate-200">+ GH₵ {pricing.breakdown.distanceFee.toFixed(2)}</span>
           </div>
         )}
@@ -142,14 +142,12 @@ export default function OrderScreen({ onOrderSuccess }) {
     if (result.allowed) {
       const km = Number(result.distanceKm)
       console.log('[updateDistance] setting distance:', km, 'method:', result.method, 'coords:', result.coordinates)
-      console.log('[updateDistance] haversine check from coords:', result.coordinates)
       setLocalDistance(km)
       setField('distance', km)
       setField('pickupLng', result.coordinates.pickup.lon)
       setField('pickupLat', result.coordinates.pickup.lat)
       setField('deliveryLng', result.coordinates.delivery.lon)
       setField('deliveryLat', result.coordinates.delivery.lat)
-      console.log('[updateDistance] form fields updated:', { pickupLng: result.coordinates.pickup.lon, pickupLat: result.coordinates.pickup.lat, deliveryLng: result.coordinates.delivery.lon, deliveryLat: result.coordinates.delivery.lat })
       setDistanceMethod(result.method || 'routed')
     } else {
       console.log('[updateDistance] not allowed:', result.reason)
@@ -183,34 +181,52 @@ export default function OrderScreen({ onOrderSuccess }) {
     console.log('[OrderScreen] Submit payload:', { orderId, senderPhone: normalizedPhone, recipientPhone: normalizedRecipientPhone, distance: distanceVal, pricing: calculateDeliveryFee(distanceVal) })
     const validation = orderSchema.safeParse({ ...formData, phone: formData.phone, distance: distanceVal })
     if (!validation.success) {
-      console.log('[OrderScreen] validation failed:', validation.flatten())
+      console.log('[OrderScreen] validation failed:', validation.error?.issues)
+      alert('Please check form fields. ' + (validation.error?.issues?.[0]?.message || 'Unknown validation error'))
       return
     }
     const value = validation.data
     const pricing = calculateDeliveryFee(distanceVal)
     if (!pricing.allowed) { alert(pricing.reason); return }
     try {
-      const { error } = await supabase.from('orders').insert({
-        order_id: orderId, sender_name: value.sender, sender_phone: normalizedPhone,
-        customer_name: value.recipient, customer_phone: normalizedRecipientPhone,
-        pickup_address: value.pickup, pickup_zone: value.pickup?.split(',').pop()?.trim() || 'General Accra',
+      const orderData = {
+        order_id: orderId,
+        sender_name: value.sender,
+        sender_phone: normalizedPhone,
+        customer_name: value.recipient,
+        customer_phone: normalizedRecipientPhone,
+        pickup_address: value.pickup,
+        pickup_zone: value.pickup?.split(',').pop()?.trim() || 'General Accra',
         pickup_lng: value.pickupLng || null,
         pickup_lat: value.pickupLat || null,
-        delivery_address: value.drop, delivery_zone: value.drop?.split(',').pop()?.trim() || 'General Accra',
+        delivery_address: value.drop,
+        delivery_zone: value.drop?.split(',').pop()?.trim() || 'General Accra',
         delivery_lng: value.deliveryLng || null,
         delivery_lat: value.deliveryLat || null,
-        item_description: value.item, delivery_instructions: value.instructions || null,
-        status: 'pending', delivery_fee: pricing.breakdown.totalFee,
-        base_price: pricing.breakdown.basePrice, distance_fee: pricing.breakdown.distanceFee,
+        item_description: value.item,
+        delivery_instructions: value.instructions || null,
+        status: 'pending',
+        delivery_fee: pricing.breakdown.totalFee,
+        base_price: pricing.breakdown.basePrice,
+        distance_fee: pricing.breakdown.distanceFee,
         surge_fee: pricing.breakdown.surgeFee,
-      })
-      if (!error) {
-          try { await supabase.functions.invoke('whatsapp-notify', { body: { record: { order_id: orderId, customer_name: value.recipient, customer_phone: normalizedRecipientPhone, status: 'pending' } } }) } catch (fnErr) { console.error(fnErr) }
-        setSubmittedTotalFee(pricing.breakdown.totalFee)
-        setSubmittedOrderId(orderId)
-        setSubmitted(true)
-      } else { alert('Failed to create order: ' + error.message) }
-    } catch { alert('Network error. Check connection and try again.') }
+      }
+      const { id } = await insertDocument('orders', orderData)
+      if (!id) throw new Error('Order creation failed')
+      setSubmittedTotalFee(pricing.breakdown.totalFee)
+      setSubmittedOrderId(orderId)
+      setSubmitted(true)
+      if (onOrderSuccess) onOrderSuccess(orderId)
+
+      fetch('/api/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, orderDisplayId: orderId }),
+      }).catch((err) => console.warn('[OrderScreen] push notify failed:', err.message))
+    } catch (err) {
+      console.error('[OrderScreen] insert failed:', err)
+      alert('Failed to create order: ' + (err.message || 'Unknown error'))
+    }
   }
 
   if (submitted) {
@@ -221,7 +237,7 @@ export default function OrderScreen({ onOrderSuccess }) {
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
           </div>
           <h2 className="text-xl font-black text-slate-900 uppercase">Request Logged!</h2>
-          <p className="text-xs text-slate-500 mt-1">Waybill: {submittedOrderId}</p>
+          <p className="text-xs font-bold text-slate-500 mt-1">Waybill: {submittedOrderId}</p>
           <p className="text-lg font-bold text-red-600 mt-4">Total: GH₵ {submittedTotalFee.toFixed(2)}</p>
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-200 mt-6 flex flex-col gap-2">
             <Button onClick={() => onOrderSuccess?.(submittedOrderId)} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold uppercase rounded-xl">Track Order</Button>
@@ -239,7 +255,7 @@ export default function OrderScreen({ onOrderSuccess }) {
         <p className="animate-in fade-in duration-500 delay-75 text-red-600 font-bold uppercase text-xs tracking-widest mt-1">Beba Fleet Service</p>
       </div>
 
-      <Card className="animate-in fade-in slide-in-from-bottom-6 duration-500 delay-100 w-full max-w-md mx-auto border-0 shadow-xl rounded-3xl overflow-hidden mb-8">
+      <Card className="animate-in fade-in slide-in-from-bottom-6 duration-500 delay-100 w-full max-w-md mx-auto border-0 shadow-xl rounded-3xl mb-8">
         <CardContent className="p-6">
           <StepIndicator step={step} />
           <form id="order-form" onSubmit={onSubmit} className="space-y-5">
@@ -268,7 +284,7 @@ export default function OrderScreen({ onOrderSuccess }) {
 
                 {manualOverride && (
                   <Field>
-                    <FieldLabel>Distance (km) — manual override</FieldLabel>
+                    <FieldLabel>Distance override (km)</FieldLabel>
                     <Input className="rounded-xl" type="number" step="0.1" min="0.1" max="8" value={formData.distance} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v > 0) { setField('distance', v); setLocalDistance(v); } }} placeholder="Enter distance in km" />
                   </Field>
                 )}

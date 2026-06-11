@@ -1,7 +1,10 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Zap, MessageSquare } from "lucide-react-native";
 import { useThemeStore } from "../../store/themeStore";
+import { useAuth } from "../../context/AuthContext";
+import { getDocs, query, where, collection } from "firebase/firestore";
+import { db } from "../../services/firebaseConfig";
 
 function MetricRow({ value, unit, target, targetValue, isLast, colors }) {
   return (
@@ -23,29 +26,99 @@ export default function DailySummaryCard({
   earnings = 0,
   completedDrops = 0,
   onViewHistory,
+  userId,
+  selectedDate,
 }) {
+  const { user } = useAuth();
   const { colors, isDarkMode } = useThemeStore();
 
-  // Defensive parsing fallbacks to shield against upstream type anomalies
+  const [localMetrics, setLocalMetrics] = useState({
+    distanceKm: "0.0",
+    earnings: 0,
+    completedDrops: 0,
+  });
+
+  useEffect(() => {
+    const uid = userId || user?.id;
+    if (!uid || !selectedDate) return;
+
+    const startOfDay = `${selectedDate}T00:00:00`;
+    const endOfDay = `${selectedDate}T23:59:59`;
+
+    const q = query(
+      collection(db, "orders"),
+      where("rider_id", "==", uid),
+      where("created_at", ">=", startOfDay),
+      where("created_at", "<", endOfDay)
+    );
+
+    const unsubOrders = onSnapshot(
+      q,
+      (snap) => {
+        const orders = snap.docs.map((d) => d.data());
+        const completedDrops = orders.filter((o) => o.status === "delivered").length || 0;
+        const cancelledCount = orders.filter((o) => o.status === "cancelled").length || 0;
+        const totalBookings = orders.length || 0;
+        const cancelledRate = totalBookings > 0 ? Math.round((cancelledCount / totalBookings) * 100) : 0;
+        const distanceKm = completedDrops * 5.4;
+
+        setLocalMetrics({
+          distanceKm: distanceKm.toFixed(1),
+          earnings: localMetrics.earnings,
+          completedDrops,
+        });
+
+        const revenueQ = query(
+          collection(db, "revenue"),
+          where("rider_id", "==", uid),
+          where("order_completed_at", ">=", startOfDay),
+          where("order_completed_at", "<", endOfDay)
+        );
+
+        const unsubRevenue = onSnapshot(
+          revenueQ,
+          (revSnap) => {
+            const revenue = revSnap.docs.map((d) => d.data());
+            const earnings = revenue.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+            setLocalMetrics((prev) => ({
+              ...prev,
+              earnings,
+            }));
+          },
+          (err) => console.warn("[DailySummaryCard] revenue listen failed:", err.message)
+        );
+
+        return () => unsubRevenue();
+      },
+      (err) => console.warn("[DailySummaryCard] orders listen failed:", err.message)
+    );
+
+    return () => unsubOrders();
+  }, [user?.uid, selectedDate]);
+
   const safeDistance = typeof distanceKm === "number" ? distanceKm : parseFloat(distanceKm) || 0;
   const safeEarnings = Number(earnings) || 0;
   const safeDrops = Number(completedDrops) || 0;
 
+  const displayDistance = localMetrics.distanceKm !== "0.0" ? localMetrics.distanceKm : (typeof distanceKm === "number" ? distanceKm : parseFloat(distanceKm) || 0).toFixed(1);
+  const displayEarnings = localMetrics.earnings > 0 || localMetrics.completedDrops > 0 ? localMetrics.earnings : Number(earnings) || 0;
+  const displayDrops = localMetrics.completedDrops > 0 ? localMetrics.completedDrops : Number(completedDrops) || 0;
+
   const metrics = [
     {
-      value: safeDistance.toFixed(1),
+      value: displayDistance,
       unit: "Kilometers Tracked",
       target: "| Distance",
       targetValue: "60.0 km Target",
     },
     {
-      value: `GH₵ ${safeEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `GH₵ ${displayEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       unit: "Collected Funds",
       target: "| Earnings",
       targetValue: "GH₵ 500 Target",
     },
     {
-      value: String(safeDrops),
+      value: String(displayDrops),
       unit: "Completed Drops",
       target: "| Manifests",
       targetValue: "12 Runs Target",
