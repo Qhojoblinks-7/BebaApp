@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1086902357337",
+    "project_id": "beba-dc970",
+    "storage_bucket": "beba-dc970.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1086902357337:android:c64a49dc5eaad4aa291048",
+        "android_client_info": {
+          "package_name": "beba_app.firebaseapp.com"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDRC4b5K52GymE-XIAoYalauWZ_9OJidhc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1086902357337:android:4eedcc8dd584e673291048",
+        "android_client_info": {
+          "package_name": "com.vistaforge.beba_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDRC4b5K52GymE-XIAoYalauWZ_9OJidhc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

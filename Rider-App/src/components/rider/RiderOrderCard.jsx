@@ -2,9 +2,6 @@ import React, { useState, useEffect } from "react";
 import { View, Text, TouchableOpacity, Platform } from "react-native";
 import { Box, MapPin, CornerDownRight } from "lucide-react-native";
 import { useThemeStore } from "../../store/themeStore";
-import { useAuth } from "../../context/AuthContext";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../../services/firebaseConfig";
 
 // Centered status map utilizing pure text tokens for real-time light/dark adaptation
 const STATUS_TOKENS = {
@@ -17,13 +14,9 @@ const STATUS_TOKENS = {
 };
 
 export default function RiderOrderCard({ order: initialOrder, onPress }) {
-  const { user } = useAuth();
   const { colors, isDarkMode } = useThemeStore();
   
   const [order, setOrder] = useState(initialOrder || null);
-
-  // FIX: Safely map user string token identifiers matching Firebase Auth schema definitions
-  const userId = user?.uid || user?.id;
 
   useEffect(() => {
     // Sync local state if parent prop object updates directly via list updates
@@ -31,23 +24,6 @@ export default function RiderOrderCard({ order: initialOrder, onPress }) {
       setOrder(initialOrder);
     }
   }, [initialOrder]);
-
-  useEffect(() => {
-    if (!initialOrder?.id || !userId) return;
-    
-    // Fallback real-time sync wrapper loop
-    const unsub = onSnapshot(
-      doc(db, "orders", initialOrder.id),
-      (snap) => {
-        if (snap.exists()) {
-          setOrder({ id: snap.id, ...snap.data() });
-        }
-      },
-      (err) => console.warn("[RiderOrderCard] single snapshot fetch failed:", err.message)
-    );
-
-    return () => unsub();
-  }, [initialOrder?.id, userId]);
 
   if (!order) return null;
   const status = STATUS_TOKENS[order.status] || STATUS_TOKENS.pending;

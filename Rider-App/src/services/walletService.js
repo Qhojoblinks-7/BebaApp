@@ -26,14 +26,16 @@ export async function fetchWalletSummary(riderId) {
 
   const revenueQuery = query(
     collection(db, "revenue"),
-    where("rider_id", "==", riderId)
+    where("rider_id", "==", riderId),
+    limit(100)
   );
   const revenueSnap = await getDocs(revenueQuery);
   const totalRevenue = revenueSnap.docs.reduce((sum, doc) => sum + toNumber(doc.data().amount), 0);
 
   const payoutQuery = query(
     collection(db, PAYOUT_COLLECTION),
-    where("rider_id", "==", riderId)
+    where("rider_id", "==", riderId),
+    limit(100)
   );
   const payoutSnap = await getDocs(payoutQuery);
   const completedPayouts = payoutSnap.docs.filter((doc) => doc.data().status === "completed");

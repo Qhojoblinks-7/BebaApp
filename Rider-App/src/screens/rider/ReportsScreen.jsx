@@ -23,7 +23,7 @@ import {
   Sparkles,
 } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
-import { getDocuments, where } from "../../services/db";
+import { getDocuments, where, limit } from "../../services/db";
 import { fetchInsights } from "../../services/insightsService";
 import { useRevenueForecast } from "../../hooks/useRevenueForecast";
 import { generateAndStoreActionPlans } from "../../services/actionPlanService";
@@ -99,10 +99,10 @@ function getPeriodRange(period, startDate, endDate) {
 }
 
 async function fetchMetricsForRange(userId, start, end) {
-  const revenue = await getDocuments("revenue", [where("rider_id", "==", userId)]);
-  const orders = await getDocuments("orders", [where("rider_id", "==", userId)]);
-  const inflows = await getDocuments("manual_entries", [where("rider_id", "==", userId), where("type", "==", "inflow")]);
-  const outflows = await getDocuments("manual_entries", [where("rider_id", "==", userId), where("type", "==", "outflow")]);
+  const revenue = await getDocuments("revenue", [where("rider_id", "==", userId), limit(100)]);
+  const orders = await getDocuments("orders", [where("rider_id", "==", userId), limit(100)]);
+  const inflows = await getDocuments("manual_entries", [where("rider_id", "==", userId), where("type", "==", "inflow"), limit(100)]);
+  const outflows = await getDocuments("manual_entries", [where("rider_id", "==", userId), where("type", "==", "outflow"), limit(100)]);
 
   const startMs = start.getTime();
   const endMs = end.getTime();
@@ -134,6 +134,11 @@ async function fetchMetricsForRange(userId, start, end) {
   const completionRate = totalOrders > 0 ? Math.round((totalCompletions / totalOrders) * 100) : 0;
 
   const outflowByCategory = { needs: 0, wants: 0, savings: 0 };
+  (filteredInflows || []).forEach((entry) => {
+    if (entry.category === "savings") {
+      outflowByCategory.savings += Math.abs(Number(entry.amount || 0));
+    }
+  });
   (filteredOutflows || []).forEach((entry) => {
     const amount = Math.abs(Number(entry.amount || 0));
     const cat = entry.category;

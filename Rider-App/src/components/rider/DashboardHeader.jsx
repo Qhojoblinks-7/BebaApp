@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import {
   View,
   Text,
@@ -16,11 +16,10 @@ import {
   BookOpen,
 } from "lucide-react-native";
 import { useThemeStore } from "../../store/themeStore";
-import { useAuth } from "../../context/AuthContext";
-// FIX: Added the missing "doc" reference model import natively
-import { doc, query, where, collection, onSnapshot } from "firebase/firestore";
-import { db } from "../../services/firebaseConfig";
 
+/**
+ * Calendar Day Presentational Component
+ */
 export function CalendarDay({ item, isSelected, onPress, colors }) {
   const cardStyle = getCalendarDayStyles(isSelected, colors);
 
@@ -68,6 +67,9 @@ export function CalendarDay({ item, isSelected, onPress, colors }) {
   );
 }
 
+/**
+ * Month Pagination Controls Component
+ */
 export function MonthSelector({ monthLabel, onPrev, onNext, colors }) {
   return (
     <View
@@ -121,6 +123,9 @@ export function MonthSelector({ monthLabel, onPrev, onNext, colors }) {
   );
 }
 
+/**
+ * Image / Fallback Avatar Component
+ */
 export function Avatar({ uri, colors }) {
   const avatarStyle = { width: 32, height: 32, borderRadius: 16 };
   if (uri) {
@@ -129,6 +134,9 @@ export function Avatar({ uri, colors }) {
   return <View style={[avatarStyle, { backgroundColor: colors.border || '#ccc' }]} />;
 }
 
+/**
+ * Rider Profile Badge Component
+ */
 export function ProfileBadge({ onPress, profileName, avatarUri, colors }) {
   return (
     <TouchableOpacity
@@ -164,6 +172,9 @@ export function ProfileBadge({ onPress, profileName, avatarUri, colors }) {
   );
 }
 
+/**
+ * Action Status and Notification Button Aggregations
+ */
 export function ActionButtons({ riderStatus, unreadCount, onToggleOnline, onNavigateNotifications, colors, isDarkMode }) {
   const statusStyles = {
     online: {
@@ -211,7 +222,7 @@ export function ActionButtons({ riderStatus, unreadCount, onToggleOnline, onNavi
         onPress={onToggleOnline}
         activeOpacity={0.8}
       >
-        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: style.dot }} />
+        <style.Icon size={14} color={style.text} />
         <Text style={{ fontSize: 13, fontWeight: "700", color: style.text }}>
           {style.label}
         </Text>
@@ -237,12 +248,14 @@ export function ActionButtons({ riderStatus, unreadCount, onToggleOnline, onNavi
           <View
             style={{
               position: "absolute",
-              top: 11,
-              right: 12,
-              width: 6,
-              height: 6,
-              borderRadius: 3,
+              top: 10,
+              right: 11,
+              width: 8,
+              height: 8,
+              borderRadius: 4,
               backgroundColor: colors.danger || "#ef4444",
+              borderWidth: 1.5,
+              borderColor: colors.backgroundCard,
             }}
           />
         )}
@@ -251,9 +264,12 @@ export function ActionButtons({ riderStatus, unreadCount, onToggleOnline, onNavi
   );
 }
 
+/**
+ * Main Stateless Presentational Header Container Component
+ */
 export default function DashboardHeader({
-  riderStatus: propRiderStatus,
-  unreadCount: propUnreadCount,
+  riderStatus = "offline",
+  unreadCount = 0,
   onToggleOnline,
   onNavigateNotifications,
   onNavigateProfile,
@@ -263,64 +279,10 @@ export default function DashboardHeader({
   calendarDays = [],
   selectedDayIndex,
   onSelectDay,
-  profileName: propProfileName,
-  avatarUri: propAvatarUri,
+  profileName = "Rider",
+  avatarUri = "",
 }) {
-  const { user } = useAuth();
   const { colors, isDarkMode } = useThemeStore();
-
-  const [riderStatus, setRiderStatus] = useState(propRiderStatus || "offline");
-  const [unreadCount, setUnreadCount] = useState(propUnreadCount || 0);
-  const [profileName, setProfileName] = useState(propProfileName || "Rider");
-  const [avatarUri, setAvatarUri] = useState(propAvatarUri || "");
-
-  // FIX: Map identifier to true internal custom Firebase Auth string uid references
-  const userId = user?.uid;
-
-  useEffect(() => {
-    if (!userId) return;
-
-    const statusUnsub = onSnapshot(
-      doc(db, "rider_status", userId),
-      (snap) => {
-        if (snap.exists()) {
-          setRiderStatus(snap.data().rider_status || "offline");
-        }
-      },
-      (err) => console.warn("[DashboardHeader] rider_status listen failed:", err.message)
-    );
-
-    const profileUnsub = onSnapshot(
-      doc(db, "users", userId),
-      (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          setProfileName(data.full_name || "Rider");
-          setAvatarUri(data.avatar_url || "");
-        }
-      },
-      (err) => console.warn("[DashboardHeader] users listen failed:", err.message)
-    );
-
-    const notifQ = query(
-      collection(db, "notifications"),
-      where("rider_id", "==", userId),
-      where("is_read", "==", false)
-    );
-
-    const notifUnsub = onSnapshot(
-      notifQ,
-      (snap) => setUnreadCount(snap.size),
-      (err) => console.warn("[DashboardHeader] notifications listen failed:", err.message)
-    );
-
-    // FIX: Functional evaluations prevent errors during unmounting routines
-    return () => {
-      if (typeof statusUnsub === "function") statusUnsub();
-      if (typeof profileUnsub === "function") profileUnsub();
-      if (typeof notifUnsub === "function") notifUnsub();
-    };
-  }, [userId]);
 
   const monthLabel = weekStart
     ? weekStart.toLocaleDateString("en-US", { month: "long", year: "numeric" })
@@ -361,7 +323,7 @@ export default function DashboardHeader({
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", width: "100%", gap: 8 }}>
           {calendarDays.map((dayItem, index) => (
             <CalendarDay
-              key={dayItem.rawDateString || dayItem.date || String(index)}
+              key={dayItem.date || String(index)}
               item={dayItem}
               isSelected={index === selectedDayIndex}
               onPress={() => {
@@ -377,7 +339,7 @@ export default function DashboardHeader({
 }
 
 /**
- * Isolated Structural Performance Stylesheets (Declared outside render cycles)
+ * Isolated Structural Stylesheets
  */
 const getCalendarDayStyles = (isSelected, colors) => ({
   flex: 1,

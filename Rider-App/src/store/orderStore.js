@@ -1,15 +1,15 @@
 import { create } from "zustand";
 import {
-  getDocs,
+  collection,
   query,
   where,
   orderBy,
+  limit,
+  onSnapshot,
   updateDoc,
   doc,
   serverTimestamp,
-  writeBatch,
 } from "firebase/firestore";
-import { collection } from "firebase/firestore";
 import { db } from "../services/firebaseConfig";
 
 const useOrderStore = create((set, get) => ({
@@ -18,93 +18,121 @@ const useOrderStore = create((set, get) => ({
   deliveryHistory: [],
   selectedOrder: null,
   jobZones: [],
-  dailySummary: {
-    distanceKm: "0.0",
-    earnings: 0,
-    completedDrops: 0,
-    cancelledRate: 0,
+  
+  // Active listeners collection registry for cleanup operations
+  listeners: {
+    pending: null,
+    active: null,
+    history: null,
   },
 
   setSelectedOrder: (order) => set({ selectedOrder: order }),
   setJobZones: (zones) => set({ jobZones: zones }),
-  setPendingOrders: (orders) => set({ pendingOrders: orders }),
-  setActiveOrders: (orders) => set({ activeOrders: orders }),
-  setDeliveryHistory: (history) => set({ deliveryHistory: history }),
-  setDailySummary: (summary) => set({ dailySummary: summary }),
 
-  fetchPendingOrders: async () => {
-    try {
-      const q = query(
-        collection(db, "orders"),
-        where("status", "==", "pending"),
-        orderBy("created_at", "asc")
-      );
-      const snap = await getDocs(q);
+  /**
+   * Continuous Streaming for Available Dispatch Board (No rider assigned)
+   */
+  subscribeToPendingOrders: () => {
+    get().cleanListener("pending");
+
+    const q = query(
+      collection(db, "orders"),
+      where("status", "==", "pending"),
+      orderBy("created_at", "asc"),
+      limit(50)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
       const allPending = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      
+      // Filter out assignments locally only if backend indexing processes are settling
       const ordersWithZones = allPending
         .filter((o) => !o.rider_id)
         .map((order) => ({
           ...order,
           zone: resolveOrderZone(order),
         }));
+
       set({ pendingOrders: ordersWithZones });
-    } catch (err) {
-      console.warn("[orderStore] fetchPendingOrders failed:", err.message);
-    }
+    }, (err) => console.warn("[OrderStore] Pending stream exception:", err.message));
+
+    set((state) => ({ listeners: { ...state.listeners, pending: unsub } }));
+    return unsub;
   },
 
-  fetchActiveOrders: async (userId) => {
+  /**
+   * Continuous Live Synchronizer for Assigned Tasks
+   */
+  subscribeToActiveOrders: (userId) => {
     if (!userId) return;
-    try {
-      const q = query(
-        collection(db, "orders"),
-        where("rider_id", "==", userId),
-        orderBy("route_sequence", "asc")
-      );
-      const snap = await getDocs(q);
+    get().cleanListener("active");
+
+    const q = query(
+      collection(db, "orders"),
+      where("rider_id", "==", userId),
+      orderBy("route_sequence", "asc"),
+      limit(100)
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
       const active = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((o) => ["assigned", "picked_up", "in_transit"].includes(o.status));
+        
       set({ activeOrders: active });
-    } catch (err) {
-      console.warn("[orderStore] fetchActiveOrders failed:", err.message);
-    }
+    }, (err) => console.warn("[OrderStore] Active manifest feed error:", err.message));
+
+    set((state) => ({ listeners: { ...state.listeners, active: unsub } }));
+    return unsub;
   },
 
-  fetchDeliveryHistory: async (userId, dateRange) => {
+  /**
+   * Performant Index-Bound History Pipeline (Eliminates localized filter passes)
+   */
+  subscribeToDeliveryHistory: (userId, dateBounds) => {
     if (!userId) return;
-    try {
-      let q = query(
+    get().cleanListener("history");
+
+    let q = query(
+      collection(db, "orders"),
+      where("rider_id", "==", userId),
+      orderBy("created_at", "desc"),
+      limit(100)
+    );
+
+    // Apply native compound parameters directly if explicit range brackets are passed
+    if (dateBounds?.startStr && dateBounds?.endStr) {
+      q = query(
         collection(db, "orders"),
         where("rider_id", "==", userId),
-        orderBy("created_at", "desc")
+        where("created_at", ">=", dateBounds.startStr),
+        where("created_at", "<=", dateBounds.endStr),
+        orderBy("created_at", "desc"),
+        limit(100)
       );
-      const snap = await getDocs(q);
-      let history = snap.docs
+    }
+
+    const unsub = onSnapshot(q, (snap) => {
+      const history = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((o) => ["delivered", "cancelled"].includes(o.status));
 
-      if (dateRange) {
-        history = history.filter((o) => {
-          const t = o.created_at?.toMillis?.() || new Date(o.created_at).getTime();
-          return t >= dateRange.start.getTime() && t < dateRange.end.getTime();
-        });
-      }
       set({ deliveryHistory: history });
-    } catch (err) {
-      console.warn("[orderStore] fetchDeliveryHistory failed:", err.message);
-    }
+    }, (err) => console.warn("[OrderStore] History ledger pipeline crash:", err.message));
+
+    set((state) => ({ listeners: { ...state.listeners, history: unsub } }));
+    return unsub;
   },
 
+  /**
+   * Smooth Optimistic Pipeline to Advance Status
+   */
   advanceOrderStatus: async (orderId, nextStatus, updates = {}) => {
-    try {
-      const finalUpdates = {
-        status: nextStatus,
-        updated_at: serverTimestamp(),
-        ...updates,
-      };
-      await updateDoc(doc(db, "orders", orderId), finalUpdates);
+    const previousActive = get().activeOrders;
+    const previousPending = get().pendingOrders;
 
+    try {
+      // 1. Instantly update UI optimistically
       set((state) => {
         const updatedPending = state.pendingOrders.filter((o) => o.id !== orderId);
         const updatedActive = state.activeOrders
@@ -113,21 +141,46 @@ const useOrderStore = create((set, get) => ({
         return { pendingOrders: updatedPending, activeOrders: updatedActive };
       });
 
+      // 2. Persist to server
+      const finalUpdates = {
+        status: nextStatus,
+        updated_at: serverTimestamp(),
+        ...updates,
+      };
+      await updateDoc(doc(db, "orders", orderId), finalUpdates);
       return true;
     } catch (err) {
-      console.warn("[orderStore] advanceOrderStatus failed:", err.message);
+      console.warn("[OrderStore] Operational state mutation rejected:", err.message);
+      // Rollback to previous state if the network call fails
+      set({ activeOrders: previousActive, pendingOrders: previousPending });
       return false;
     }
   },
 
-  clearOrders: () =>
+  /**
+   * Helper utility to safely close individual event queries
+   */
+  cleanListener: (type) => {
+    const activeUnsub = get().listeners[type];
+    if (activeUnsub && typeof activeUnsub === "function") {
+      activeUnsub();
+    }
+    set((state) => ({ listeners: { ...state.listeners, [type]: null } }));
+  },
+
+  /**
+   * Clean up everything (Call this when a user logs out)
+   */
+  clearOrders: () => {
+    Object.keys(get().listeners).forEach((key) => get().cleanListener(key));
     set({
       pendingOrders: [],
       activeOrders: [],
       deliveryHistory: [],
       selectedOrder: null,
       jobZones: [],
-    }),
+    });
+  },
 }));
 
 export const GEOFENCE_ZONES = [
@@ -171,17 +224,24 @@ const GEOFENCE_POLYGONS = {
   ],
 };
 
+/**
+ * Solidified Ray-Casting Algorithm
+ */
 const pointInPolygon = (lng, lat, polygon) => {
   if (!polygon || polygon.length < 4) return false;
   let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length - 1; j = i++) {
-    const xi = polygon[i][0];
-    const yi = polygon[i][1];
-    const xj = polygon[j][0];
-    const yj = polygon[j][1];
+  
+  // 🔑 FIX: Correct boundary closure evaluation (i < polygon.length)
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; i++) {
+    const xi = polygon[i][0], yi = polygon[i][1];
+    const xj = polygon[j][0], yj = polygon[j][1];
+
     const intersect =
-      yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+      (yi > lat) !== (yj > lat) && 
+      lng < ((xj - xi) * (lat - yi)) / (yj - yj === 0 ? 0.00001 : yj - yi) + xi;
+      
     if (intersect) inside = !inside;
+    j = i;
   }
   return inside;
 };
@@ -190,13 +250,7 @@ const resolveOrderZone = (order) => {
   const { delivery_lng, delivery_lat, delivery_address } = order;
   if (delivery_lng && delivery_lat) {
     for (const [zoneName, polygon] of Object.entries(GEOFENCE_POLYGONS)) {
-      if (
-        pointInPolygon(
-          Number(delivery_lng),
-          Number(delivery_lat),
-          polygon
-        )
-      ) {
+      if (pointInPolygon(Number(delivery_lng), Number(delivery_lat), polygon)) {
         return zoneName;
       }
     }

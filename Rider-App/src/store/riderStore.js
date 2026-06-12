@@ -78,7 +78,8 @@ const useRiderStore = create((set, get) => ({
       const q = query(
         collection(db, "orders"),
         where("rider_id", "==", userId),
-        orderBy("route_sequence")
+        orderBy("route_sequence"),
+        limit(100)
       );
       const snap = await getDocs(q);
       const rows = snap.docs

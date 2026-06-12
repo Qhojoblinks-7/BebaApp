@@ -13,15 +13,12 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../../context/AuthContext";
 import {
   getDoc,
-  getDocs,
   query,
   where,
-  orderBy,
   onSnapshot,
   doc,
   collection,
-  setDoc,
-  serverTimestamp,
+  limit,
 } from "firebase/firestore";
 import { db } from "../../services/firebaseConfig";
 import { useThemeStore } from "../../store/themeStore";
@@ -44,33 +41,35 @@ export default function DashboardScreen({ navigation }) {
   const riderStore = useRiderStore();
   const notificationStore = useNotificationStore();
 
-  const riderStatus = riderStore.riderStatus;
-  const syncing = riderStore.syncing;
-  const deliveryOrders = riderStore.activeOrders;
-  const profileName = riderStore.profile.fullName;
-  const avatarUrl = riderStore.profile.avatarUrl;
-  const unreadCount = notificationStore.unreadCount;
-  const dailySummary = riderStore.dailySummary;
+  const { 
+    riderStatus, 
+    syncing, 
+    activeOrders: deliveryOrders, 
+    profile, 
+    dailySummary,
+    setRiderStatus, 
+    setSyncing, 
+    setActiveOrders, 
+    setProfile: setRiderProfile, 
+    setDailySummary 
+  } = riderStore;
 
-  const setRiderStatus = riderStore.setRiderStatus;
-  const setSyncing = riderStore.setSyncing;
-  const setActiveOrders = riderStore.setActiveOrders;
-  const setRiderProfile = riderStore.setProfile;
-  const setUnreadCount = notificationStore.setUnreadCount;
-  const setDailySummary = riderStore.setDailySummary;
+  // 🔑 FIX 1: Consume notification state directly from your centralized store
+  const { unreadCount, subscribeToNotifications } = notificationStore;
+  const profileName = profile.fullName;
+  const avatarUrl = profile.avatarUrl;
 
   const [weekStart, setWeekStart] = useState(() => {
     const today = new Date();
     const day = today.getDay();
     const diff = today.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(today.setDate(diff));
+    const monday = new Date(today.getFullYear(), today.getMonth(), diff);
     monday.setHours(0, 0, 0, 0);
     return monday;
   });
 
   const [selectedDayIndex, setSelectedDayIndex] = useState(() => {
-    const today = new Date();
-    const dow = today.getDay();
+    const dow = new Date().getDay();
     return dow === 0 ? 5 : dow - 1;
   });
 
@@ -86,203 +85,145 @@ export default function DashboardScreen({ navigation }) {
 
   const selectedDate = calendarDays[selectedDayIndex]?.date || new Date().toISOString().split("T")[0];
 
-  const fetchCurrentStatus = useCallback(async () => {
-    if (!user?.uid) {
+  // 1. Core Profile Sync & Global Notifications Subscription
+  useEffect(() => {
+    // 🔑 FIX 2: Security Gatekeeper Circuit Breaker
+    if (!user || !user.uid) {
       setSyncing(false);
       return;
     }
-    try {
-      setSyncing(true);
-      const snap = await getDoc(doc(db, "rider_status", user.uid));
-      if (snap.exists()) {
-        const status = snap.data().rider_status || "offline";
-        setRiderStatus(status);
-        if (status === "online") {
-          await startTrackingEngine();
+
+    let isMounted = true;
+    let unsubNotifications = null;
+
+    const fetchInitialData = async () => {
+      try {
+        setSyncing(true);
+        const [statusSnap, userSnap] = await Promise.all([
+          getDoc(doc(db, "rider_status", user.uid)),
+          getDoc(doc(db, "users", user.uid))
+        ]);
+
+        if (!isMounted) return;
+
+        if (statusSnap.exists()) {
+          const status = statusSnap.data().rider_status || "offline";
+          setRiderStatus(status);
+          if (status === "online") await startTrackingEngine();
         }
-      }
-    } catch (err) {
-      console.warn("[Dashboard] Fallback capturing state presence:", err.message);
-    } finally {
-      setSyncing(false);
-    }
-  }, [user?.uid, setRiderStatus, setSyncing]);
 
-  const fetchProfile = useCallback(async () => {
-    if (!user?.uid) return;
-    try {
-      const snap = await getDoc(doc(db, "users", user.uid));
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data.full_name || data.avatar_url) {
-          setRiderProfile({ fullName: data.full_name || "", avatarUrl: data.avatar_url || "" });
+        if (userSnap.exists()) {
+          const data = userSnap.data();
+          if (data.full_name || data.avatar_url) {
+            setRiderProfile({ 
+              fullName: data.full_name || "Rider", 
+              avatarUrl: data.avatar_url || "" 
+            });
+          }
         }
+      } catch (err) {
+        console.warn("[Dashboard] Initial fetch pipeline error:", err.message);
+      } finally {
+        if (isMounted) setSyncing(false);
       }
-    } catch (err) {
-      console.warn("[Dashboard] Profile query run failure:", err.message);
-    }
-  }, [user?.uid, setRiderProfile]);
+    };
 
-  const fetchUnreadCount = useCallback(async () => {
-    if (!user?.uid) return;
-    try {
-      const q = query(
-        collection(db, "notifications"),
-        where("rider_id", "==", user.uid),
-        where("is_read", "==", false)
-      );
-      const snap = await getDocs(q);
-      setUnreadCount(snap.size);
-    } catch (err) {
-      console.warn("[Dashboard] Notification lookup breakdown:", err.message);
-    }
-  }, [user?.uid, setUnreadCount]);
+    fetchInitialData();
+    
+    // 🔑 FIX 3: Safe, single point of collection initialization using your centralized store
+    unsubNotifications = subscribeToNotifications(user.uid);
 
-  const fetchDashboardMetrics = useCallback(async () => {
-    if (!user?.uid) return;
-    try {
-      const startOfDay = new Date(`${selectedDate}T00:00:00`);
-      const endOfDay = new Date(`${selectedDate}T23:59:59`);
-      const startStr = startOfDay.toISOString();
-      const endStr = endOfDay.toISOString();
+    return () => {
+      isMounted = false;
+      if (typeof unsubNotifications === "function") unsubNotifications();
+      stopTrackingEngine();
+    };
+  }, [user?.uid, subscribeToNotifications]);
 
-      const q = query(
+  // 2. Optimized Manifest Live Syncing (With Safety Filters)
+  useFocusEffect(
+    useCallback(() => {
+      // 🔑 FIX 4: Enforce safety filter to shield focus hooks from executing with an empty auth state
+      if (!user || !user.uid) return;
+
+      const startStr = `${selectedDate}T00:00:00.000Z`;
+      const endStr = `${selectedDate}T23:59:59.999Z`;
+
+      const ordersQ = query(
         collection(db, "orders"),
         where("rider_id", "==", user.uid),
         where("created_at", ">=", startStr),
-        where("created_at", "<", endStr)
+        where("created_at", "<=", endStr),
+        limit(100)
       );
-      const snap = await getDocs(q);
-      const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-      const validOrders = orders.filter((o) =>
-        ["assigned", "picked_up", "in_transit", "delivered"].includes(o.status)
-      );
-
-      setActiveOrders(
-        validOrders.sort((a, b) => (a.route_sequence || 0) - (b.route_sequence || 0))
-      );
-
-      const completedDrops = orders.filter((o) => o.status === "delivered").length || 0;
-      const cancelledCount = orders.filter((o) => o.status === "cancelled").length || 0;
-      const totalBookings = orders.length || 0;
-      const cancelledRate = totalBookings > 0 ? Math.round((cancelledCount / totalBookings) * 100) : 0;
 
       const revenueQ = query(
         collection(db, "revenue"),
         where("rider_id", "==", user.uid),
         where("order_completed_at", ">=", startStr),
-        where("order_completed_at", "<", endStr)
-      );
-      const revenueSnap = await getDocs(revenueQ);
-      const revenue = revenueSnap.docs.map((d) => d.data());
-
-      const earnings = revenue.reduce((sum, r) => sum + Number(r.amount || 0), 0);
-      const distanceKm = completedDrops * 5.4;
-
-      setDailySummary({
-        distanceKm: distanceKm.toFixed(1),
-        earnings,
-        completedDrops,
-        cancelledRate,
-      });
-    } catch (err) {
-      console.warn("[Dashboard] Analytics computation failure:", err.message);
-    }
-  }, [user?.uid, selectedDate, setActiveOrders, setDailySummary]);
-
-  useEffect(() => {
-    if (!user) {
-      setSyncing(false);
-      return;
-    }
-    fetchCurrentStatus();
-    fetchProfile();
-    fetchUnreadCount();
-
-    return () => {
-      stopTrackingEngine();
-    };
-  }, [user, fetchCurrentStatus, fetchUnreadCount, fetchProfile, setSyncing]);
-
-  useEffect(() => {
-    if (!user?.uid) return;
-
-    const q = query(
-      collection(db, "notifications"),
-      where("rider_id", "==", user.uid),
-      orderBy("created_at", "desc")
-    );
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const notifications = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setUnreadCount(notifications.filter((n) => !n.is_read).length);
-      },
-      (err) => console.warn("[Dashboard] notifications listen failed:", err.message)
-    );
-
-    return () => unsub();
-  }, [user?.uid, setUnreadCount]);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!user?.uid) return;
-
-      fetchDashboardMetrics();
-
-      const ordersQ = query(
-        collection(db, "orders"),
-        where("rider_id", "==", user.uid)
+        where("order_completed_at", "<=", endStr),
+        limit(100)
       );
 
-      const revenueQ = query(
-        collection(db, "revenue"),
-        where("rider_id", "==", user.uid)
-      );
+      let ordersData = [];
+      let revenueData = [];
 
-      const unsubOrders = onSnapshot(
-        ordersQ,
-        () => {
-          fetchDashboardMetrics();
-        },
-        (err) => console.warn("[Dashboard] orders listen failed:", err.message)
-      );
+      const calculateMetrics = () => {
+        const validOrders = ordersData.filter((o) =>
+          ["assigned", "picked_up", "in_transit", "delivered"].includes(o.status)
+        );
+        
+        setActiveOrders(
+          validOrders.sort((a, b) => (a.route_sequence || 0) - (b.route_sequence || 0))
+        );
 
-      const unsubRevenue = onSnapshot(
-        revenueQ,
-        () => {
-          fetchDashboardMetrics();
-        },
-        (err) => console.warn("[Dashboard] revenue listen failed:", err.message)
-      );
+        const completedDrops = ordersData.filter((o) => o.status === "delivered").length;
+        const cancelledCount = ordersData.filter((o) => o.status === "cancelled").length;
+        const totalBookings = ordersData.length;
+        const cancelledRate = totalBookings > 0 ? Math.round((cancelledCount / totalBookings) * 100) : 0;
+        const earnings = revenueData.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+        const distanceKm = completedDrops * 5.4;
+
+        setDailySummary({
+          distanceKm: distanceKm.toFixed(1),
+          earnings,
+          completedDrops,
+          cancelledRate,
+        });
+      };
+
+      const unsubOrders = onSnapshot(ordersQ, (snap) => {
+        ordersData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        calculateMetrics();
+      }, err => console.warn("[Dashboard] Orders manifest feed error:", err.message));
+
+      const unsubRevenue = onSnapshot(revenueQ, (snap) => {
+        revenueData = snap.docs.map(d => d.data());
+        calculateMetrics();
+      }, err => console.warn("[Dashboard] Revenue calculation stream error:", err.message));
 
       return () => {
-        unsubOrders();
-        unsubRevenue();
+        if (typeof unsubOrders === "function") unsubOrders();
+        if (typeof unsubRevenue === "function") unsubRevenue();
       };
-    }, [user?.uid, fetchDashboardMetrics])
+    }, [user?.uid, selectedDate, setActiveOrders, setDailySummary])
   );
 
   const statusConfig = {
-    online:  { label: "Go Offline",  colorKey: "success",  icon: "online",  nextState: "in_class" },
-    in_class: { label: "In Class →",  colorKey: "warning",  icon: "class",   nextState: "offline" },
-    offline: { label: "Go Online",  colorKey: "textSecondary", icon: "offline", nextState: "online" },
+    online:   { label: "Go Offline",  colorKey: "success",        nextState: "in_class" },
+    in_class: { label: "In Class →",  colorKey: "warning",         nextState: "offline" },
+    offline:  { label: "Go Online",   colorKey: "textSecondary",   nextState: "online" },
   };
 
   const toggleAvailabilityState = async () => {
-    const current = riderStatus;
-    const nextState = statusConfig[current]?.nextState || "online";
+    if (!user?.uid) return;
+    const nextState = statusConfig[riderStatus]?.nextState || "online";
     setSyncing(true);
 
     try {
       if (nextState === "online") {
         const trackingActive = await startTrackingEngine();
-        if (!trackingActive) {
-          setSyncing(false);
-          return;
-        }
+        if (!trackingActive) return;
       } else {
         await stopTrackingEngine();
       }
@@ -290,7 +231,7 @@ export default function DashboardScreen({ navigation }) {
       await riderStore.setRiderStatusInFirebase(user.uid, nextState);
       setRiderStatus(nextState);
     } catch (err) {
-      console.warn("[Dashboard] Presence sync pipeline failed:", err.message);
+      console.warn("[Dashboard] Availability execution pipeline failed:", err.message);
     } finally {
       setSyncing(false);
     }
@@ -494,8 +435,16 @@ export default function DashboardScreen({ navigation }) {
         onNavigateNotifications={() => navigation.navigate("Notifications")}
         onNavigateProfile={() => navigation.navigate("Profile")}
         weekStart={weekStart}
-        onMonthPrev={() => setWeekStart(p => new Date(p.setDate(p.getDate() - 7)))}
-        onMonthNext={() => setWeekStart(p => new Date(p.setDate(p.getDate() + 7)))}
+        onMonthPrev={() => setWeekStart(p => {
+          const prev = new Date(p);
+          prev.setDate(prev.getDate() - 7);
+          return prev;
+        })}
+        onMonthNext={() => setWeekStart(p => {
+          const next = new Date(p);
+          next.setDate(next.getDate() + 7);
+          return next;
+        })}
         calendarDays={calendarDays}
         selectedDayIndex={selectedDayIndex}
         onSelectDay={setSelectedDayIndex}

@@ -1,10 +1,10 @@
-import { getDocuments, upsertDocument } from "./db";
+import { getDocuments, upsertDocument, limit } from "./db";
 import { where } from "firebase/firestore";
 
 import { categorizeTransaction } from "./insightsService";
 
 export async function fetchActionPlans(userId) {
-  const data = await getDocuments("insight_actions", [where("rider_id", "==", userId)]);
+  const data = await getDocuments("insight_actions", [where("rider_id", "==", userId), limit(100)]);
   return data.sort((a, b) => (a.id || "").localeCompare(b.id || ""));
 }
 
@@ -52,12 +52,16 @@ export function generateActionPlans(data) {
 
 export async function generateAndStoreActionPlans(userId) {
   const [revenueResponse, manualEntriesResponse] = await Promise.all([
-    getDocuments("revenue", [where("rider_id", "==", userId)]),
-    getDocuments("manual_entries", [where("rider_id", "==", userId)]),
+    getDocuments("revenue", [where("rider_id", "==", userId), limit(100)]),
+    getDocuments("manual_entries", [where("rider_id", "==", userId), limit(100)]),
   ]);
 
   const deliveryEarnings = (revenueResponse || []).reduce((sum, r) => sum + Number(r.amount || 0), 0);
   const manualEntries = manualEntriesResponse || [];
+  const manualInflows = manualEntries
+    .filter((e) => e.type === "inflow")
+    .reduce((sum, e) => sum + Math.abs(Number(e.amount || 0)), 0);
+  const totalEarnings = deliveryEarnings + manualInflows;
 
   const entries = manualEntries.map((entry) => ({
     ...entry,
@@ -65,6 +69,11 @@ export async function generateAndStoreActionPlans(userId) {
   }));
 
   const outflowByCategory = { needs: 0, wants: 0, savings: 0 };
+  manualEntries
+    .filter((e) => e.type === "inflow" && e.category === "savings")
+    .forEach((entry) => {
+      outflowByCategory.savings += Math.abs(Number(entry.amount || 0));
+    });
   entries
     .filter((e) => e.type === "outflow")
     .forEach((entry) => {
@@ -80,11 +89,13 @@ export async function generateAndStoreActionPlans(userId) {
     });
 
   const input = {
-    totalEarnings: deliveryEarnings,
-    totalOutflows: Math.abs(manualEntries.reduce((sum, e) => sum + Number(e.amount || 0), 0)),
+    totalEarnings,
+    totalOutflows: manualEntries
+      .filter((e) => e.type === "outflow")
+      .reduce((sum, e) => sum + Math.abs(Number(e.amount || 0)), 0),
     outflowByCategory,
     completionRate: 85,
-    totalOrders: deliveryEarnings > 0 ? Math.floor(deliveryEarnings / 25) : 0,
+    totalOrders: totalEarnings > 0 ? Math.floor(totalEarnings / 25) : 0,
   };
 
   const plans = generateActionPlans(input);

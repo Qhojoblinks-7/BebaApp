@@ -1,4 +1,4 @@
-import { getDocuments, insertDocumentWithId, upsertDocument } from "./db";
+import { getDocuments, insertDocumentWithId, upsertDocument, limit } from "./db";
 import { where } from "firebase/firestore";
 import { getLocalDateBounds } from "./budgetService";
 
@@ -8,8 +8,8 @@ export async function syncBudgetAllocations(userId) {
   const { periodStart, periodEnd } = getLocalDateBounds();
 
   const [revenueRes, manualRes] = await Promise.all([
-    getDocuments("revenue", [where("rider_id", "==", userId)]),
-    getDocuments("manual_entries", [where("rider_id", "==", userId)]),
+    getDocuments("revenue", [where("rider_id", "==", userId), limit(100)]),
+    getDocuments("manual_entries", [where("rider_id", "==", userId), limit(100)]),
   ]);
 
   const deliveryEarnings = (revenueRes || []).reduce((sum, r) => sum + Number(r.amount || 0), 0);
@@ -21,6 +21,11 @@ export async function syncBudgetAllocations(userId) {
   if (totalEarnings <= 0) return;
 
   const spentAggregates = { needs: 0, wants: 0, savings: 0 };
+  (manualRes || [])
+    .filter((entry) => entry.type === "inflow" && entry.category === "savings")
+    .forEach((entry) => {
+      spentAggregates.savings += Math.abs(Number(entry.amount || 0));
+    });
   (manualRes || []).forEach((entry) => {
     if (entry.type === "outflow") {
       const amount = Math.abs(Number(entry.amount) || 0);
@@ -61,6 +66,7 @@ export async function syncInsightActions(userId) {
 
   const insights = await getDocuments("insights", [
     where("rider_id", "==", userId),
+    limit(100),
   ]);
 
   const recent = (insights || []).slice(0, 10);

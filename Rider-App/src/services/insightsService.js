@@ -1,4 +1,4 @@
-import { getDocuments, upsertDocument } from "./db";
+import { getDocuments, upsertDocument, limit } from "./db";
 import { where } from "firebase/firestore";
 import { getLocalDateBounds } from "./budgetService";
 
@@ -11,7 +11,7 @@ export function getInsightPeriodBounds() {
 }
 
 export async function fetchInsights(userId) {
-  const data = await getDocuments("insights", [where("rider_id", "==", userId)]);
+  const data = await getDocuments("insights", [where("rider_id", "==", userId), limit(100)]);
   return data.sort((a, b) => (b.computed_at || "").localeCompare(a.computed_at || ""));
 }
 
@@ -19,12 +19,13 @@ export async function fetchInsightsByCategory(userId, category) {
   const data = await getDocuments("insights", [
     where("rider_id", "==", userId),
     where("category", "==", category),
+    limit(100),
   ]);
   return data.sort((a, b) => (b.computed_at || "").localeCompare(a.computed_at || ""));
 }
 
 export async function fetchActionPlans(userId) {
-  const data = await getDocuments("insight_actions", [where("rider_id", "==", userId)]);
+  const data = await getDocuments("insight_actions", [where("rider_id", "==", userId), limit(100)]);
   return data.sort((a, b) => (a.id || "").localeCompare(b.id || ""));
 }
 
@@ -74,9 +75,9 @@ export function categorizeTransaction(description, amount, existingCategory) {
 
 export async function fetchAllHistoricalData(userId) {
   const [revenueResponse, manualEntriesResponse, ordersResponse] = await Promise.all([
-    getDocuments("revenue", [where("rider_id", "==", userId)]),
-    getDocuments("manual_entries", [where("rider_id", "==", userId)]),
-    getDocuments("orders", [where("rider_id", "==", userId)]),
+    getDocuments("revenue", [where("rider_id", "==", userId), limit(100)]),
+    getDocuments("manual_entries", [where("rider_id", "==", userId), limit(100)]),
+    getDocuments("orders", [where("rider_id", "==", userId), limit(100)]),
   ]);
 
   const entries = manualEntriesResponse || [];
@@ -185,8 +186,8 @@ export async function computeAndStoreInsights(userId) {
   const { conflictPeriodKey } = getInsightPeriodBounds();
 
   const [revenueResponse, manualEntriesResponse] = await Promise.all([
-    getDocuments("revenue", [where("rider_id", "==", userId)]),
-    getDocuments("manual_entries", [where("rider_id", "==", userId)]),
+    getDocuments("revenue", [where("rider_id", "==", userId), limit(100)]),
+    getDocuments("manual_entries", [where("rider_id", "==", userId), limit(100)]),
   ]);
 
   const deliveryEarnings = (revenueResponse || []).reduce((sum, r) => sum + Number(r.amount || 0), 0);
@@ -213,6 +214,11 @@ export async function computeAndStoreInsights(userId) {
   };
 
   const spentAggregates = { needs: 0, wants: 0, savings: 0 };
+  manualEntries
+    .filter((e) => e.type === "inflow" && e.category === "savings")
+    .forEach((entry) => {
+      spentAggregates.savings += Math.abs(Number(entry.amount || 0));
+    });
   enhancedEntries.forEach((entry) => {
     const amount = Number(entry.amount) || 0;
     if (entry.type === "outflow") {

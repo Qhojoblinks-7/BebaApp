@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, Platform } from "react-native";
 import { Layers, Shirt } from "lucide-react-native";
 import { useThemeStore } from "../../store/themeStore";
 import { useAuth } from "../../context/AuthContext";
-import { query, where, collection, onSnapshot } from "firebase/firestore";
+import { query, where, collection, onSnapshot, limit } from "firebase/firestore";
 import { db } from "../../services/firebaseConfig";
 
 const SELECTOR_TABS = [
@@ -50,7 +50,8 @@ export default function TabSelector({ activeTab = "deliveries", onTabChange }) {
     const deliveriesQuery = query(
       collection(db, "orders"),
       where("rider_id", "==", userId),
-      where("status", "in", ["assigned", "picked_up", "in_transit", "delivered"])
+      where("status", "in", ["assigned", "picked_up", "in_transit", "delivered"]),
+      limit(100)
     );
 
     const unsubDeliveries = onSnapshot(

@@ -5,6 +5,7 @@ import {
   deleteDocument,
   where,
   orderBy,
+  limit,
   collection,
 } from "./db";
 import { getDoc, doc } from "firebase/firestore";
@@ -26,6 +27,7 @@ export async function fetchBudgetBreakdownData(userId) {
     where("period_start", ">=", periodStart),
     where("period_end", "<=", periodEnd),
     orderBy("allocated_percent", "desc"),
+    limit(100),
   ]);
 
   if (!allocations || allocations.length === 0) return null;
@@ -80,6 +82,7 @@ export async function createOrUpdateBudgetAllocation({
   if (subItems && subItems.length > 0) {
     const existing = await getDocuments("budget_items", [
       where("allocation_id", "==", id),
+      limit(100),
     ]);
     for (const item of existing) {
       await deleteDocument("budget_items", item.id);
@@ -101,10 +104,11 @@ export async function createOrUpdateBudgetAllocation({
 }
 
 export async function getLiveBudgetWithExpenses(userId) {
-  const revenue = await getDocuments("revenue", [where("rider_id", "==", userId)]);
+  const revenue = await getDocuments("revenue", [where("rider_id", "==", userId), limit(100)]);
   const inflowEntries = await getDocuments("manual_entries", [
     where("rider_id", "==", userId),
     where("type", "==", "inflow"),
+    limit(100),
   ]);
 
   const deliveryEarnings = (revenue || []).reduce((sum, r) => sum + Number(r.amount || 0), 0);
@@ -116,6 +120,7 @@ export async function getLiveBudgetWithExpenses(userId) {
   const allocations = await getDocuments("budget_allocations", [
     where("rider_id", "==", userId),
     orderBy("allocated_percent", "desc"),
+    limit(100),
   ]);
 
   if (allocations && allocations.length > 0) {
@@ -145,9 +150,15 @@ export async function getLiveBudgetWithExpenses(userId) {
   const entries = await getDocuments("manual_entries", [
     where("rider_id", "==", userId),
     where("type", "==", "outflow"),
+    limit(100),
   ]);
 
   const spentAggregates = { needs: 0, wants: 0, savings: 0 };
+  (inflowEntries || [])
+    .filter((entry) => entry.category === "savings")
+    .forEach((entry) => {
+      spentAggregates.savings += Math.abs(Number(entry.amount || 0));
+    });
   entries.forEach((entry) => {
     const amount = Math.abs(Number(entry.amount || 0));
     const cat = entry.category;

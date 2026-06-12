@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Zap, MessageSquare } from "lucide-react-native";
 import { useThemeStore } from "../../store/themeStore";
 import { useAuth } from "../../context/AuthContext";
-import { getDocs, query, where, collection } from "firebase/firestore";
+import { getDocs, query, where, collection, onSnapshot, limit } from "firebase/firestore";
 import { db } from "../../services/firebaseConfig";
 
 function MetricRow({ value, unit, target, targetValue, isLast, colors }) {
@@ -49,7 +49,8 @@ export default function DailySummaryCard({
       collection(db, "orders"),
       where("rider_id", "==", uid),
       where("created_at", ">=", startOfDay),
-      where("created_at", "<", endOfDay)
+      where("created_at", "<", endOfDay),
+      limit(100)
     );
 
     const unsubOrders = onSnapshot(
@@ -72,7 +73,8 @@ export default function DailySummaryCard({
           collection(db, "revenue"),
           where("rider_id", "==", uid),
           where("order_completed_at", ">=", startOfDay),
-          where("order_completed_at", "<", endOfDay)
+          where("order_completed_at", "<", endOfDay),
+          limit(100)
         );
 
         const unsubRevenue = onSnapshot(

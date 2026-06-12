@@ -8,12 +8,10 @@ import {
   StatusBar,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Package, RefreshCw } from "lucide-react-native";
-import { updateDoc, doc } from "firebase/firestore";
+import { Package } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
 import useOrderStore from "../../store/orderStore";
-import { db } from "../../services/firebaseConfig";
 import RiderOrderCard from "../../components/rider/RiderOrderCard";
 import DeliveryDetailsBottomSheet from "../../components/rider/DeliveryDetailsBottomSheet";
 
@@ -22,57 +20,54 @@ export default function ActiveDeliveryScreen({ navigation }) {
   const { colors, isDarkMode } = useThemeStore();
   const insets = useSafeAreaInsets();
 
-  const orderStore = useOrderStore();
-  const itinerary = orderStore.activeOrders;
-  const fetchActiveOrders = orderStore.fetchActiveOrders;
+  // 🔑 FIX 1: Extract real-time reactive slices and status mutators
+  const itinerary = useOrderStore((state) => state.activeOrders);
+  const subscribeToActiveOrders = useOrderStore((state) => state.subscribeToActiveOrders);
+  const advanceOrderStatus = useOrderStore((state) => state.advanceOrderStatus);
+  const cleanListener = useOrderStore((state) => state.cleanListener);
 
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
 
-  const fetchActiveItinerary = async (isRefreshing = false) => {
-    if (isRefreshing) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-
-    try {
-      await fetchActiveOrders(user?.uid);
-    } catch (err) {
-      console.warn("[ActiveDelivery] Itinerary retrieval failed:", err.message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
+  // 🔑 FIX 2: Hook directly into the reactive streaming pipe
   useEffect(() => {
-    if (user?.uid) {
-      fetchActiveItinerary();
+    if (!user || !user.uid) {
+      setLoading(false);
+      return;
     }
-  }, [user?.uid, fetchActiveOrders]);
 
+    setLoading(true);
+    // Open the persistent real-time channel
+    const unsubscribe = subscribeToActiveOrders(user.uid);
+    setLoading(false);
+
+    // Clean up the subscription cleanly when leaving the screen
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+      cleanListener("active");
+    };
+  }, [user?.uid, subscribeToActiveOrders, cleanListener]);
+
+  // 🔑 FIX 3: Delegate state changes directly to the store's optimistic action handler
   const advanceStatus = async (item) => {
-    try {
-      if (item.status === "assigned") {
-        await updateDoc(doc(db, "orders", item.id), {
-          status: "picked_up",
-          updated_at: new Date().toISOString(),
-        });
-      } else if (item.status === "picked_up") {
-        await updateDoc(doc(db, "orders", item.id), {
-          status: "in_transit",
-          updated_at: new Date().toISOString(),
-        });
-      } else if (item.status === "in_transit") {
-        navigation.navigate("DeliveryClosure", { orderId: item.id });
-        return;
-      }
-      await fetchActiveItinerary();
-    } catch (err) {
-      console.warn("[ActiveDelivery] Status progression failed:", err.message);
+    if (!item) return;
+
+    // Route transitions handle navigation layout steps immediately
+    if (item.status === "in_transit") {
+      navigation.navigate("DeliveryClosure", { orderId: item.id });
+      return;
     }
+
+    const nextStatusMap = {
+      assigned: "picked_up",
+      picked_up: "in_transit",
+    };
+
+    const nextStatus = nextStatusMap[item.status];
+    if (!nextStatus) return;
+
+    // The store takes care of instant UI shifts, server writes, and rollback safeties
+    await advanceOrderStatus(item.id, nextStatus);
   };
 
   const ui = {
@@ -116,7 +111,6 @@ export default function ActiveDeliveryScreen({ navigation }) {
       paddingTop: 16,
       paddingBottom: Platform.OS === "ios" ? 100 + insets.bottom : 112,
     },
-
     feedbackStateFrame: {
       flex: 1,
       justifyContent: "center",
@@ -168,35 +162,14 @@ export default function ActiveDeliveryScreen({ navigation }) {
         </Text>
       </View>
 
-      {loading && !refreshing ? (
+      {loading ? (
         <View style={ui.feedbackStateFrame}>
           <ActivityIndicator size="small" color={colors.primary} style={ui.loaderElement} />
         </View>
-      ) : itinerary.length === 0 ? (
-        <FlatList
-          data={[]}
-          renderItem={null}
-          onRefresh={() => fetchActiveItinerary(true)}
-          refreshing={refreshing}
-          contentContainerStyle={{ flexGrow: 1 }}
-          ListEmptyComponent={
-            <View style={ui.feedbackStateFrame}>
-              <View style={ui.emptyStateIconBox}>
-                <Package size={28} color={colors.textMuted} />
-              </View>
-              <Text style={ui.emptyStateTitle}>No Active Shipments</Text>
-              <Text style={ui.emptyStateSubtext}>
-                Pull down on the display to scan the repository for newly assigned runs.
-              </Text>
-            </View>
-          }
-        />
       ) : (
         <FlatList
           data={itinerary}
           keyExtractor={(item) => item.id}
-          onRefresh={() => fetchActiveItinerary(true)}
-          refreshing={refreshing}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={ui.listLayout}
           renderItem={({ item }) => (
@@ -205,6 +178,17 @@ export default function ActiveDeliveryScreen({ navigation }) {
               onPress={(order) => setSelectedOrder(order)}
             />
           )}
+          ListEmptyComponent={
+            <View style={ui.feedbackStateFrame}>
+              <View style={ui.emptyStateIconBox}>
+                <Package size={28} color={colors.textMuted} />
+              </View>
+              <Text style={ui.emptyStateTitle}>No Active Shipments</Text>
+              <Text style={ui.emptyStateSubtext}>
+                When jobs are accepted or assigned from the marketplace, they will stream directly into this layout tab.
+              </Text>
+            </View>
+          }
         />
       )}
 

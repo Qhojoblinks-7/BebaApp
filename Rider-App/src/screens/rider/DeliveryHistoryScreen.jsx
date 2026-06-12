@@ -11,7 +11,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowLeft, ClipboardList, Clock, MapPin, ChevronRight, TrendingUp } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
-import { getDocs, query, where, collection, doc, getDoc } from "firebase/firestore";
+import { getDocs, query, where, collection, doc, getDoc, limit } from "firebase/firestore";
 import { db } from "../../services/firebaseConfig";
 import { useThemeStore } from "../../store/themeStore";
 
@@ -36,7 +36,8 @@ export default function DeliveryHistoryScreen({ navigation }) {
     try {
       const q = query(
         collection(db, "revenue"),
-        where("rider_id", "==", user?.uid)
+        where("rider_id", "==", user?.uid),
+        limit(100)
       );
       const snap = await getDocs(q);
       const revenueDocs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));

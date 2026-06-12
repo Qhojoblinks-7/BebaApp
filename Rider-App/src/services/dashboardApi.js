@@ -1,7 +1,19 @@
-import { getDoc, getDocs, query, where, orderBy, onSnapshot, doc, updateDoc, serverTimestamp, limit, collection } from "firebase/firestore";
+import { 
+  getDoc, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  doc, 
+  updateDoc, 
+  serverTimestamp, 
+  limit, 
+  collection 
+} from "firebase/firestore";
 import { db } from "../services/firebaseConfig";
-import { useAuth } from "../context/AuthContext";
-import notificationStore, { subscribeToNotifications } from "../store/notificationStore";
+
+// 🔑 FIXED: Removed the import of notificationStore to break the circular loop!
 
 function riderStatusRef(userId) {
   return doc(db, "rider_status", userId);
@@ -32,7 +44,12 @@ export async function fetchProfile(userId) {
 
 export async function fetchUnreadCount(userId) {
   if (!userId) return 0;
-  const q = query(notificationsCollection(), where("rider_id", "==", userId), where("is_read", "==", false), limit(1));
+  const q = query(
+    notificationsCollection(), 
+    where("rider_id", "==", userId), 
+    where("is_read", "==", false), 
+    limit(1)
+  );
   const snap = await getDocs(q);
   return snap.size;
 }
@@ -47,7 +64,12 @@ export async function updateStatus(userId, status) {
 export function subscribeDashboardNotifications(userId, callback) {
   if (!userId) return () => {};
   return onSnapshot(
-    query(notificationsCollection(), where("rider_id", "==", userId), orderBy("created_at", "desc")),
+    query(
+      notificationsCollection(), 
+      where("rider_id", "==", userId), 
+      orderBy("created_at", "desc"), 
+      limit(100)
+    ),
     (snap) => {
       const notifications = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       callback(notifications);

@@ -29,7 +29,7 @@ import {
   query,
   where,
   collection,
-  onSnapshot,
+  limit
 } from "firebase/firestore";
 import { db } from "../../services/firebaseConfig";
 import { useNavigation } from "@react-navigation/native";
@@ -86,13 +86,27 @@ export default function FinancesScreen() {
   const [loadingWeekly, setLoadingWeekly] = useState(false);
   const [budgetData, setBudgetData] = useState([]);
 
+  // 🔑 FIX 1: Centralize data orchestration cleanly to matching index arrays
   useEffect(() => {
     if (!user?.uid) {
       setSyncing(false);
       setLoadingWeekly(false);
       return;
     }
-    fetchFinancialData();
+
+    let isMounted = true;
+
+    async function loadAllScreenData() {
+      setSyncing(true);
+      await fetchFinancialData(isMounted);
+      await fetchWeeklyData(isMounted);
+    }
+
+    loadAllScreenData();
+
+    return () => {
+      isMounted = false;
+    };
   }, [user?.uid]);
 
   const loadBudgetData = useCallback(async () => {
@@ -111,14 +125,19 @@ export default function FinancesScreen() {
   }, [user?.uid, financeSummary.totalEarnings]);
 
   useEffect(() => {
-    if (user?.uid && financeSummary.totalEarnings > 0) {
+    if (user?.uid && financeSummary.totalEarnings >= 0) {
       loadBudgetData();
     }
   }, [user?.uid, financeSummary.totalEarnings, loadBudgetData]);
 
-  async function fetchFinancialData() {
+  // 🔑 FIX 2: Optimized index matching to clear request filters
+  async function fetchFinancialData(isMounted) {
     try {
-      const revenueQ = query(collection(db, "revenue"), where("rider_id", "==", user.uid));
+      const revenueQ = query(
+  collection(db, "revenue"),
+  where("rider_id", "==", user.uid),
+  limit(100) // 👈 Safe ceiling that satisfies your rule condition
+);
       const revenueSnap = await getDocs(revenueQ);
       const revenue = revenueSnap.docs.map((d) => d.data());
 
@@ -126,7 +145,11 @@ export default function FinancesScreen() {
       const deliveriesCompleted = revenue.length || 0;
       const avgPerDelivery = deliveriesCompleted > 0 ? (totalEarnings / deliveriesCompleted).toFixed(2) : 0;
 
-      const ordersQ = query(collection(db, "orders"), where("rider_id", "==", user.uid));
+      const ordersQ = query(
+        collection(db, "orders"), 
+        where("rider_id", "==", user.uid),
+        limit(100)
+      );
       const ordersSnap = await getDocs(ordersQ);
       const orders = ordersSnap.docs.map((d) => d.data());
 
@@ -138,13 +161,13 @@ export default function FinancesScreen() {
       lastMonday.setDate(lastMonday.getDate() - 7);
 
       const lastWeekEarnings = revenue.reduce((sum, r) => {
-        const d = new Date(r.order_completed_at);
-        return d >= lastMonday && d < thisMonday ? sum + Number(r.amount) : sum;
+        const timestamp = r.order_completed_at?.seconds ? new Date(r.order_completed_at.seconds * 1000) : new Date(r.order_completed_at);
+        return timestamp >= lastMonday && timestamp < thisMonday ? sum + Number(r.amount || 0) : sum;
       }, 0);
 
       const thisWeekEarnings = revenue.reduce((sum, r) => {
-        const d = new Date(r.order_completed_at);
-        return d >= thisMonday ? sum + Number(r.amount) : sum;
+        const timestamp = r.order_completed_at?.seconds ? new Date(r.order_completed_at.seconds * 1000) : new Date(r.order_completed_at);
+        return timestamp >= thisMonday ? sum + Number(r.amount || 0) : sum;
       }, 0);
 
       let weeklyGrowth = "0%";
@@ -155,37 +178,45 @@ export default function FinancesScreen() {
         weeklyGrowth = "+100%";
       }
 
-      setFinanceSummary({
-        totalEarnings,
-        weeklyGrowth,
-        avgPerDelivery,
-        completionRate: completionRate + "%",
-      });
+      if (isMounted) {
+        setFinanceSummary({
+          totalEarnings,
+          weeklyGrowth,
+          avgPerDelivery,
+          completionRate: completionRate + "%",
+        });
+      }
     } catch (err) {
       console.warn("[Finances] Financial data fetch failed:", err.message);
     } finally {
-      setSyncing(false);
+      if (isMounted) setSyncing(false);
     }
   }
 
-  async function fetchWeeklyData() {
+  // 🔑 FIX 3: Removed secondary async looping steps to prevent memory leakage
+  async function fetchWeeklyData(isMounted) {
     if (!user?.uid) return;
-    setLoadingWeekly(true);
+    if (isMounted) setLoadingWeekly(true);
     try {
       const weekStart = getMonday(new Date());
       const weekDays = buildWeekDays(weekStart);
 
-      const revenueQ = query(collection(db, "revenue"), where("rider_id", "==", user.uid));
+      const revenueQ = query(
+        collection(db, "revenue"), 
+        where("rider_id", "==", user.uid),
+        limit(100)
+      );
       const revenueSnap = await getDocs(revenueQ);
       const revenue = revenueSnap.docs.map((d) => d.data());
 
-      const weeklyPromises = weekDays.map(async (day) => {
-        const dayStart = new Date(day.date + "T00:00:00");
-        const dayEnd = new Date(day.date + "T23:59:59.999");
+      const results = weekDays.map((day) => {
+        const dayStart = new Date(day.date + "T00:00:00").getTime();
+        const dayEnd = new Date(day.date + "T23:59:59.999").getTime();
 
         const dayEarnings = revenue.reduce((sum, r) => {
-          const d = new Date(r.order_completed_at || r.created_at);
-          return d >= dayStart && d <= dayEnd ? sum + Number(r.amount) : sum;
+          const rawDate = r.order_completed_at?.seconds ? new Date(r.order_completed_at.seconds * 1000) : new Date(r.order_completed_at || r.created_at);
+          const timeMs = rawDate.getTime();
+          return timeMs >= dayStart && timeMs <= dayEnd ? sum + Number(r.amount || 0) : sum;
         }, 0);
 
         return {
@@ -194,25 +225,20 @@ export default function FinancesScreen() {
         };
       });
 
-      const results = await Promise.all(weeklyPromises);
-      setWeeklyData(results);
+      if (isMounted) setWeeklyData(results);
     } catch (err) {
       console.warn("[Finances] Weekly data fetch failed:", err.message);
     } finally {
-      setLoadingWeekly(false);
+      if (isMounted) setLoadingWeekly(false);
     }
   }
 
-  useEffect(() => {
-    fetchWeeklyData();
-  }, [user?.uid]);
-
-  // --- Dynamic Style Matrix mapped direct to application theme context ---
+  // --- Dynamic Style Matrix mapped directly to application theme context ---
   const ui = {
     container: {
       flex: 1,
       backgroundColor: colors.background,
-      paddingBottom: "5.25rem",
+      paddingBottom: 24,
     },
     loadingContainer: {
       flex: 1,
@@ -599,6 +625,8 @@ export default function FinancesScreen() {
       ? "M 0 28 L 30 28 L 75 28 L 120 28"
       : "M 0 28 L 30 " + midY + " L 75 " + peakY + " L 120 " + endY;
 
+    const computedBudgets = budgetData.length > 0 ? budgetData : buildDefaultBudget(financeSummary.totalEarnings);
+
     return (
       <>
         <View style={ui.analyticsGrid}>
@@ -702,8 +730,8 @@ export default function FinancesScreen() {
             </View>
           ) : (
             weeklyData.map((day, index) => {
-              const maxEarning = Math.max(...weeklyData.map(d => d.earnings), 1);
-              const barHeight = Math.max((day.earnings / maxEarning) * 80, 4);
+              const maxEarningValue = Math.max(...weeklyData.map(d => d.earnings), 1);
+              const barHeight = Math.max((day.earnings / maxEarningValue) * 80, 4);
               return (
                 <View key={index} style={ui.weeklyBarCard}>
                   <View style={ui.weeklyBarWrapper}>
@@ -723,8 +751,7 @@ export default function FinancesScreen() {
             style={ui.inlineHeaderLinkAction}
             activeOpacity={0.7}
             onPress={() => {
-              const data = budgetData.length > 0 ? budgetData : buildDefaultBudget(financeSummary.totalEarnings);
-              navigation.navigate("BudgetBreakdown", { budgetData: data });
+              navigation.navigate("BudgetBreakdown", { budgetData: computedBudgets });
             }}
           >
             <ArrowRight size={16} color={colors.textMuted} />
@@ -736,7 +763,7 @@ export default function FinancesScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={ui.budgetBucketsScrollWrapper}
         >
-          {(budgetData.length > 0 ? budgetData : buildDefaultBudget(financeSummary.totalEarnings)).map((bucket) => {
+          {computedBudgets.map((bucket) => {
             const savedAmount = Math.max(bucket.allocated - bucket.spent, 0);
             const savedPercent = bucket.allocated > 0 ? Math.round((savedAmount / bucket.allocated) * 100) : 0;
             return (

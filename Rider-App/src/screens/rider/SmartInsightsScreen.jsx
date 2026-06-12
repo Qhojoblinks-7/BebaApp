@@ -20,7 +20,7 @@ import {
   Check,
 } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
-import { getDocuments, where } from "../../services/db";
+import { getDocuments, where, limit } from "../../services/db";
 import { fetchInsights, fetchActionPlans } from "../../services/insightsService";
 import { getLocalDateBounds } from "../../services/budgetService";
 import { useFocusEffect } from "@react-navigation/native";
@@ -44,8 +44,8 @@ export default function SmartInsightsScreen({ navigation }) {
     setLoading(true);
     try {
       const [revenueResult, manualResult, insightsData, actionsData] = await Promise.all([
-        getDocuments("revenue", [where("rider_id", "==", user.uid)]),
-        getDocuments("manual_entries", [where("rider_id", "==", user.uid)]),
+        getDocuments("revenue", [where("rider_id", "==", user.uid), limit(100)]),
+        getDocuments("manual_entries", [where("rider_id", "==", user.uid), limit(100)]),
         fetchInsights(user.uid),
         fetchActionPlans(user.uid),
       ]);

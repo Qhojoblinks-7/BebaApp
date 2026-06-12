@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, Platform } from "react-native";
 import { FileDown, Clock, PackageCheck, FileX2 } from "lucide-react-native";
 import { useThemeStore } from "../../store/themeStore";
 import { useAuth } from "../../context/AuthContext";
-import { query, where, collection, onSnapshot } from "firebase/firestore";
+import { query, where, collection, onSnapshot, limit } from "firebase/firestore";
 import { db } from "../../services/firebaseConfig";
 
 const TABS = [
@@ -35,25 +35,29 @@ export default function RiderTabBar({ activeTab = "requests", onTabChange }) {
     const requestsQuery = query(
       collection(db, "orders"),
       where("rider_id", "==", userId),
-      where("status", "==", "assigned")
+      where("status", "==", "assigned"),
+      limit(100)
     );
 
     const activeQuery = query(
       collection(db, "orders"),
       where("rider_id", "==", userId),
-      where("status", "in", ["picked_up", "in_transit"])
+      where("status", "in", ["picked_up", "in_transit"]),
+      limit(100)
     );
 
     const completedQuery = query(
       collection(db, "orders"),
       where("rider_id", "==", userId),
-      where("status", "==", "delivered")
+      where("status", "==", "delivered"),
+      limit(100)
     );
 
     const cancelledQuery = query(
       collection(db, "orders"),
       where("rider_id", "==", userId),
-      where("status", "==", "cancelled")
+      where("status", "==", "cancelled"),
+      limit(100)
     );
 
     const listen = (q, key) => {

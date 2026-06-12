@@ -16,6 +16,16 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebaseConfig";
 
+function createDocumentId() {
+  const timestamp = new Date().getTime().toString(36);
+  const randomPart = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  return `${timestamp}_${randomPart}`;
+}
+
+function isPermissionDeniedError(err) {
+  return err?.code === "permission-denied" || (err?.message || "").includes("Missing or insufficient permissions");
+}
+
 export async function getDocument(collectionPath, id) {
   const snap = await getDoc(doc(db, collectionPath, id));
   if (!snap.exists()) return null;
@@ -29,7 +39,7 @@ export async function getDocuments(collectionPath, constraints = []) {
 }
 
 export async function insertDocument(collectionPath, data) {
-  const docId = data.id || crypto.randomUUID();
+  const docId = data.id || createDocumentId();
   const payload = { ...data, id: docId };
   delete payload.id;
   const ref = doc(db, collectionPath, docId);
@@ -53,7 +63,17 @@ export async function updateDocument(collectionPath, id, data) {
 }
 
 export async function upsertDocument(collectionPath, id, data) {
-  const existing = await getDoc(doc(db, collectionPath, id));
+  const ref = doc(db, collectionPath, id);
+  let existing;
+  try {
+    existing = await getDoc(ref);
+  } catch (err) {
+    if (isPermissionDeniedError(err)) {
+      return insertDocumentWithId(collectionPath, id, data);
+    }
+    throw err;
+  }
+
   if (existing.exists()) {
     return updateDocument(collectionPath, id, data);
   }

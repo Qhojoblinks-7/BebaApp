@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -9,14 +9,14 @@ import {
   ActivityIndicator,
   StatusBar,
   Platform,
-  Alert, // FIX: Imported native Alert engine interface
+  Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
 import useOrderStore, { GEOFENCE_ZONES } from "../../store/orderStore";
 import notificationService from "../../services/notificationService";
-import { onSnapshot, collection, query, where, limit, getDocs, updateDoc, doc } from "firebase/firestore";
+import { updateDoc, doc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../services/firebaseConfig";
 import { Package, Layers } from "lucide-react-native";
 import RiderOrderCard from "../../components/rider/RiderOrderCard";
@@ -27,47 +27,40 @@ export default function JobQueueScreen({ navigation }) {
   const { colors } = useThemeStore();
   const insets = useSafeAreaInsets();
 
-  const orderStore = useOrderStore();
-  const pendingOrders = orderStore.pendingOrders;
-  const fetchPendingOrders = orderStore.fetchPendingOrders;
+  // 🔑 FIX 1: Extract upgraded real-time streaming tools
+  const pendingOrders = useOrderStore((state) => state.pendingOrders);
+  const activeOrders = useOrderStore((state) => state.activeOrders);
+  const subscribeToPendingOrders = useOrderStore((state) => state.subscribeToPendingOrders);
+  const cleanListener = useOrderStore((state) => state.cleanListener);
 
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
-  const fetchTimerRef = useRef(null);
 
-  // FIX: Safety check mapping to correct Firebase Auth token unique uid string
   const userId = user?.uid;
 
-  const fetchAvailable = useCallback(async () => {
-    if (fetchTimerRef.current) return;
-    fetchTimerRef.current = setTimeout(() => {
-      fetchTimerRef.current = null;
-    }, 800);
-    
-    try {
-      setLoading(true);
-      await fetchPendingOrders();
-    } catch (err) {
-      console.error("[JobQueue] Fetch failed:", err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [fetchPendingOrders]);
-
+  // 🔑 FIX 2: Hook cleanly into your unified reactive stream listener
   useEffect(() => {
-    if (!userId) return;
-    setLoading(true);
-    fetchPendingOrders().finally(() => setLoading(false));
-  }, [userId, fetchPendingOrders]);
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
 
+    setLoading(true);
+    const unsubscribe = subscribeToPendingOrders();
+    setLoading(false);
+
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+      cleanListener("pending");
+    };
+  }, [userId, subscribeToPendingOrders, cleanListener]);
+
+  // Native notification registration
   useEffect(() => {
     notificationService.setupHandler();
     notificationService.ensureChannel();
   }, []);
 
-  // Sync real-time notification streams independently from data fetching hooks
   useEffect(() => {
     if (!userId) return;
 
@@ -86,6 +79,7 @@ export default function JobQueueScreen({ navigation }) {
 
   const generateDeliveryPin = () => Math.floor(1000 + Math.random() * 9000).toString();
 
+  // Parse dynamically available zones
   const zones = GEOFENCE_ZONES.filter((z) =>
     pendingOrders.some((o) => o.zone === z)
   );
@@ -130,11 +124,7 @@ export default function JobQueueScreen({ navigation }) {
         contentContainerStyle={{ padding: 16, paddingBottom: zones.length > 0 ? 140 : 40 }}
         data={pendingOrders}
         keyExtractor={(item) => item.id}
-        onRefresh={() => {
-          setRefreshing(true);
-          fetchAvailable();
-        }}
-        refreshing={refreshing}
+        showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Package size={32} color={colors.textSecondary} />
@@ -169,7 +159,7 @@ export default function JobQueueScreen({ navigation }) {
           }
         ]}>
           <Text style={[styles.batchClaimText, { color: colors.textSecondary }]}>
-            Tap a zone to claim dispatches in that area:
+            Tap a zone to inspect dispatches in that area:
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
             {zones.map((zone) => {
@@ -223,33 +213,30 @@ export default function JobQueueScreen({ navigation }) {
           }
 
           try {
+            setSelectedOrder(null);
             setLoading(true);
-            const updates = { status: nextStatus, updated_at: new Date().toISOString() };
+
+            const updates = { 
+              status: nextStatus, 
+              updated_at: serverTimestamp() 
+            };
 
             if (nextStatus === "assigned") {
-              const deliveryPin = generateDeliveryPin();
-              // FIX: Point queries at accurate uid keys safely
-              const q = query(
-                collection(db, "orders"), 
-                where("rider_id", "==", userId), 
-                where("status", "in", ["assigned", "picked_up", "in_transit"])
-              );
-              const snap = await getDocs(q);
-              const seq = snap.size + 1;
+              // 🔑 FIX 3: Calculate the route sequence locally from your reactive activeOrders state slice
+              // This removes the slow, un-indexed Firestore getDocs() query roundtrip
+              const currentActiveRouteCount = activeOrders.length;
+              
               updates.rider_id = userId;
-              updates.route_sequence = seq;
-              updates.delivery_pin = deliveryPin;
+              updates.route_sequence = currentActiveRouteCount + 1;
+              updates.delivery_pin = generateDeliveryPin();
             }
 
             await updateDoc(doc(db, "orders", order.id), updates);
-            fetchAvailable();
           } catch (err) {
-            console.error(`[JobQueue] Status advance error for ${order.orderId || order.id}:`, err);
-            // FIX: Uses safe native Alert module diagnostics wrapper layouts
+            console.error(`[JobQueue] Status advance error for ${order.id}:`, err);
             Alert.alert("Status Error", `Failed to update order status: ${err.message}`);
           } finally {
             setLoading(false);
-            setSelectedOrder(null);
           }
         }}
       />

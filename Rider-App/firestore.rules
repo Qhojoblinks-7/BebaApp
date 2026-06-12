@@ -1,126 +1,154 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function hasLimit(maxLimit) {
+      return !('limit' in request.query) || request.query.limit <= maxLimit;
+    }
+
+    function canListRiderOwned() {
+      return isSignedIn() && hasLimit(100);
+    }
+
+    function isFieldUnchanged(key) {
+      return !(key in request.resource.data) || request.resource.data[key] == resource.data[key];
+    }
+
+    function isRiderOwned(riderIdField) {
+      return isSignedIn() && resource.data[riderIdField] == request.auth.uid;
+    }
+
+    function isRiderOwnedRequest(riderIdField) {
+      return isSignedIn() && request.resource.data[riderIdField] == request.auth.uid;
+    }
+
     match /users/{userId} {
-      allow get: if request.auth != null && request.auth.uid == userId;
-      allow list: if request.auth != null;
-      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+      allow get, create, update, delete: if isOwner(userId);
+      allow list: if isOwner(userId);
 
       match /promotion_and_referrals/{recordId} {
-        allow get: if request.auth != null && request.auth.uid == userId;
-        allow list: if request.auth != null && request.auth.uid == userId;
-        allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if isOwner(userId);
       }
     }
 
     match /rider_status/{riderId} {
-      allow get, list: if true;
-      allow create: if request.auth != null && request.auth.uid == riderId;
-      allow update, delete: if request.auth != null && request.auth.uid == riderId;
+      allow get: if true;
+      allow list: if false;
+      allow create, update, delete: if isOwner(riderId);
     }
 
     match /rider_push_tokens/{riderId} {
-      allow get, list, create, update, delete: if request.auth != null && request.auth.uid == riderId;
+      allow read, write: if isOwner(riderId);
     }
 
     match /rider_locations/{locationId} {
-      allow get: if request.auth != null;
-      allow list: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.rider_id == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.rider_id == request.auth.uid;
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.rider_id == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.rider_id == request.auth.uid && isFieldUnchanged('rider_id');
+      allow delete: if isSignedIn() && resource.data.rider_id == request.auth.uid;
     }
 
     match /rider_preferences/{riderId} {
-      allow get: if request.auth != null && request.auth.uid == riderId;
-      allow list: if request.auth != null;
-      allow create, update, delete: if request.auth != null && request.auth.uid == riderId;
+      allow get, create, update, delete: if isOwner(riderId);
+      allow list: if isOwner(riderId);
     }
 
     match /privacy_security_settings/{riderId} {
-      allow get: if request.auth != null && request.auth.uid == riderId;
-      allow list: if request.auth != null;
-      allow create, update, delete: if request.auth != null && request.auth.uid == riderId;
+      allow get, create, update, delete: if isOwner(riderId);
+      allow list: if isOwner(riderId);
     }
 
     match /notification_settings/{riderId} {
-      allow get: if request.auth != null && request.auth.uid == riderId;
-      allow list: if request.auth != null;
-      allow create, update, delete: if request.auth != null && request.auth.uid == riderId;
+      allow get, create, update, delete: if isOwner(riderId);
+      allow list: if isOwner(riderId);
     }
 
     match /orders/{orderId} {
-      allow get: if true;
-      allow list: if true;
-      allow create: if true;
-      allow update: if request.auth != null
-        && (resource.data.rider_id == request.auth.uid
-            || request.resource.data.rider_id == request.auth.uid);
+      allow get: if isSignedIn() && (resource.data.rider_id == request.auth.uid || resource.data.rider_id == null);
+      allow create: if isSignedIn();
+      allow list: if isSignedIn() && hasLimit(100);
+      allow update: if isSignedIn()
+                    && (resource.data.rider_id == request.auth.uid || resource.data.rider_id == null)
+                    && (resource.data.rider_id == null || isFieldUnchanged('rider_id'));
       allow delete: if false;
     }
 
     match /notifications/{notifId} {
-      allow get: if request.auth != null && resource.data.rider_id == request.auth.uid;
-      allow list: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.rider_id;
-      allow update, delete: if request.auth != null && request.auth.uid == notifId;
+      allow get: if isRiderOwned('rider_id');
+      allow list: if canListRiderOwned();
+      allow create: if isRiderOwnedRequest('rider_id');
+      allow update: if isRiderOwned('rider_id') && isFieldUnchanged('rider_id');
+      allow delete: if isRiderOwned('rider_id');
     }
 
     match /revenue/{revId} {
-      allow get: if request.auth != null && resource.data.rider_id == request.auth.uid;
-      allow list: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.rider_id;
-      allow update, delete: if request.auth != null && request.auth.uid == revId;
+      allow get: if isRiderOwned('rider_id');
+      allow list: if canListRiderOwned();
+      allow create: if isRiderOwnedRequest('rider_id');
+      allow update: if isRiderOwned('rider_id') && isFieldUnchanged('rider_id');
+      allow delete: if isRiderOwned('rider_id');
     }
 
     match /manual_entries/{entryId} {
-      allow get: if request.auth != null && resource.data.rider_id == request.auth.uid;
-      allow list: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.rider_id == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.rider_id == request.auth.uid;
+      allow get: if isRiderOwned('rider_id');
+      allow list: if canListRiderOwned();
+      allow create: if isRiderOwnedRequest('rider_id');
+      allow update: if isRiderOwned('rider_id') && isFieldUnchanged('rider_id');
+      allow delete: if isRiderOwned('rider_id');
     }
 
     match /budget_allocations/{allocId} {
-      allow get: if request.auth != null && resource.data.rider_id == request.auth.uid;
-      allow list: if request.auth != null;
-      allow create, update: if request.auth != null && request.resource.data.rider_id == request.auth.uid;
-      allow delete: if request.auth != null && resource.data.rider_id == request.auth.uid;
+      allow get: if isRiderOwned('rider_id');
+      allow list: if canListRiderOwned();
+      allow create: if isRiderOwnedRequest('rider_id');
+      allow update: if isRiderOwned('rider_id') && isFieldUnchanged('rider_id');
+      allow delete: if isRiderOwned('rider_id');
     }
 
     match /budget_items/{itemId} {
-      allow get: if request.auth != null;
-      allow list: if request.auth != null;
-      allow create, update, delete: if request.auth != null;
+      allow read: if isSignedIn();
+      allow write: if false;
     }
 
     match /insights/{insightId} {
-      allow get: if request.auth != null && resource.data.rider_id == request.auth.uid;
-      allow list: if request.auth != null;
-      allow create, update, delete: if request.auth != null && request.resource.data.rider_id == request.auth.uid;
+      allow get: if isRiderOwned('rider_id');
+      allow list: if canListRiderOwned();
+      allow create: if isRiderOwnedRequest('rider_id');
+      allow update: if isRiderOwned('rider_id') && isFieldUnchanged('rider_id');
+      allow delete: if isRiderOwned('rider_id');
     }
 
     match /insight_actions/{actionId} {
-      allow get: if request.auth != null && resource.data.rider_id == request.auth.uid;
-      allow list: if request.auth != null;
-      allow create, update, delete: if request.auth != null && request.resource.data.rider_id == request.auth.uid;
+      allow get: if isRiderOwned('rider_id');
+      allow list: if canListRiderOwned();
+      allow create: if isRiderOwnedRequest('rider_id');
+      allow update: if isRiderOwned('rider_id') && isFieldUnchanged('rider_id');
+      allow delete: if isRiderOwned('rider_id');
     }
 
     match /batches/{batchId} {
-      allow get: if request.auth != null;
-      allow list: if request.auth != null;
-      allow create, update, delete: if false;
+      allow read: if isSignedIn();
+      allow write: if false;
     }
 
     match /wallets/{walletId} {
-      allow get: if request.auth != null && request.auth.uid == walletId;
-      allow list: if request.auth != null;
-      allow create, update, delete: if request.auth != null && request.auth.uid == walletId;
+      allow get, create, update, delete: if isOwner(walletId);
+      allow list: if isOwner(walletId);
     }
 
     match /payouts/{payoutId} {
-      allow get: if request.auth != null && resource.data.rider_id == request.auth.uid;
-      allow list: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.rider_id;
-      allow update, delete: if request.auth != null && request.auth.uid == request.resource.data.rider_id;
+      allow get: if isRiderOwned('rider_id');
+      allow list: if canListRiderOwned();
+      allow create: if isRiderOwnedRequest('rider_id');
+      allow update: if isRiderOwned('rider_id') && isFieldUnchanged('rider_id');
+      allow delete: if isRiderOwned('rider_id');
     }
   }
 }

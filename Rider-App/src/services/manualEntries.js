@@ -1,4 +1,4 @@
-import { getDocuments, where, insertDocument, deleteDocument } from "./db";
+import { getDocuments, where, limit, insertDocument, deleteDocument } from "./db";
 import { computeAndStoreInsights } from "./insightsService";
 import { syncAllFinances } from "./financesSync";
 
@@ -40,6 +40,7 @@ export async function insertManualEntry({
 export async function fetchManualEntries(userId) {
   const data = await getDocuments("manual_entries", [
     where("rider_id", "==", userId),
+    limit(100),
   ]);
   return data.sort((a, b) => {
     const ta = new Date(a.occurred_at || 0).getTime();

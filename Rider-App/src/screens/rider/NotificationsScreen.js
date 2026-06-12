@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -10,12 +10,10 @@ import {
   Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Bell, BellOff } from "lucide-react-native";
-import { updateDoc, doc } from "firebase/firestore";
+import { Bell } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
 import useNotificationStore from "../../store/notificationStore";
-import { db } from "../../services/firebaseConfig";
 import DeliveryDetailsBottomSheet from "../../components/rider/DeliveryDetailsBottomSheet";
 
 export default function NotificationsScreen() {
@@ -23,45 +21,38 @@ export default function NotificationsScreen() {
   const { colors, isDarkMode } = useThemeStore();
   const insets = useSafeAreaInsets();
 
-  const notificationStore = useNotificationStore();
-  const notifications = notificationStore.notifications;
-  const loading = notificationStore.loading;
-  const refreshing = notificationStore.refreshing;
-  const unreadCount = notificationStore.unreadCount;
-
+  // 🔑 FIX 1: Extract real-time state slices and optimized action hooks
+  const notifications = useNotificationStore((state) => state.notifications);
+  const loading = useNotificationStore((state) => state.loading);
+  const subscribeToNotifications = useNotificationStore((state) => state.subscribeToNotifications);
+  const markAsRead = useNotificationStore((state) => state.markAsRead);
+  const cleanSubscription = useNotificationStore((state) => state.cleanSubscription);
 
   const [selectedOrder, setSelectedOrder] = useState(null);
 
-  const setLoading = notificationStore.setLoading;
-  const setRefreshing = notificationStore.setRefreshing;
-  const setNotifications = notificationStore.setNotifications;
-  const fetchNotifications = notificationStore.fetchNotifications;
-
+  // 🔑 FIX 2: Bind life-cycle directly to the persistent WebSocket synchronization channel
   useEffect(() => {
-    if (user?.uid) {
-      fetchNotifications(user.uid);
-    }
-  }, [user?.uid, fetchNotifications]);
+    if (!user?.uid) return;
 
-  const handleRefresh = useCallback(() => {
-    if (user?.uid) fetchNotifications(user.uid);
-  }, [user?.uid, fetchNotifications]);
+    // Establishes real-time connection stream to Firestore
+    const unsubscribe = subscribeToNotifications(user.uid);
 
-  const markAsRead = async (notificationId) => {
-    try {
-      await updateDoc(doc(db, "notifications", notificationId), {
-        is_read: true,
-        updated_at: new Date().toISOString(),
-      });
-      notificationStore.markAsRead(notificationId);
-    } catch (err) {
-      console.warn("[Notifications] Mark status change failed:", err.message);
-    }
-  };
+    // Properly tear down collection event listeners when navigating away
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+      cleanSubscription();
+    };
+  }, [user?.uid, subscribeToNotifications, cleanSubscription]);
 
   const renderNotification = ({ item }) => {
-    const rawDate = new Date(item.created_at);
-    const formattedTime = rawDate.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    if (!item) return null;
+
+    // Safe field fallbacks for system timestamp formats
+    const timestampMillis = item.created_at?.toMillis?.() || new Date(item.created_at).getTime();
+    const formattedTime = isNaN(timestampMillis)
+      ? "--:--"
+      : new Date(timestampMillis).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+
     const orderRecord = Array.isArray(item.orders) ? item.orders[0] : item.orders;
     const waybill = orderRecord?.order_id || item.order_id;
 
@@ -77,7 +68,9 @@ export default function NotificationsScreen() {
         ]}
         activeOpacity={0.7}
         onPress={() => {
+          // 🔑 FIX 3: Route updates safely through the optimistic store engine
           markAsRead(item.id);
+          
           if (orderRecord) {
             setSelectedOrder({
               id: item.order_id,
@@ -93,7 +86,7 @@ export default function NotificationsScreen() {
               pickup_lng: orderRecord.pickup_lng,
               delivery_lat: orderRecord.delivery_lat,
               delivery_lng: orderRecord.delivery_lng,
-              status: orderRecord.status || (item.title.toLowerCase().includes("new") ? "pending" : "assigned"),
+              status: orderRecord.status || (item.title?.toLowerCase().includes("new") ? "pending" : "assigned"),
             });
           }
         }}
@@ -141,7 +134,6 @@ export default function NotificationsScreen() {
         translucent 
       />
       
-      {/* Dynamic System Top Edge Navigation Header */}
       <View style={[
         styles.headerBackground, 
         { 
@@ -165,10 +157,8 @@ export default function NotificationsScreen() {
 
       <FlatList
         data={notifications}
-        keyExtractor={(item) => item?.id ? String(item.id) : Math.random().toString()} // Fixed: Safe robust type conversion
+        keyExtractor={(item) => (item?.id ? String(item.id) : Math.random().toString())}
         renderItem={renderNotification}
-        onRefresh={handleRefresh}
-        refreshing={refreshing}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: Platform.OS === "ios" ? insets.bottom + 24 : 40 }]}
         ListEmptyComponent={
@@ -183,9 +173,7 @@ export default function NotificationsScreen() {
         order={selectedOrder}
         visible={!!selectedOrder}
         onClose={() => setSelectedOrder(null)}
-        onAction={(order, status) => {
-          setSelectedOrder(null);
-        }}
+        onAction={() => setSelectedOrder(null)}
       />
     </View>
   );
