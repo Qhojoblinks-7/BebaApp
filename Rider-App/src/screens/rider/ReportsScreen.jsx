@@ -150,7 +150,7 @@ async function fetchMetricsForRange(userId, start, end) {
 }
 
 export default function ReportsScreen({ route, navigation }) {
-  const { user } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const [period, setPeriod] = useState(route?.params?.period || "monthly");
   const [expandedInsight, setExpandedInsight] = useState(null);
   
@@ -179,7 +179,7 @@ export default function ReportsScreen({ route, navigation }) {
   );
 
   const loadData = async () => {
-    if (!user?.uid) return;
+    if (!user?.uid || !isAuthReady) return;
     setLoading(true);
     try {
       const [current, previous] = await Promise.all([
@@ -213,7 +213,12 @@ export default function ReportsScreen({ route, navigation }) {
       const plans = await generateAndStoreActionPlans(user.uid);
       setActionPlans(plans);
     } catch (err) {
-      console.warn("[Reports] load failed:", err.message);
+      const msg = err.message || String(err);
+      if (msg.includes("Missing or insufficient permissions")) {
+        console.warn("[Reports] Firestore permissions error. Check security rules for insights, revenue, manual_entries collections.");
+      } else {
+        console.warn("[Reports] load failed:", msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -221,7 +226,7 @@ export default function ReportsScreen({ route, navigation }) {
 
   useEffect(() => {
     loadData();
-  }, [user?.uid, period, startDate, endDate]);
+  }, [user?.uid, isAuthReady, period, startDate, endDate]);
 
   const earnings = metrics?.totalEarnings || 0;
   const totalOutflows = periodOutflows;
@@ -284,7 +289,7 @@ export default function ReportsScreen({ route, navigation }) {
   const mappedInsights = useMemo(() => {
     if (insights.length === 0) return [];
     return insights.map((item, idx) => ({
-      id: item.id || String(idx),
+      id: item.uid || String(idx),
       title: item.title,
       body: item.body,
       tag: item.type === "warning" ? "Alert" : item.type === "success" ? "Stable" : item.type === "danger" ? "Action" : "Info",

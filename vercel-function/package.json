@@ -11,8 +11,7 @@
     "lint": "node --check api/push.js"
   },
   "dependencies": {
-    "expo-server-sdk": "6.1.0",
-    "firebase-admin": "~13.4.0",
-    "africa-talking": "^1.1.0"
+    "expo-server-sdk": "^6.1.0",
+    "firebase-admin": "^14.0.0"
   }
 }

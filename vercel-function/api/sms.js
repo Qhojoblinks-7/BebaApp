@@ -1,6 +1,4 @@
-const AfricaTalking = require("africa-talking");
-
-const client = AfricaTalking({
+const AfricaTalking = require("africastalking")({
   apiKey: process.env.AT_API_KEY,
   username: process.env.AT_USERNAME || "sandbox",
 });

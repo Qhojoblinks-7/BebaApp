@@ -36,6 +36,13 @@ import DriverWalletScreen from "../screens/rider/DriverWalletScreen";
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+const TAB_ROUTES = new Set([
+  "DashboardTab",
+  "JobQueueTab",
+  "ActiveDeliveryTab",
+  "FinancesTab",
+]);
+
 function ActiveDeliveryStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -133,26 +140,34 @@ export default function AppNavigator() {
   const navigationRef = useNavigationContainerRef();
   const { user } = useAuth();
 
+  const navigateToRoute = useCallback((route, params) => {
+    if (!route || !navigationRef.isReady()) return;
+
+    if (TAB_ROUTES.has(route)) {
+      navigationRef.navigate("MainTabs", {
+        screen: route,
+        params,
+      });
+      return;
+    }
+
+    navigationRef.navigate(route, params);
+  }, [navigationRef]);
+
   const handleDeepLink = useCallback(
     (url) => {
       try {
         const parsed = new URL(url, "beba://app");
-        const route = parsed.hostname || parsed.pathname.replace("/", "");
+        const pathRoute = decodeURIComponent(parsed.pathname.replace(/^\//, ""));
+        const route = parsed.hostname && parsed.hostname !== "app" ? parsed.hostname : pathRoute;
         const params = Object.fromEntries(parsed.searchParams.entries());
 
-        if (route === "JobQueueTab" || route === "Notifications") {
-          navigationRef.navigate(route);
-          return;
-        }
-
-        if (route && navigationRef.canGoBack()) {
-          navigationRef.navigate(route, params);
-        }
+        navigateToRoute(route, params);
       } catch (e) {
         console.warn("[AppNavigator] Deep link parse failed:", e.message);
       }
     },
-    [navigationRef]
+    [navigateToRoute]
   );
 
   const { scheduleNewOrderNotification } = useNotifications(handleDeepLink);
@@ -168,14 +183,14 @@ export default function AppNavigator() {
 
       if (targetUrl && navigationRef.current?.isReady()) {
         if (!targetUrl.includes("://")) {
-          navigationRef.current.navigate(targetUrl);
+          navigateToRoute(targetUrl, orderId ? { orderId } : undefined);
           return;
         }
         const cleanUrl = targetUrl.replace("beba://app/", "");
         const [routePath] = cleanUrl.split("?");
         const currentRoute = navigationRef.current.getCurrentRoute()?.name;
         if (routePath && routePath !== currentRoute) {
-          navigationRef.current.navigate(routePath, orderId ? { orderId } : undefined);
+          navigateToRoute(routePath, orderId ? { orderId } : undefined);
         }
       }
     });
@@ -185,7 +200,7 @@ export default function AppNavigator() {
         subscription.remove();
       }
     };
-  }, [navigationRef]);
+  }, [navigateToRoute]);
 
   useEffect(() => {
     if (!user?.uid) return;

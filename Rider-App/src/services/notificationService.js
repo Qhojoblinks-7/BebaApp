@@ -80,11 +80,19 @@ function listenForNewOrders(onNewOrder) {
       });
     },
     (err) => {
-      console.error(
-        "[NotificationService] New orders listener failed:",
-        err.message,
-      );
-      if (err.message.includes("index")) {
+      const msg = err.message || String(err);
+      if (msg.includes("Missing or insufficient permissions")) {
+        console.error(
+          "[NotificationService] Permissions error. Check Firestore rules for orders collection:",
+          "https://firebase.google.com/docs/firestore/security/get-started",
+        );
+      } else {
+        console.error(
+          "[NotificationService] New orders listener failed:",
+          msg,
+        );
+      }
+      if (msg.includes("index")) {
         console.error(
           "[NotificationService] REQUIRES INDEX: Add composite index on orders collection with fields: status ASC, created_at ASC",
         );
@@ -215,7 +223,12 @@ async function registerPushToken(riderId) {
     );
     return expoPushToken;
   } catch (err) {
-    console.warn("[NotificationService] Push token registration failed:", err.message);
+    const msg = err.message || String(err);
+    if (msg.includes("FirebaseApp") || msg.includes("FCM") || msg.includes("fcm-credentials")) {
+      console.warn("[NotificationService] FCM setup required. Place google-services.json in android/app/ and upload FCM credentials to Expo:", "https://docs.expo.dev/push-notifications/fcm-credentials/");
+    } else {
+      console.warn("[NotificationService] Push token registration failed:", msg);
+    }
     return null;
   }
 }

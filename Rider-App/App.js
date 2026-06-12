@@ -14,7 +14,6 @@ useEffect(() => {
     async function initDeviceNotifications() {
       if (session) {
         await notificationService.ensureChannel();
-        const token = await notificationService.registerPushToken();
       }
     }
 

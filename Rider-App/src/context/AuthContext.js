@@ -10,6 +10,7 @@ const AuthContext = createContext({
   profile: null,
   role: null,
   loading: true,
+  isAuthReady: false,
   signOut: async () => {},
 });
 
@@ -20,17 +21,20 @@ export function AuthProvider({ children }) {
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const ongoingFetchId = useRef(0);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       const localFetchId = ++ongoingFetchId.current;
       setSession(firebaseUser);
       setUser(firebaseUser);
+      setIsAuthReady(false);
 
       if (!firebaseUser) {
         setProfile(null);
         setRole(null);
         setLoading(false);
+        setIsAuthReady(true);
         return;
       }
 
@@ -54,6 +58,7 @@ export function AuthProvider({ children }) {
       } finally {
         if (localFetchId === ongoingFetchId.current) {
           setLoading(false);
+          setIsAuthReady(true);
         }
       }
     });
@@ -77,7 +82,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, role, loading, signOut: signOutHandler }}>
+    <AuthContext.Provider value={{ session, user, profile, role, loading, isAuthReady, signOut: signOutHandler }}>
       {children}
     </AuthContext.Provider>
   );

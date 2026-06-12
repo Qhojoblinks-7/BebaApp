@@ -58,7 +58,8 @@ export default function JobQueueScreen({ navigation }) {
 
   useEffect(() => {
     if (!userId) return;
-    fetchPendingOrders();
+    setLoading(true);
+    fetchPendingOrders().finally(() => setLoading(false));
   }, [userId, fetchPendingOrders]);
 
   useEffect(() => {
