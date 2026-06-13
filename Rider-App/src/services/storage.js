@@ -1,42 +1,25 @@
-import {
-  ref as storageRef,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject,
-  getStorage,
-} from "firebase/storage";
+import { buildPublicSupabaseUrl, deleteMedia, getPrivateMediaUrl, uploadMedia } from "./media";
 
-const storage = getStorage();
-
-export async function uploadFile(path, file) {
-  const fileRef = storageRef(storage, path);
-  const uploadTask = uploadBytesResumable(fileRef, file, { contentType: file.type || "image/*" });
-
-  return new Promise((resolve, reject) => {
-    uploadTask.on(
-      "state_changed",
-      null,
-      (err) => reject(err),
-      async () => {
-        const url = await getDownloadURL(uploadTask.snapshot.ref);
-        resolve(url);
-      }
-    );
-  });
+export async function uploadFile(_path, file) {
+  return uploadMedia(file, { mediaType: "file" });
 }
 
-export async function uploadBlob(path, blob) {
-  return uploadFile(path, blob);
+export async function uploadBlob(_path, blob) {
+  return uploadFile(_path, blob);
 }
 
-export async function getPublicUrl(path) {
-  const fileRef = storageRef(storage, path);
-  return getDownloadURL(fileRef);
+export async function getPublicUrl(media) {
+  if (typeof media === "string") {
+    return getPrivateMediaUrl(media);
+  }
+
+  if (media?.bucket === "public-media" && media.objectPath) {
+    return buildPublicSupabaseUrl(media.bucket, media.objectPath);
+  }
+
+  return media?.publicUrl || media?.url || null;
 }
 
-export async function deleteFile(path) {
-  const fileRef = storageRef(storage, path);
-  await deleteObject(fileRef);
+export async function deleteFile(mediaId) {
+  return deleteMedia(mediaId);
 }
-
-export { storage };

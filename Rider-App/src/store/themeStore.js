@@ -14,6 +14,8 @@ const lightTheme = {
     textMuted: "#64748b",     // Subtitles and descriptive labels
     textDisabled: "#94a3b8",  // Non-interactive elements or placeholders
     textOnPrimary: "#ffffff",
+    sheet: "#ffffff",
+    overlay: "#020617aa",
     // --- Borders & Accents ---
     border: "#e2e8f0",
     borderLight: "#f1f5f9",
@@ -48,6 +50,8 @@ const darkTheme = {
     textMuted: "#99bab8",     // Ash Grey 2 - sharp contrast descriptions
     textDisabled: "#558c88",  // Dark Cyan - perfect for muted states/placeholders
     textOnPrimary: "#ffffff",
+    sheet: "#16191e",
+    overlay: "#020617cc",
     // --- Borders & Accents ---
     border: "#ffffff08",
     borderLight: "#ffffff04",

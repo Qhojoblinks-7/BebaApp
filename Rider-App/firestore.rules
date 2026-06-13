@@ -38,6 +38,11 @@ service cloud.firestore {
       }
     }
 
+    match /vendors/{vendorId} {
+      allow get, list: if true;
+      allow create, update, delete: if isSignedIn();
+    }
+
     match /rider_status/{riderId} {
       allow get: if true;
       allow list: if false;
@@ -68,6 +73,20 @@ service cloud.firestore {
     match /notification_settings/{riderId} {
       allow get, create, update, delete: if isOwner(riderId);
       allow list: if isOwner(riderId);
+    }
+
+    match /media/{mediaId} {
+      allow get: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow list: if isSignedIn() && hasLimit(100);
+      allow create: if false;
+      allow update: if isSignedIn()
+                    && resource.data.ownerUid == request.auth.uid
+                    && isFieldUnchanged('ownerUid')
+                    && isFieldUnchanged('bucket')
+                    && isFieldUnchanged('objectPath')
+                    && isFieldUnchanged('provider')
+                    && isFieldUnchanged('url');
+      allow delete: if false;
     }
 
     match /orders/{orderId} {

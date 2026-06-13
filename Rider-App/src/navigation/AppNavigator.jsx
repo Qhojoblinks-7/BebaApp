@@ -4,7 +4,7 @@ import { NavigationContainer, useNavigationContainerRef } from "@react-navigatio
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Home, Briefcase, Route, DollarSign } from "lucide-react-native";
+import { Home, Briefcase, Route, DollarSign, Utensils } from "lucide-react-native";
 import { useThemeStore } from "../store/themeStore";
 import { useAuth } from "../context/AuthContext";
 import useNotificationStore from "../store/notificationStore";
@@ -31,6 +31,7 @@ import QuickAddEntryScreen from "../screens/rider/QuickAddEntryScreen";
 import DeliveryHistoryScreen from "../screens/rider/DeliveryHistoryScreen";
 import DeliveryDetailScreen from "../screens/rider/DeliveryDetailScreen";
 import DriverWalletScreen from "../screens/rider/DriverWalletScreen";
+import FoodVendorsScreen from "../screens/rider/FoodVendorsScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -229,6 +230,7 @@ export default function AppNavigator() {
         <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
         <Stack.Screen name="TermsPrivacyPolicy" component={TermsPrivacyPolicyScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="FoodVendors" component={FoodVendorsScreen} />
         <Stack.Screen name="DriverWallet" component={DriverWalletScreen} />
       </Stack.Navigator>
     </NavigationContainer>

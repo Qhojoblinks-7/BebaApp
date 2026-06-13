@@ -15,9 +15,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 import { useThemeStore } from "../../store/themeStore";
-import { getDoc, doc, updateDoc, setDoc } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "../../services/firebaseConfig";
+import { getDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../../services/firebaseConfig";
+import { extensionFromMime, getPrivateMediaUrl, uploadMedia } from "../../services/media";
 import * as ImagePicker from "expo-image-picker";
 import {
   ArrowLeft,
@@ -33,6 +33,7 @@ import {
   Phone,
   Mail,
   Bike,
+  Utensils,
 } from "lucide-react-native";
 
 export default function ProfileScreen({ navigation }) {
@@ -49,6 +50,7 @@ export default function ProfileScreen({ navigation }) {
     email: "",
     rider_id: "",
     avatar_url: "",
+    avatar_media_id: "",
   });
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
@@ -64,15 +66,26 @@ export default function ProfileScreen({ navigation }) {
       const snap = await getDoc(doc(db, "users", user.uid));
       if (snap.exists()) {
         const data = snap.data();
+        const avatarMediaId = data.avatar_media_id || data.avatarMediaId || "";
         setProfileData({
           full_name: data.full_name || "",
           phone: data.phone || user.phone || "",
           email: data.email || user.email || "",
           rider_id: user.uid?.slice(0, 8).toUpperCase() || "",
           avatar_url: data.avatar_url || "",
+          avatar_media_id: avatarMediaId,
         });
         setEditName(data.full_name || "");
         setEditPhone(data.phone || user.phone || "");
+
+        if (avatarMediaId) {
+          try {
+            const signedUrl = await getPrivateMediaUrl(avatarMediaId);
+            setProfileData((prev) => ({ ...prev, avatar_url: signedUrl }));
+          } catch (err) {
+            console.warn("[Profile] avatar URL fetch failed:", err.message);
+          }
+        }
       }
     } catch (err) {
       console.warn("[Profile] fetch failed:", err.message);
@@ -123,30 +136,49 @@ export default function ProfileScreen({ navigation }) {
 
     if (result.canceled) return;
 
-    const imageUri = result.assets[0].uri;
-    await uploadAvatar(imageUri);
+    const asset = result.assets[0];
+    await uploadAvatar(asset);
   };
 
-  const uploadAvatar = async (uri) => {
+  const uploadAvatar = async (asset) => {
     if (!user?.uid) return;
     setUploadingAvatar(true);
     try {
-      const response = await fetch(uri);
+      const response = await fetch(asset.uri);
       const blob = await response.blob();
-      const fileExt = uri.split(".").pop();
-      const fileName = `${user.uid}-${Date.now()}.${fileExt}`;
-      const storageRef = ref(storage, `avatars/${fileName}`);
+      const ext = extensionFromMime(blob.type || asset.mimeType || "image/jpeg");
+      const fileName = `avatar-${Date.now()}.${ext}`;
 
-      await uploadBytes(storageRef, blob, { contentType: "image/*" });
-      const publicUrl = await getDownloadURL(storageRef);
+      const media = await uploadMedia(
+        {
+          uri: asset.uri,
+          blob,
+          name: asset.fileName || fileName,
+          type: blob.type || asset.mimeType || "image/jpeg",
+          size: asset.fileSize || blob.size,
+        },
+        {
+          mediaType: "avatar",
+          parentCollection: "users",
+          parentId: user.uid,
+        }
+      );
 
       await updateDoc(doc(db, "users", user.uid), {
-        avatar_url: publicUrl,
+        avatar_media_id: media.id,
+        avatar_url: null,
+        updated_at: serverTimestamp(),
       });
 
-      setProfileData((prev) => ({ ...prev, avatar_url: publicUrl }));
+      const signedUrl = await getPrivateMediaUrl(media.id);
+      setProfileData((prev) => ({
+        ...prev,
+        avatar_url: signedUrl,
+        avatar_media_id: media.id,
+      }));
       Alert.alert("Success", "Profile picture updated");
     } catch (err) {
+      console.warn("[Profile] avatar upload failed:", err.message);
       Alert.alert("Error", "Failed to upload image");
     } finally {
       setUploadingAvatar(false);
@@ -355,13 +387,16 @@ export default function ProfileScreen({ navigation }) {
 
           <TouchableOpacity 
             style={[styles.settingItem, { borderBottomColor: "transparent" }]} 
-            onPress={() => navigation.navigate("Preferences")}
+            onPress={() => navigation.navigate("FoodVendors")}
           >
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, { backgroundColor: colors.primaryAlpha }]}>
-                <Settings size={18} color={colors.primary} />
+                <Utensils size={18} color={colors.primary} />
               </View>
-              <Text style={[styles.settingLabel, { color: colors.text }]}>Preferences</Text>
+              <View style={styles.settingContent}>
+                <Text style={[styles.settingLabel, { color: colors.text }]}>Manage Food Vendors</Text>
+                <Text style={[styles.settingDescription, { color: colors.textMuted }]}>Add or edit vendors for the customer food list.</Text>
+              </View>
             </View>
             <ChevronRight size={18} color={colors.textMuted} />
           </TouchableOpacity>
@@ -610,6 +645,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
+  settingContent: {
+    flex: 1,
+    gap: 2,
+  },
   settingIcon: {
     width: 36,
     height: 36,
@@ -620,6 +659,10 @@ const styles = StyleSheet.create({
   settingLabel: {
     fontSize: 14,
     fontWeight: "600",
+  },
+  settingDescription: {
+    fontSize: 12,
+    fontWeight: "500",
   },
   signOutButton: {
     flexDirection: "row",

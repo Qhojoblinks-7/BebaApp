@@ -5,15 +5,104 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  Platform,
   StatusBar,
   TextInput,
   Alert,
+  Modal,
 } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { ArrowLeft, Wallet } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
 import { insertManualEntry } from "../../services/manualEntries";
+
+const generateDateOptions = () => {
+  const dates = [];
+  const today = new Date();
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    dates.push(d);
+  }
+  return dates;
+};
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#0b0d0f" },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 18,
+    paddingTop: 24,
+    paddingBottom: 14,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#16191e",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#ffffff05",
+  },
+  headerTitleText: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#ffffff",
+    letterSpacing: -0.3,
+  },
+  scrollContent: { flex: 1, paddingHorizontal: 18 },
+  typeRow: { flexDirection: "row", marginTop: 10, marginBottom: 10 },
+  chipRow: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
+  typeChip: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#ffffff0a",
+    backgroundColor: "#16191e",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+  },
+  typeChipText: { fontSize: 14, fontWeight: "700", color: "#64748b" },
+  fieldGroup: { marginBottom: 18 },
+  labelText: { fontSize: 12, fontWeight: "700", color: "#94a3b8", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.4 },
+  input: {
+    backgroundColor: "#16191e",
+    borderRadius: 16,
+    padding: 14,
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "700",
+    borderWidth: 1,
+    borderColor: "#ffffff0a",
+  },
+  textArea: { minHeight: 80, textAlignVertical: "top" },
+  dateText: { color: "#ffffff", fontSize: 14, fontWeight: "700" },
+  saveButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: "#115e59",
+    marginTop: 6,
+  },
+  saveButtonText: { color: "#ffffff", fontSize: 15, fontWeight: "800" },
+  modalOverlay: { flex: 1, backgroundColor: "#00000080", justifyContent: "flex-end" },
+  modalContent: { backgroundColor: "#16191e", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "60%" },
+  modalTitle: { color: "#ffffff", fontSize: 18, fontWeight: "800", marginBottom: 16, textAlign: "center" },
+  dateList: { maxHeight: 300 },
+  dateOption: { padding: 14, borderRadius: 12, marginBottom: 6, backgroundColor: "#0b0d0f" },
+  dateOptionSelected: { backgroundColor: "#115e59" },
+  dateOptionText: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
+  dateOptionTextSelected: { color: "#ffffff", fontWeight: "800" },
+  modalCancelButton: { marginTop: 12, padding: 14, borderRadius: 12, backgroundColor: "#16191e", alignItems: "center" },
+  modalCancelText: { color: "#ef4444", fontSize: 15, fontWeight: "700" },
+});
 
 const QuickAddEntryScreen = ({ route, navigation }) => {
   const { user } = useAuth();
@@ -28,16 +117,7 @@ const QuickAddEntryScreen = ({ route, navigation }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const pickDate = () => {
-    if (Platform.OS === "android") {
-      setShowDatePicker(true);
-    } else {
-      // iOS fallback reminder or custom simple modal alert
-      Alert.alert(
-        "Select Date", 
-        "Date picking on iOS requires @react-native-community/datetimepicker installed.",
-        [{ text: "OK" }]
-      );
-    }
+    setShowDatePicker(true);
   };
 
   const handleSave = async () => {
@@ -156,17 +236,40 @@ const QuickAddEntryScreen = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {showDatePicker && (
-          <DateTimePicker
-            value={date}
-            mode="date"
-            display="default"
-            onChange={(_, selected) => {
-              setShowDatePicker(false);
-              if (selected) setDate(selected);
-            }}
-          />
-        )}
+        <Modal
+          visible={showDatePicker}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowDatePicker(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Select Date</Text>
+              <ScrollView style={styles.dateList} showsVerticalScrollIndicator={false}>
+                {generateDateOptions().map((d, index) => {
+                  const isSelected = d.toDateString() === date.toDateString();
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      style={[styles.dateOption, isSelected && styles.dateOptionSelected]}
+                      onPress={() => {
+                        setDate(d);
+                        setShowDatePicker(false);
+                      }}
+                    >
+                      <Text style={[styles.dateOptionText, isSelected && styles.dateOptionTextSelected]}>
+                        {d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <TouchableOpacity style={styles.modalCancelButton} onPress={() => setShowDatePicker(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
 
         <TouchableOpacity
           style={[styles.saveButton, saving && { opacity: 0.6 }]}
@@ -182,73 +285,6 @@ const QuickAddEntryScreen = ({ route, navigation }) => {
       </ScrollView>
     </View>
   );
-}
+};
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0b0d0f" },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 18,
-    paddingTop: 24,
-    paddingBottom: 14,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "#16191e",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#ffffff05",
-  },
-  headerTitleText: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#ffffff",
-    letterSpacing: -0.3,
-  },
-  scrollContent: { flex: 1, paddingHorizontal: 18 },
-  typeRow: { flexDirection: "row", marginTop: 10, marginBottom: 10 },
-  chipRow: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
-  typeChip: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#ffffff0a",
-    backgroundColor: "#16191e",
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 44,
-  },
-  typeChipText: { fontSize: 14, fontWeight: "700", color: "#64748b" },
-  fieldGroup: { marginBottom: 18 },
-  labelText: { fontSize: 12, fontWeight: "700", color: "#94a3b8", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.4 },
-  input: {
-    backgroundColor: "#16191e",
-    borderRadius: 16,
-    padding: 14,
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "700",
-    borderWidth: 1,
-    borderColor: "#ffffff0a",
-  },
-  textArea: { minHeight: 80, textAlignVertical: "top" },
-  dateText: { color: "#ffffff", fontSize: 14, fontWeight: "700" },
-  saveButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    padding: 16,
-    borderRadius: 20,
-    backgroundColor: "#115e59",
-    marginTop: 6,
-  },
-  saveButtonText: { color: "#ffffff", fontSize: 15, fontWeight: "800" },
-});
+export default QuickAddEntryScreen;
