@@ -1,39 +1,37 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Input } from '@/components/ui/input';
 
-export default function LocationSearch({ value, onChange, placeholder }) {
+export default function LocationSearch({ value, onChange, placeholder, className }) {
   const [query, setQuery] = useState(value || '');
   const [results, setResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [activeIndex, setActiveIndex] = useState(-1);
-  
-  const [shouldSearch, setShouldSearch] = useState(false);
-  const isSelectingRef = useRef(false);
-  
+  const [portalRect, setPortalRect] = useState(null);
+
   const timeoutRef = useRef();
   const wrapperRef = useRef();
   const inputRef = useRef(null);
 
-  useEffect(() => {
-    if (isSelectingRef.current) {
-      if (value === query) {
-        isSelectingRef.current = false;
-      }
-      return; 
-    }
+  const updatePortalRect = useCallback(() => {
+    if (!inputRef.current) return;
 
-    if (value !== undefined && value !== query) {
-      setQuery(value || '');
-      setShouldSearch(false); 
-    }
-  }, [value, query]);
+    const rect = inputRef.current.getBoundingClientRect();
+    setPortalRect({
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+    });
+  }, []);
 
   useEffect(() => {
-    if (!shouldSearch || !query || query.length < 3) {
-      setResults([]);
+    updatePortalRect();
+  }, [updatePortalRect]);
+
+  useEffect(() => {
+    if (!query || query.length < 3) {
       return;
     }
 
@@ -70,7 +68,7 @@ export default function LocationSearch({ value, onChange, placeholder }) {
       clearTimeout(timeoutRef.current);
       controller.abort();
     };
-  }, [query, shouldSearch]);
+  }, [query]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -100,9 +98,7 @@ export default function LocationSearch({ value, onChange, placeholder }) {
     const displayName = (item.display_name || '').trim();
     const coords = getCoordsFromItem(item);
     
-    isSelectingRef.current = true;
     setQuery(displayName);
-    setShouldSearch(false);
     setResults([]);
     setShowResults(false);
     setActiveIndex(-1);
@@ -130,13 +126,13 @@ export default function LocationSearch({ value, onChange, placeholder }) {
   };
 
   const getPortalStyle = () => {
-    if (!inputRef.current) return {};
-    const rect = inputRef.current.getBoundingClientRect();
+    if (!portalRect) return {};
+
     return {
       position: 'fixed',
-      top: rect.bottom + 4,
-      left: rect.left,
-      width: rect.width,
+      top: portalRect.top,
+      left: portalRect.left,
+      width: portalRect.width,
       zIndex: 9999,
     };
   };
@@ -149,14 +145,16 @@ export default function LocationSearch({ value, onChange, placeholder }) {
         value={query}
         onChange={(e) => { 
           setQuery(e.target.value); 
-          setShouldSearch(true);
           onChange?.(e.target.value); 
         }}
-        onFocus={() => { query.length >= 3 && setShowResults(true); }}
+        onFocus={() => {
+          updatePortalRect();
+          query.length >= 3 && setShowResults(true);
+        }}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         autoComplete="off"
-        className="rounded-xl pr-24"
+        className={`h-14 rounded-2xl border-slate-200 bg-slate-50 pr-24 ${className || ''}`}
       />
       
       {loading && (

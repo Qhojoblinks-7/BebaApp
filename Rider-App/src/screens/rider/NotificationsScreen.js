@@ -86,7 +86,7 @@ export default function NotificationsScreen() {
               pickup_lng: orderRecord.pickup_lng,
               delivery_lat: orderRecord.delivery_lat,
               delivery_lng: orderRecord.delivery_lng,
-              status: orderRecord.status || (item.title?.toLowerCase().includes("new") ? "pending" : "assigned"),
+              status: orderRecord?.status || ((item.title || "") + "").toLowerCase().includes("new") ? "pending" : "assigned",
             });
           }
         }}

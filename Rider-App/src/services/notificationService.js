@@ -20,20 +20,24 @@ try {
   const firebaseConfigModule = require("./firebaseConfig");
   db = firebaseConfigModule.db;
 } catch (e) {
-  console.error("[NotificationService] Firebase not available:", e.message);
+  console.error("[NotificationService] Firebase not available:", e.message || e);
 }
 
 const CHANNEL_ID = "new-orders";
 
 function setupHandler() {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldSetBadge: true,
-      shouldPlaySound: true,
-    }),
-  });
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldSetBadge: true,
+        shouldPlaySound: true,
+      }),
+    });
+  } catch (e) {
+    console.warn("[NotificationService] Failed to setup handler:", e.message);
+  }
 }
 
 async function ensureChannel() {
@@ -114,14 +118,17 @@ function listenForNewOrders(onNewOrder) {
 }
 
 async function scheduleLocalNotification(content, trigger = null) {
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      sound: "cash_register.mp3",
-      ...content,
-      channelId: Platform.OS === "android" ? CHANNEL_ID : undefined,
-    },
-    trigger,
-  });
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        ...content,
+        channelId: Platform.OS === "android" ? CHANNEL_ID : undefined,
+      },
+      trigger,
+    });
+  } catch (err) {
+    console.warn("[NotificationService] Schedule notification failed:", err.message);
+  }
 }
 
 async function createFirestoreNotification({

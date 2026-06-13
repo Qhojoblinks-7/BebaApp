@@ -7,9 +7,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Home, Briefcase, Route, DollarSign } from "lucide-react-native";
 import { useThemeStore } from "../store/themeStore";
 import { useAuth } from "../context/AuthContext";
-import { useNotifications } from "../hooks/useNotifications";
 import useNotificationStore from "../store/notificationStore";
-import notificationService, { CHANNEL_ID } from "../services/notificationService";
+import notificationService from "../services/notificationService";
 
 import DashboardScreen from "../screens/rider/Dashboard";
 import JobQueueScreen from "../screens/rider/JobQueueScreen";
@@ -154,27 +153,14 @@ export default function AppNavigator() {
     navigationRef.navigate(route, params);
   }, [navigationRef]);
 
-  const handleDeepLink = useCallback(
-    (url) => {
-      try {
-        const parsed = new URL(url, "beba://app");
-        const pathRoute = decodeURIComponent(parsed.pathname.replace(/^\//, ""));
-        const route = parsed.hostname && parsed.hostname !== "app" ? parsed.hostname : pathRoute;
-        const params = Object.fromEntries(parsed.searchParams.entries());
-
-        navigateToRoute(route, params);
-      } catch (e) {
-        console.warn("[AppNavigator] Deep link parse failed:", e.message);
-      }
-    },
-    [navigateToRoute]
-  );
-
-  const { scheduleNewOrderNotification } = useNotifications(handleDeepLink);
+  const { subscribeToNotifications } = useNotificationStore();
 
   useEffect(() => {
-    notificationService.setupHandler();
-    notificationService.ensureChannel();
+    try {
+      notificationService.ensureChannel();
+    } catch (e) {
+      console.warn("[AppNavigator] Channel setup failed:", e.message);
+    }
 
     const subscription = notificationService.addListenerResponse((response) => {
       const data = response?.notification?.request?.content?.data || {};
@@ -204,13 +190,13 @@ export default function AppNavigator() {
 
   useEffect(() => {
     if (!user?.uid) return;
-    const unsub = useNotificationStore.getState().subscribeToNotifications(user.uid);
+    const unsub = subscribeToNotifications(user.uid);
     return () => {
       if (typeof unsub === "function") {
         unsub();
       }
     };
-  }, [user?.uid]);
+  }, [user?.uid, subscribeToNotifications]);
 
   return (
     <NavigationContainer ref={navigationRef}>

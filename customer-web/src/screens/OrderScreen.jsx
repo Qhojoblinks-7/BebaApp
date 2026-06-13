@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field, FieldLabel } from '@/components/ui/field'
 import LocationSearch from '@/components/LocationSearch'
-import { ChevronLeft, ChevronRight, Loader2, Edit3 } from 'lucide-react'
+import { AlertCircle, Bike, CheckCircle2, ChevronLeft, ChevronRight, CreditCard, Edit3, Loader2, MapPin, Navigation, Package, Phone, ShieldCheck, User } from 'lucide-react'
 
 function generateSecurePin() {
   const array = new Uint32Array(1)
@@ -31,54 +31,89 @@ const orderSchema = z.object({
   deliveryLat: z.number().optional(),
 })
 
-const StepIndicator = ({ step }) => (
-  <div className="flex items-center justify-center gap-2 mb-6">
-    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${step === 1 ? 'bg-red-600 text-white' : 'bg-slate-200 text-slate-500'}`}>1</div>
-    <div className="w-8 h-1 bg-slate-200 rounded-full">
-      <div className={`h-full rounded-full transition-all ${step === 2 ? 'w-full bg-red-600' : 'w-0'}`} />
-    </div>
-    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${step === 2 ? 'bg-red-600 text-white' : 'bg-slate-200 text-slate-500'}`}>2</div>
-  </div>
-)
+const steps = [
+  { number: 1, label: 'Details' },
+  { number: 2, label: 'Confirm' },
+]
 
-function PricePreview({ distance }) {
-  const pricing = calculateDeliveryFee(distance || 0)
-  console.log('[PricePreview] render:', { distance, pricing })
-  if (!pricing.allowed) {
-    return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-2xl">
-        <p className="text-xs font-bold text-red-600">{pricing.reason}</p>
-      </div>
-    )
-  }
+function StepIndicator({ step }) {
   return (
-    <div className="p-4 bg-slate-900 rounded-2xl shadow-lg">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Distance</span>
-        <span className="text-sm font-black text-white">{distance?.toFixed(1) || '—'} km</span>
-      </div>
-      <div className="space-y-1.5 mb-3">
-        <div className="flex justify-between text-xs">
-          <span className="text-slate-400">Base fare</span>
-          <span className="font-bold text-slate-200">GH₵ {pricing.breakdown.basePrice.toFixed(2)}</span>
-        </div>
-        {pricing.breakdown.distanceFee > 0 && (
-          <div className="flex justify-between text-xs">
-            <span className="text-slate-400">Distance fee</span>
-            <span className="font-bold text-slate-200">+ GH₵ {pricing.breakdown.distanceFee.toFixed(2)}</span>
+    <div className="mb-6 grid grid-cols-2 gap-3">
+      {steps.map((item, index) => {
+        const isActive = step === item.number
+        const isComplete = step > item.number
+        const currentStyle = isActive || isComplete ? 'border-red-600 bg-red-50/50' : 'border-slate-200 bg-white'
+        const badgeStyle = isActive || isComplete ? 'bg-red-600 text-white' : 'bg-slate-950 text-white'
+        const textStyle = isActive || isComplete ? 'text-red-600' : 'text-slate-500'
+
+        return (
+          <div key={item.label} className="relative">
+            <div className={`rounded-2xl border p-3 text-left transition duration-200 ${currentStyle}`}>
+              <div className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-black transition ${badgeStyle}`}>
+                {item.number}
+              </div>
+              <p className={`mt-2 text-[10px] font-black uppercase tracking-wider transition ${textStyle}`}>
+                {item.label}
+              </p>
+            </div>
+            {index === 0 && (
+              <div className="absolute left-full top-1/2 hidden h-0.5 w-4 -translate-y-1/2 bg-slate-200 sm:block">
+                <div className={`h-full rounded-full bg-red-600 transition-all duration-300 ${step === 2 ? 'w-full' : 'w-0'}`} />
+              </div>
+            )}
           </div>
-        )}
-      </div>
-      <div className="border-t border-slate-700 pt-3 flex justify-between items-center">
-        <span className="text-sm font-bold text-slate-300">Total</span>
-        <span className="text-2xl font-black text-white tracking-tight">GH₵ {pricing.breakdown.totalFee.toFixed(2)}</span>
-      </div>
+        )
+      })}
     </div>
   )
 }
 
+function PricePreview({ distance }) {
+  const pricing = calculateDeliveryFee(distance || 0)
+
+  if (!pricing.allowed) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-4 transition-all animate-in fade-in slide-in-from-top-2">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+          <p className="text-sm font-bold leading-relaxed text-red-700">{pricing.reason}</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <Card className="overflow-hidden rounded-3xl border-0 bg-slate-950 p-4 shadow-xl shadow-slate-900/15">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-red-600">
+            <CreditCard className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Estimated fare</p>
+            <p className="mt-0.5 text-xs font-black text-white">{distance?.toFixed(1) || '—'} km delivery</p>
+          </div>
+        </div>
+        <p className="text-xl font-black tracking-tight text-white">GH₵ {pricing.breakdown.totalFee.toFixed(2)}</p>
+      </div>
+
+      <div className="mt-3 space-y-2 rounded-2xl bg-white/5 p-3 text-[11px]">
+        <div className="flex justify-between font-semibold">
+          <span className="text-slate-400">Base fare</span>
+          <span className="text-white">GH₵ {pricing.breakdown.basePrice.toFixed(2)}</span>
+        </div>
+        {pricing.breakdown.distanceFee > 0 && (
+          <div className="flex justify-between font-semibold">
+            <span className="text-slate-400">Distance fee</span>
+            <span className="text-white">+ GH₵ {pricing.breakdown.distanceFee.toFixed(2)}</span>
+          </div>
+        )}
+      </div>
+    </Card>
+  )
+}
+
 export default function OrderScreen({ onOrderSuccess }) {
-  console.log('[OrderScreen] render')
   const [submitted, setSubmitted] = useState(false)
   const [submittedOrderId, setSubmittedOrderId] = useState('')
   const [submittedTotalFee, setSubmittedTotalFee] = useState(0)
@@ -86,16 +121,6 @@ export default function OrderScreen({ onOrderSuccess }) {
   const [pinVisible, setPinVisible] = useState(true)
   const [pinCountdown, setPinCountdown] = useState(30)
   const [step, setStep] = useState(1)
-
-  useEffect(() => {
-    if (!submitted || !pinVisible) return
-    if (pinCountdown <= 1) {
-      setPinVisible(false)
-      return
-    }
-    const timer = setTimeout(() => setPinCountdown(pinCountdown - 1), 1000)
-    return () => clearTimeout(timer)
-  }, [submitted, pinVisible, pinCountdown])
   const [distanceLoading, setDistanceLoading] = useState(false)
   const [distanceError, setDistanceError] = useState('')
   const [distanceMethod, setDistanceMethod] = useState('')
@@ -119,11 +144,8 @@ export default function OrderScreen({ onOrderSuccess }) {
 
   const lastDistanceKeyRef = useRef('')
   const addressTimeoutRef = useRef(null)
-  const addressTokenRef = useRef(0)
-  const formDataRef = useRef(formData)
-  formDataRef.current = formData
-  console.log('[OrderScreen] ref synced:', formDataRef.current)
 
+  const effectivePinVisible = pinVisible && pinCountdown > 1
   const currentDistance = localDistance
 
   const setField = useCallback((name, value) => {
@@ -144,23 +166,20 @@ export default function OrderScreen({ onOrderSuccess }) {
 
   const updateDistance = useCallback(async (pickup, drop) => {
     if (pickup?.length < 5 || drop?.length < 5) return
+
     const key = `${pickup}|${drop}`
-    console.log('[updateDistance] start:', { pickup, drop, key })
-    if (lastDistanceKeyRef.current === key) {
-      console.log('[updateDistance] skip duplicate key')
-      return
-    }
+    if (lastDistanceKeyRef.current === key) return
+
     lastDistanceKeyRef.current = key
     setDistanceLoading(true)
     setDistanceError('')
     setDistanceMethod('')
     setManualOverride(false)
-    console.log('[updateDistance] calling calculateDistance...')
+
     const result = await calculateDistance(pickup, drop)
-    console.log('[updateDistance] result:', result)
+
     if (result.allowed) {
       const km = Number(result.distanceKm)
-      console.log('[updateDistance] setting distance:', km, 'method:', result.method, 'coords:', result.coordinates)
       setLocalDistance(km)
       setField('distance', km)
       setField('pickupLng', result.coordinates.pickup.lon)
@@ -169,45 +188,50 @@ export default function OrderScreen({ onOrderSuccess }) {
       setField('deliveryLat', result.coordinates.delivery.lat)
       setDistanceMethod(result.method || 'routed')
     } else {
-      console.log('[updateDistance] not allowed:', result.reason)
       setDistanceError(result.reason)
     }
+
     setDistanceLoading(false)
-    console.log('[updateDistance] done')
   }, [setField])
 
   const handleAddressChange = useCallback((fieldName, value) => {
-    console.log('[OrderScreen] handleAddressChange:', fieldName, value)
-    setField(fieldName, value)
-    if (addressTimeoutRef.current) clearTimeout(addressTimeoutRef.current)
-    addressTimeoutRef.current = setTimeout(() => {
-      const { pickup, drop } = formDataRef.current
-      console.log('[OrderScreen] debounced address check:', { pickup, drop })
-      if (pickup?.length >= 5 && drop?.length >= 5) {
-        updateDistance(pickup, drop)
+    setFormData((prev) => {
+      const next = { ...prev, [fieldName]: value }
+      if (addressTimeoutRef.current) clearTimeout(addressTimeoutRef.current)
+
+      if (next.pickup?.length >= 5 && next.drop?.length >= 5) {
+        addressTimeoutRef.current = setTimeout(() => {
+          updateDistance(next.pickup, next.drop)
+        }, 800)
       }
-    }, 800)
-  }, [setField, updateDistance])
+      return next
+    })
+  }, [updateDistance])
 
   const onSubmit = async (e) => {
     e?.preventDefault?.()
-    console.log('[OrderScreen] onSubmit called')
-    if (distanceLoading) { console.log('[OrderScreen] submit blocked: distanceLoading'); return }
+    if (distanceLoading) return
+
     const orderId = `BBA-${Math.floor(1000 + Math.random() * 9000)}-XP`
     const deliveryPin = generateSecurePin()
     const normalizedPhone = normalizePhone(formData.phone)
     const normalizedRecipientPhone = normalizePhone(formData.phone2)
     const distanceVal = currentDistance
-    console.log('[OrderScreen] Submit payload:', { orderId, senderPhone: normalizedPhone, recipientPhone: normalizedRecipientPhone, distance: distanceVal, pricing: calculateDeliveryFee(distanceVal) })
     const validation = orderSchema.safeParse({ ...formData, phone: formData.phone, distance: distanceVal })
+
     if (!validation.success) {
-      console.log('[OrderScreen] validation failed:', validation.error?.issues)
       alert('Please check form fields. ' + (validation.error?.issues?.[0]?.message || 'Unknown validation error'))
       return
     }
+
     const value = validation.data
     const pricing = calculateDeliveryFee(distanceVal)
-    if (!pricing.allowed) { alert(pricing.reason); return }
+
+    if (!pricing.allowed) {
+      alert(pricing.reason)
+      return
+    }
+
     try {
       const orderData = {
         order_id: orderId,
@@ -232,14 +256,17 @@ export default function OrderScreen({ onOrderSuccess }) {
         surge_fee: pricing.breakdown.surgeFee,
         delivery_pin: deliveryPin,
       }
+
       const { id } = await insertDocument('orders', orderData)
       if (!id) throw new Error('Order creation failed')
+
       setSubmittedTotalFee(pricing.breakdown.totalFee)
       setSubmittedOrderId(orderId)
       setSubmittedDeliveryPin(deliveryPin)
       setPinVisible(true)
       setPinCountdown(30)
       setSubmitted(true)
+
       if (onOrderSuccess) onOrderSuccess(orderId)
 
       fetch('/api/push', {
@@ -261,108 +288,241 @@ export default function OrderScreen({ onOrderSuccess }) {
     }
   }
 
+  useEffect(() => {
+    if (!submitted || !pinVisible || pinCountdown <= 1) return
+    const timer = setTimeout(() => setPinCountdown(pinCountdown - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [submitted, pinVisible, pinCountdown])
+
   if (submitted) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50 px-4">
-        <Card className="animate-in zoom-in-105 duration-500 w-full max-w-sm text-center rounded-3xl border-0 shadow-lg p-8">
-          <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4 text-green-600">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
-          </div>
-          <h2 className="text-xl font-black text-slate-900 uppercase">Request Logged!</h2>
-          <p className="text-xs font-bold text-slate-500 mt-1">Waybill: {submittedOrderId}</p>
-          {pinVisible ? (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-2xl">
-              <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Delivery Verification PIN</p>
-              <p className="text-4xl font-black text-red-600 tracking-wider mt-1">{submittedDeliveryPin}</p>
-              <p className="text-[10px] font-bold text-red-500 mt-2">{pinCountdown}s remaining - Give this code to your recipient</p>
+      <div className="min-h-dvh bg-[#f6f7fb] px-4 pb-8 pt-6">
+        <div className="mx-auto max-w-sm">
+          <Card className="overflow-hidden rounded-[2rem] border-0 bg-white p-6 text-center shadow-xl shadow-slate-900/10">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-emerald-50 text-emerald-600">
+              <CheckCircle2 className="h-8 w-8" />
             </div>
-          ) : (
-            <p className="text-xs font-bold text-red-500 mt-4">Verification code hidden - Check with sender for the PIN</p>
-          )}
-          <p className="text-lg font-bold text-red-600 mt-4">Total: GH₵ {submittedTotalFee.toFixed(2)}</p>
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 delay-200 mt-6 flex flex-col gap-2">
-            <Button onClick={() => onOrderSuccess?.(submittedOrderId)} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold uppercase rounded-xl">Track Order</Button>
-            <Button onClick={() => { setSubmitted(false); setFormData({ sender: '', recipient: '', phone: '', phone2: '', pickup: '', drop: '', item: '', instructions: '', distance: 2.0, pickupLng: undefined, pickupLat: undefined, deliveryLng: undefined, deliveryLat: undefined }); setStep(1); }} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold uppercase rounded-xl">Book Another</Button>
-          </div>
-        </Card>
+            <h2 className="mt-5 text-2xl font-black tracking-tight text-slate-950">Request Logged!</h2>
+            <p className="mt-2 text-sm font-bold text-slate-500">Waybill: <span className="text-slate-950">{submittedOrderId}</span></p>
+
+            {effectivePinVisible ? (
+              <div className="mt-5 rounded-[1.5rem] border border-red-200 bg-red-50 p-5">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-red-600">Delivery Verification PIN</p>
+                <p className="mt-2 text-4xl font-black tracking-[0.18em] text-red-600">{submittedDeliveryPin}</p>
+                <p className="mt-3 text-xs font-bold text-red-500">{pinCountdown}s remaining - Give this code to your recipient</p>
+              </div>
+            ) : (
+              <p className="mt-5 rounded-2xl bg-red-50 p-4 text-xs font-bold text-red-500">Verification code hidden - Check with sender for the PIN</p>
+            )}
+
+            <p className="mt-5 text-lg font-black text-red-600">Total: GH₵ {submittedTotalFee.toFixed(2)}</p>
+
+            <div className="mt-6 grid gap-3">
+              <Button type="button" onClick={() => onOrderSuccess?.(submittedOrderId)} className="h-14 rounded-2xl bg-slate-950 font-black uppercase text-white shadow-lg shadow-slate-900/15">
+                Track Order
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setSubmitted(false)
+                  setFormData({ sender: '', recipient: '', phone: '', phone2: '', pickup: '', drop: '', item: '', instructions: '', distance: 2.0, pickupLng: undefined, pickupLat: undefined, deliveryLng: undefined, deliveryLat: undefined })
+                  setStep(1)
+                }}
+                className="h-14 rounded-2xl bg-red-600 font-black uppercase text-white shadow-lg shadow-red-600/20"
+              >
+                Book Another
+              </Button>
+            </div>
+          </Card>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 pb-32">
-      <div className="text-center pt-6 pb-8">
-        <h1 className="animate-in fade-in slide-in-from-top-4 duration-500 text-3xl font-black text-slate-900 uppercase italic">Request Delivery</h1>
-        <p className="animate-in fade-in duration-500 delay-75 text-red-600 font-bold uppercase text-xs tracking-widest mt-1">Beba Fleet Service</p>
-      </div>
+    // 🌟 REMAPPED FORM CONTAINER: The form context wrapper encapsulates the absolute height tree context safely
+    <form className="min-h-dvh bg-[#f6f7fb] px-4 pb-[calc(7.5rem+env(safe-area-inset-bottom))] pt-4" onSubmit={onSubmit}>
+      <div className="mx-auto max-w-2xl">
+        <header className="pt-2">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-red-600">Beba Fleet Service</p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Request Delivery</h1>
+          <p className="mt-1 max-w-md text-xs font-semibold leading-relaxed text-slate-500">Complete the details below and confirm your delivery request.</p>
+        </header>
 
-      <Card className="animate-in fade-in slide-in-from-bottom-6 duration-500 delay-100 w-full max-w-md mx-auto border-0 shadow-xl rounded-3xl mb-8">
-        <CardContent className="p-6">
-          <StepIndicator step={step} />
-          <form id="order-form" onSubmit={onSubmit} className="space-y-5">
+        <Card className="mt-5 overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-900/5">
+          <CardContent className="p-0">
+            <StepIndicator step={step} />
+            
             {step === 1 && (
-              <div className="space-y-4">
-                <Field><FieldLabel>Sender Name</FieldLabel><Input className="rounded-xl border-slate-200" value={formData.sender} onChange={(e) => setField('sender', e.target.value)} placeholder="Your full name" /></Field>
-                <Field><FieldLabel>Pickup Address</FieldLabel><LocationSearch className="rounded-xl" value={formData.pickup} onChange={(val) => handleAddressChange('pickup', val)} placeholder="Search pickup..." /></Field>
-                <Field><FieldLabel>Contact Number</FieldLabel><Input className="rounded-xl" type="tel" value={formData.phone} onChange={(e) => setField('phone', e.target.value)} placeholder="Mobile Number" /></Field>
+              <div className="space-y-4 animate-in fade-in duration-200">
+                <Field className="flex flex-col gap-1.5">
+                  <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Sender Name</FieldLabel>
+                  <div className="relative">
+                    <User className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                    <Input className="h-14 rounded-2xl border-slate-200 bg-slate-50/70 pl-12 focus:bg-white transition" value={formData.sender} onChange={(e) => setField('sender', e.target.value)} placeholder="Your full name" />
+                  </div>
+                </Field>
+
+                <Field className="flex flex-col gap-1.5">
+                  <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Pickup Address</FieldLabel>
+                  <div className="relative">
+                    <MapPin className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 z-10 text-slate-400" />
+                    <LocationSearch key={formData.pickup ? 'pickup-filled' : 'pickup-empty'} className="h-14 rounded-2xl border-slate-200 bg-slate-50/70" value={formData.pickup} onChange={(val) => handleAddressChange('pickup', val)} placeholder="Search pickup location in Accra..." />
+                  </div>
+                </Field>
+
+                <Field className="flex flex-col gap-1.5">
+                  <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Contact Number</FieldLabel>
+                  <div className="relative">
+                    <Phone className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                    <Input className="h-14 rounded-2xl border-slate-200 bg-slate-50/70 pl-12 focus:bg-white transition" type="tel" value={formData.phone} onChange={(e) => setField('phone', e.target.value)} placeholder="Mobile Number" />
+                  </div>
+                </Field>
               </div>
             )}
-            {step === 2 && (
-              <div className="space-y-4">
-                <Field><FieldLabel>Recipient Name</FieldLabel><Input className="rounded-xl" value={formData.recipient} onChange={(e) => setField('recipient', e.target.value)} placeholder="Recipient Full Name" /></Field>
-                <Field><FieldLabel>Destination</FieldLabel><LocationSearch className="rounded-xl" value={formData.drop} onChange={(val) => handleAddressChange('drop', val)} placeholder="Search destination..." /></Field>
-                <Field><FieldLabel>Recipient Contact</FieldLabel><Input className="rounded-xl" type="tel" value={formData.phone2} onChange={(e) => setField('phone2', e.target.value)} placeholder="Recipient Mobile Number" /></Field>
-                <Field><FieldLabel>Cargo Details</FieldLabel><Input className="rounded-xl" value={formData.item} onChange={(e) => setField('item', e.target.value)} placeholder="What are you sending?" /></Field>
-                {distanceLoading && <div className="p-3 text-xs font-bold text-red-700 bg-red-50 rounded-xl flex items-center"><Loader2 className="animate-spin w-4 h-4 mr-2" /> Calculating distance...</div>}
-                {distanceError && <div className="p-3 text-xs text-red-600 bg-red-50 rounded-xl">{distanceError}</div>}
 
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Auto Distance</span>
-                  <button type="button" onClick={() => { setManualOverride(!manualOverride); if (!manualOverride) setDistanceMethod('manual'); else setDistanceMethod(localDistance <= 8 ? 'routed' : 'straight-line'); }} className="text-xs font-bold text-red-600 flex items-center gap-1">
-                    <Edit3 className="w-3 h-3" /> {manualOverride ? 'Override ON' : 'Override'}
+            {step === 2 && (
+              <div className="space-y-4 animate-in fade-in duration-200">
+                <Field className="flex flex-col gap-1.5">
+                  <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Recipient Name</FieldLabel>
+                  <div className="relative">
+                    <User className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                    <Input className="h-14 rounded-2xl border-slate-200 bg-slate-50/70 pl-12 focus:bg-white transition" value={formData.recipient} onChange={(e) => setField('recipient', e.target.value)} placeholder="Recipient Full Name" />
+                  </div>
+                </Field>
+
+                <Field className="flex flex-col gap-1.5">
+                  <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Destination Address</FieldLabel>
+                  <div className="relative">
+                    <Navigation className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 z-10 text-slate-400" />
+                    <LocationSearch key={formData.drop ? 'drop-filled' : 'drop-empty'} className="h-14 rounded-2xl border-slate-200 bg-slate-50/70" value={formData.drop} onChange={(val) => handleAddressChange('drop', val)} placeholder="Search destination location..." />
+                  </div>
+                </Field>
+
+                <Field className="flex flex-col gap-1.5">
+                  <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Recipient Contact</FieldLabel>
+                  <div className="relative">
+                    <Phone className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                    <Input className="h-14 rounded-2xl border-slate-200 bg-slate-50/70 pl-12 focus:bg-white transition" type="tel" value={formData.phone2} onChange={(e) => setField('phone2', e.target.value)} placeholder="Recipient Mobile Number" />
+                  </div>
+                </Field>
+
+                <Field className="flex flex-col gap-1.5">
+                  <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Cargo Details</FieldLabel>
+                  <div className="relative">
+                    <Package className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                    <Input className="h-14 rounded-2xl border-slate-200 bg-slate-50/70 pl-12 focus:bg-white transition" value={formData.item} onChange={(e) => setField('item', e.target.value)} placeholder="What are you sending?" />
+                  </div>
+                </Field>
+
+                {distanceLoading && (
+                  <div className="flex items-center rounded-xl bg-slate-900 text-white p-3 text-xs font-bold shadow-inner">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin text-red-500" />
+                    Calculating distance footprint...
+                  </div>
+                )}
+
+                {distanceError && (
+                  <div className="flex items-start gap-2 rounded-2xl bg-red-50 p-3 text-xs font-bold leading-5 text-red-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{distanceError}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-3 border border-slate-100">
+                  <div>
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Auto Distance</span>
+                    <p className="mt-0.5 text-xs font-bold text-slate-700">{currentDistance.toFixed(1)} km</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualOverride(!manualOverride)
+                      setDistanceMethod(!manualOverride ? 'manual' : localDistance <= 8 ? 'routed' : 'straight-line')
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                  >
+                    <Edit3 className="h-3 w-3 text-red-600" />
+                    {manualOverride ? 'Override On' : 'Override'}
                   </button>
                 </div>
 
                 {manualOverride && (
-                  <Field>
-                    <FieldLabel>Distance override (km)</FieldLabel>
-                    <Input className="rounded-xl" type="number" step="0.1" min="0.1" max="8" value={formData.distance} onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v > 0) { setField('distance', v); setLocalDistance(v); } }} placeholder="Enter distance in km" />
+                  <Field className="flex flex-col gap-1.5 animate-in fade-in duration-150">
+                    <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Distance override (km)</FieldLabel>
+                    <Input
+                      className="h-14 rounded-2xl border-slate-200 bg-slate-50"
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      max="8"
+                      value={formData.distance}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value)
+                        if (!isNaN(v) && v > 0) {
+                          setField('distance', v)
+                          setLocalDistance(v)
+                        }
+                      }}
+                      placeholder="Enter distance manually"
+                    />
                   </Field>
                 )}
 
                 {!manualOverride && distanceMethod && (
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">
-                    {distanceMethod === 'routed' ? '✓ Routed distance' : distanceMethod === 'straight-line' ? '⚠ Estimated (straight-line fallback)' : ''}
+                  <p className="rounded-xl bg-slate-100 p-2 text-center text-[9px] font-bold uppercase tracking-widest text-slate-500">
+                    {distanceMethod === 'routed' ? '⚡ Native Routed distance' : '📍 Straight-line estimation'}
                   </p>
                 )}
 
                 <PricePreview distance={currentDistance} />
               </div>
             )}
-          </form>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-50/80 backdrop-blur-md border-t border-slate-200 z-50">
-        <div className="max-w-md mx-auto">
+      {/* FIXED BASE FOOTER COMPONENT DIALOGUE */}
+      <div className="fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[60] border-t border-slate-200 bg-white/80 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 backdrop-blur-xl">
+        <div className="mx-auto max-w-2xl">
           <div className="flex gap-3">
             {step === 2 && (
-              <Button type="button" onClick={() => setStep(1)} className="flex-1 h-14 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black uppercase rounded-2xl">
-                <ChevronLeft className="w-5 h-5 mr-1" /> Back
+              <Button type="button" onClick={() => setStep(1)} className="h-14 flex-1 rounded-2xl bg-slate-100 font-black uppercase text-slate-700 hover:bg-slate-200 transition">
+                <ChevronLeft className="mr-1 h-4 w-4" />
+                Back
               </Button>
             )}
+
             {step === 1 ? (
-              <Button type="button" disabled={!canSubmitStep1(formData)} onClick={() => { console.log('[OrderScreen] Next click'); setStep(2); }} className="flex-[2] h-14 bg-red-600 hover:bg-red-700 text-white font-black uppercase rounded-2xl transition-all shadow-lg shadow-red-600/30 active:scale-95">
-                Next <ChevronRight className="w-5 h-5 ml-1" />
+              <Button
+                type="button"
+                disabled={!canSubmitStep1(formData)}
+                onClick={() => setStep(2)}
+                className="flex-[2] h-14 rounded-2xl bg-red-600 font-black uppercase text-white shadow-lg shadow-red-600/20 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none transition-all"
+              >
+                Next
+                <ChevronRight className="ml-1 h-4 w-4" />
               </Button>
             ) : (
-              <Button type="button" disabled={distanceLoading || !canSubmitStep2(formData)} onClick={() => { console.log('[OrderScreen] Confirm click'); onSubmit(); }} className="flex-[2] h-14 bg-red-600 hover:bg-red-700 text-white font-black uppercase rounded-2xl transition-all shadow-lg shadow-red-600/30 active:scale-95">
+              <Button
+                type="submit" // 🔥 CHANGED TO SEMANTIC SUBMIT: Triggers your main standard onSubmit framework natively
+                disabled={distanceLoading || !canSubmitStep2(formData)}
+                className="flex-[2] h-14 rounded-2xl bg-red-600 font-black uppercase text-white shadow-lg shadow-red-600/20 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none transition-all"
+              >
                 Confirm Request
               </Button>
             )}
           </div>
+
+          <div className="mt-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400">
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+            <span>{currentDistance.toFixed(1)} km Radius</span>
+            <span>•</span>
+            <Bike className="h-3.5 w-3.5 text-red-600" />
+            <span>Eco Bicycle Dispatch</span>
+          </div>
         </div>
       </div>
-    </div>
+    </form>
   )
 }

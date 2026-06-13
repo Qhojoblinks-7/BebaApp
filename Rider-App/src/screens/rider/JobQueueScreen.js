@@ -55,11 +55,14 @@ export default function JobQueueScreen({ navigation }) {
     };
   }, [userId, subscribeToPendingOrders, cleanListener]);
 
-  // Native notification registration
-  useEffect(() => {
-    notificationService.setupHandler();
-    notificationService.ensureChannel();
-  }, []);
+// Native notification registration (safe idempotent call)
+   useEffect(() => {
+    try {
+      notificationService.ensureChannel();
+    } catch (e) {
+      console.warn("[JobQueueScreen] Channel setup failed:", e.message);
+    }
+   }, []);
 
   useEffect(() => {
     if (!userId) return;

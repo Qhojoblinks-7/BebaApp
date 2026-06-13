@@ -119,7 +119,7 @@ const useRiderStore = create((set, get) => ({
         completedDrops: 0,
         cancelledRate: 0,
       },
-      syncing: true,
+syncing: false,
     }),
 }));
 

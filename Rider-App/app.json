@@ -72,9 +72,7 @@
         {
           "icon": "./assets/notification-icon.png",
           "color": "#115e59",
-          "sounds": [
-            "./assets/cash_register.mp3"
-          ]
+          "sounds": []
         }
       ]
     ],
@@ -85,9 +83,6 @@
     },
     "runtimeVersion": {
       "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/cae0c3f7-6cb6-4b8c-9bec-820dcb54bb5c"
     }
   }
 }

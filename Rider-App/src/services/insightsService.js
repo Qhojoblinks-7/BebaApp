@@ -120,15 +120,15 @@ export function detectSpendingPatterns(entries) {
     patterns.spendingVolatility = Math.sqrt(variance);
   }
 
-  const descriptionCounts = {};
-  entries.forEach((e) => {
-    if (e.type === "outflow" && e.description) {
-      const desc = e.description.toLowerCase();
-      if (!descriptionCounts[desc]) descriptionCounts[desc] = { count: 0, total: 0 };
-      descriptionCounts[desc].count += 1;
-      descriptionCounts[desc].total += Math.abs(Number(e.amount || 0));
-    }
-  });
+const descriptionCounts = {};
+   entries.forEach((e) => {
+     if (e.type === "outflow" && e.description) {
+       const desc = (e.description || "").toLowerCase();
+       if (!descriptionCounts[desc]) descriptionCounts[desc] = { count: 0, total: 0 };
+       descriptionCounts[desc].count += 1;
+       descriptionCounts[desc].total += Math.abs(Number(e.amount || 0));
+     }
+   });
 
   patterns.recurringExpenses = Object.entries(descriptionCounts)
     .filter(([, data]) => data.count >= 2)

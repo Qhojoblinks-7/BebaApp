@@ -15,12 +15,12 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview", 
+      "channel": "preview",
       "android": {
-        "buildType": "apk" 
+        "buildType": "apk"
       },
       "ios": {
-        "simulator": false 
+        "simulator": false
       }
     },
     "production": {

@@ -17,7 +17,7 @@ export async function insertManualEntry({
   const payload = {
     rider_id: userId,
     type,
-    category: category.toLowerCase().trim(),
+    category: ((category || "") + "").toLowerCase().trim(),
     amount: Math.abs(Number(amount)),
     note: note?.trim() || null,
     occurred_at: occurredAt || new Date().toISOString(),

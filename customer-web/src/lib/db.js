@@ -12,7 +12,6 @@ import {
   limit,
   onSnapshot,
   serverTimestamp,
-  writeBatch,
 } from "firebase/firestore";
 import { db } from "./firebaseConfig";
 

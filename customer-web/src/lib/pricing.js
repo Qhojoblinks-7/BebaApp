@@ -5,7 +5,7 @@
 export function calculateDeliveryFee(totalDistanceKm, demandLevel = 'LOW') {
   // Config constants - consider moving these to a config file for environmental scaling
   const CONFIG = {
-    BASE_PRICE: 15.00,
+    BASE_PRICE: 20.00,
     BASE_DISTANCE_CAP: 2.0,
     PER_KM_RATE: 8.00,
     ABSOLUTE_MAX_RADIUS: 8.0,

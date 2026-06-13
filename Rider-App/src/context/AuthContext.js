@@ -40,8 +40,10 @@ export function AuthProvider({ children }) {
 
       try {
         setLoading(true);
-        notificationService.setupHandler();
-        const tokenPromise = notificationService.registerPushToken(firebaseUser.uid);
+        const tokenPromise = notificationService.registerPushToken(firebaseUser.uid).catch(err => {
+          console.warn("[AuthContext] Push token registration skipped:", err.message);
+          return null;
+        });
         const snap = await getDoc(doc(db, "users", firebaseUser.uid));
         if (localFetchId !== ongoingFetchId.current) return;
 
@@ -62,7 +64,19 @@ export function AuthProvider({ children }) {
         }
       }
     });
-    return () => unsub();
+
+    // Safety timeout: if auth state doesn't resolve within 10s, show login screen
+    const timeout = setTimeout(() => {
+      if (loading) {
+        console.warn("[AuthContext] Auth state timeout - proceeding to login");
+        setLoading(false);
+      }
+    }, 10000);
+
+    return () => {
+      unsub();
+      clearTimeout(timeout);
+    };
   }, []);
 
   const signOutHandler = useCallback(async () => {

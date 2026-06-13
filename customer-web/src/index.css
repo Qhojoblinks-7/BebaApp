@@ -11,6 +11,17 @@
 @tailwind utilities;
 
 @layer base {
+  html,
+  body,
+  #root {
+    min-height: 100dvh;
+  }
+  body {
+    overflow-y: auto;
+  }
+  #root {
+    overflow-x: hidden;
+  }
   body {
     background-color: #f8fafc;
     margin: 0;
@@ -18,6 +29,7 @@
     -webkit-tap-highlight-color: transparent;
     color: #1e293b;
     line-height: 1.6;
+    overscroll-behavior-y: contain;
     @apply bg-background text-foreground;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
@@ -46,6 +58,31 @@
   }
   .touch-manipulation {
     touch-action: manipulation;
+  }
+
+  /* Mobile-first touch feedback */
+  .touch-feedback {
+    transition: transform 0.1s ease, opacity 0.1s ease;
+  }
+  .touch-feedback:active {
+    transform: scale(0.95);
+    opacity: 0.9;
+  }
+
+  /* Safe area handling for mobile devices */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  /* Native-like easing functions */
+  .ease-ios {
+    transition-timing-function: cubic-bezier(0.05, 0.7, 0.1, 1);
+  }
+  .ease-spring {
+    transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
   }
 }
 

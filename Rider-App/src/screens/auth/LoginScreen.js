@@ -10,6 +10,7 @@ import {
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signOut,
   updateProfile,
   sendEmailVerification,
 } from "firebase/auth";
@@ -32,7 +33,7 @@ export default function LoginScreen() {
   };
 
   const handleAuth = async () => {
-    if (!password || (isRegister && (!fullName.trim() || !email.trim() || !phone.trim()))) {
+    if (!password || (isRegister && (!fullName?.trim() || !email?.trim() || !phone?.trim()))) {
       setErrorBanner("Please fill in all fields correctly.");
       return;
     }
@@ -40,8 +41,8 @@ export default function LoginScreen() {
     setAuthLock(true);
     setErrorBanner("");
 
-    const normalizedEmail = email.trim().toLowerCase();
-    const normalizedPhone = formatPhoneNumber(phone);
+    const normalizedEmail = (email || "").trim().toLowerCase();
+    const normalizedPhone = formatPhoneNumber(phone || "");
 
     try {
       if (isRegister) {
