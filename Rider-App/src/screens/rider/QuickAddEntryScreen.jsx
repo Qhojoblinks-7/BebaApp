@@ -8,16 +8,14 @@ import {
   Platform,
   StatusBar,
   TextInput,
-  DateTimePickerAndroid,
   Alert,
 } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { ArrowLeft, Wallet } from "lucide-react-native";
 import { useAuth } from "../../context/AuthContext";
 import { insertManualEntry } from "../../services/manualEntries";
 
-// If you ever install @react-native-community/datetimepicker for iOS support, 
-// you can swap Platform logic with that component here.
-export default function QuickAddEntryScreen({ route, navigation }) {
+const QuickAddEntryScreen = ({ route, navigation }) => {
   const { user } = useAuth();
   const onAdded = route?.params?.onAdded;
 
@@ -27,17 +25,11 @@ export default function QuickAddEntryScreen({ route, navigation }) {
   const [note, setNote] = useState("");
   const [date, setDate] = useState(new Date());
   const [saving, setSaving] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const pickDate = () => {
     if (Platform.OS === "android") {
-      DateTimePickerAndroid.open({
-        value: date,
-        mode: "date",
-        is24Hour: true,
-        onChange: (_, selected) => {
-          if (selected) setDate(selected);
-        },
-      });
+      setShowDatePicker(true);
     } else {
       // iOS fallback reminder or custom simple modal alert
       Alert.alert(
@@ -163,6 +155,18 @@ export default function QuickAddEntryScreen({ route, navigation }) {
             <Text style={styles.dateText}>{date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</Text>
           </TouchableOpacity>
         </View>
+
+        {showDatePicker && (
+          <DateTimePicker
+            value={date}
+            mode="date"
+            display="default"
+            onChange={(_, selected) => {
+              setShowDatePicker(false);
+              if (selected) setDate(selected);
+            }}
+          />
+        )}
 
         <TouchableOpacity
           style={[styles.saveButton, saving && { opacity: 0.6 }]}

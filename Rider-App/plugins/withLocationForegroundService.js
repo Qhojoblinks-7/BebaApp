@@ -4,7 +4,7 @@ const withLocationForegroundService = (config) => {
   return withAndroidManifest(config, (config) => {
     const manifest = config.modResults;
     
-    if (manifest.manifest && manifest.manifest.application) {
+    if (manifest.manifest && Array.isArray(manifest.manifest.application) && manifest.manifest.application[0]) {
       const app = manifest.manifest.application[0];
       
       const hasLocationService = app.service?.some(

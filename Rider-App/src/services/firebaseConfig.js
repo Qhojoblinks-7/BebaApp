@@ -13,6 +13,11 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
+// Validate Firebase config on startup
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  console.error("[Firebase] Missing required Firebase configuration. Check your .env file.");
+}
+
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
 let auth;
@@ -21,6 +26,7 @@ try {
     persistence: getReactNativePersistence(ReactNativeAsyncStorage),
   });
 } catch (e) {
+  console.warn("[Firebase] Auth already initialized or persistence unavailable, using getAuth fallback");
   auth = getAuth(app);
 }
 

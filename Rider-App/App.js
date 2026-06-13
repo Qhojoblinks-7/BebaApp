@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './src/context/AuthContext';
 import LoginScreen from './src/screens/auth/LoginScreen';
 import AppNavigator from './src/navigation/AppNavigator';
 import notificationService from './src/services/notificationService';
+import ErrorBoundary from './src/components/ErrorBoundary';
 
 notificationService.setupHandler();
 
@@ -66,12 +67,14 @@ useEffect(() => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <StatusBar translucent backgroundColor="transparent" />
-      <View style={styles.flex}>
-        <RootNavigationGateway />
-      </View>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <StatusBar translucent backgroundColor="transparent" />
+        <View style={styles.flex}>
+          <RootNavigationGateway />
+        </View>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

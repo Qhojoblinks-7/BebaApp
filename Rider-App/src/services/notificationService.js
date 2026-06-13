@@ -13,7 +13,15 @@ import {
 } from "firebase/firestore";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
-import { db } from "./firebaseConfig";
+
+// Lazy-load firebase to prevent circular dependency issues
+let db;
+try {
+  const firebaseConfigModule = require("./firebaseConfig");
+  db = firebaseConfigModule.db;
+} catch (e) {
+  console.error("[NotificationService] Firebase not available:", e.message);
+}
 
 const CHANNEL_ID = "new-orders";
 
@@ -57,6 +65,10 @@ async function requestPermissions() {
 }
 
 function listenForNewOrders(onNewOrder) {
+  if (!db) {
+    console.warn("[NotificationService] Firestore not available - check Firebase configuration");
+    return () => {};
+  }
   const q = query(
     collection(db, "orders"),
     where("status", "==", "pending"),
@@ -120,7 +132,7 @@ async function createFirestoreNotification({
   orderIdDisplay,
   type = "info",
 }) {
-  if (!riderId) return;
+  if (!riderId || !db) return;
   try {
     const ref = doc(collection(db, "notifications"));
     await setDoc(ref, {
@@ -193,7 +205,7 @@ async function getBadgeCount() {
 }
 
 async function registerPushToken(riderId) {
-  if (!riderId) return null;
+  if (!riderId || !db) return null;
   try {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
@@ -234,6 +246,7 @@ async function registerPushToken(riderId) {
 }
 
 async function getAllRiderPushTokens() {
+  if (!db) return [];
   try {
     const snap = await getDocs(collection(db, "rider_push_tokens"));
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));

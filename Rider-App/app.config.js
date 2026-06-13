@@ -2,6 +2,7 @@ module.exports = ({ config }) => ({
   ...config,
   plugins: [
     "./plugins/withLocationForegroundService",
+    "@react-native-community/datetimepicker",
     ...(config.plugins || []).map((plugin) => {
       if (Array.isArray(plugin) && plugin[0] === "expo-location") {
         return [
