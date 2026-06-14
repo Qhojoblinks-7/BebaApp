@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Input } from '@/components/ui/input';
 
-export default function LocationSearch({ value, onChange, placeholder, className }) {
+export default function LocationSearch({ value, onChange, placeholder, className, id, ...props }) {
   const [query, setQuery] = useState(value || '');
   const [results, setResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
@@ -140,6 +140,7 @@ export default function LocationSearch({ value, onChange, placeholder, className
   return (
     <div ref={wrapperRef} className="relative w-full">
       <Input
+        id={id}
         ref={inputRef}
         type="text"
         value={query}
@@ -155,6 +156,7 @@ export default function LocationSearch({ value, onChange, placeholder, className
         placeholder={placeholder}
         autoComplete="off"
         className={`h-14 rounded-2xl border-slate-200 bg-slate-50 pr-24 ${className || ''}`}
+        {...props}
       />
       
       {loading && (

@@ -6,7 +6,6 @@ import { calculateDistance } from '../lib/distanceService'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Field, FieldLabel } from '@/components/ui/field'
 import LocationSearch from '@/components/LocationSearch'
 import { AlertCircle, Bike, CheckCircle2, ChevronLeft, ChevronRight, CreditCard, Edit3, Loader2, MapPin, Navigation, Package, Phone, ShieldCheck, User } from 'lucide-react'
 
@@ -35,6 +34,48 @@ const steps = [
   { number: 1, label: 'Details' },
   { number: 2, label: 'Confirm' },
 ]
+
+const formInputClass = 'h-14 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-red-200 focus:bg-white focus:ring-4 focus:ring-red-500/10'
+
+function FormSection({ eyebrow, title, description, children }) {
+  return (
+    <section className="rounded-[1.75rem] border border-slate-200 bg-slate-50/70 p-4 shadow-sm">
+      <div className="mb-4">
+        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-red-600">{eyebrow}</p>
+        <h3 className="mt-1 text-lg font-black tracking-tight text-slate-950">{title}</h3>
+        {description && <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{description}</p>}
+      </div>
+      <div className="space-y-4">
+        {children}
+      </div>
+    </section>
+  )
+}
+
+function FormField({ id, label, icon: Icon, hint, required, children }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <label htmlFor={id} className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-slate-500">
+          {Icon && <Icon className="h-4 w-4 shrink-0 text-red-600" />}
+          <span>{label}</span>
+          {required && <span className="rounded-full bg-red-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-red-600 ring-1 ring-red-100">Required</span>}
+        </label>
+        {hint && <span className="shrink-0 text-[10px] font-bold text-slate-400">{hint}</span>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function FormInput({ id, icon: Icon, className, ...props }) {
+  return (
+    <div className="relative">
+      {Icon && <Icon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />}
+      <Input id={id} className={`${formInputClass} ${Icon ? 'pl-12' : ''} ${className || ''}`} {...props} />
+    </div>
+  )
+}
 
 function StepIndicator({ step }) {
   return (
@@ -340,154 +381,151 @@ export default function OrderScreen({ onOrderSuccess }) {
   }
 
   return (
-    // 🌟 REMAPPED FORM CONTAINER: The form context wrapper encapsulates the absolute height tree context safely
-    <form className="min-h-dvh bg-[#f6f7fb] px-4 pb-[calc(7.5rem+env(safe-area-inset-bottom))] pt-4" onSubmit={onSubmit}>
-      <div className="mx-auto max-w-2xl">
-        <header className="pt-2">
+    <form className="min-h-dvh bg-[#f6f7fb] px-3 pb-[calc(9rem+env(safe-area-inset-bottom))] pt-3 sm:px-6" onSubmit={onSubmit}>
+      <div className="mx-auto max-w-xl">
+        <header className="mb-4">
           <p className="text-[10px] font-black uppercase tracking-[0.24em] text-red-600">Beba Fleet Service</p>
           <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Request Delivery</h1>
-          <p className="mt-1 max-w-md text-xs font-semibold leading-relaxed text-slate-500">Complete the details below and confirm your delivery request.</p>
+          <p className="mt-1 max-w-md text-xs font-semibold leading-relaxed text-slate-500">Complete the delivery request form below and review the fare before confirming.</p>
         </header>
 
-        <Card className="mt-5 overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-900/5">
+        <Card className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-4 shadow-xl shadow-slate-900/10 sm:p-6">
           <CardContent className="p-0">
-            <StepIndicator step={step} />
-            
-            {step === 1 && (
-              <div className="space-y-4 animate-in fade-in duration-200">
-                <Field className="flex flex-col gap-1.5">
-                  <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Sender Name</FieldLabel>
-                  <div className="relative">
-                    <User className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-                    <Input className="h-14 rounded-2xl border-slate-200 bg-slate-50/70 pl-12 focus:bg-white transition" value={formData.sender} onChange={(e) => setField('sender', e.target.value)} placeholder="Your full name" />
-                  </div>
-                </Field>
-
-                <Field className="flex flex-col gap-1.5">
-                  <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Pickup Address</FieldLabel>
-                  <div className="relative">
-                    <MapPin className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 z-10 text-slate-400" />
-                    <LocationSearch key={formData.pickup ? 'pickup-filled' : 'pickup-empty'} className="h-14 rounded-2xl border-slate-200 bg-slate-50/70" value={formData.pickup} onChange={(val) => handleAddressChange('pickup', val)} placeholder="Search pickup location in Accra..." />
-                  </div>
-                </Field>
-
-                <Field className="flex flex-col gap-1.5">
-                  <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Contact Number</FieldLabel>
-                  <div className="relative">
-                    <Phone className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-                    <Input className="h-14 rounded-2xl border-slate-200 bg-slate-50/70 pl-12 focus:bg-white transition" type="tel" value={formData.phone} onChange={(e) => setField('phone', e.target.value)} placeholder="Mobile Number" />
-                  </div>
-                </Field>
+            <div className="space-y-5">
+              <div className="overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-slate-950 via-slate-900 to-red-950 p-5 text-white shadow-xl shadow-slate-900/10">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-red-300">Delivery Request Form</p>
+                <h2 className="mt-1 text-2xl font-black tracking-tight">Book a secure bicycle delivery</h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-300">Sender, pickup, recipient, destination, cargo details, and verification notes are kept in one place.</p>
               </div>
-            )}
 
-            {step === 2 && (
-              <div className="space-y-4 animate-in fade-in duration-200">
-                <Field className="flex flex-col gap-1.5">
-                  <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Recipient Name</FieldLabel>
-                  <div className="relative">
-                    <User className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-                    <Input className="h-14 rounded-2xl border-slate-200 bg-slate-50/70 pl-12 focus:bg-white transition" value={formData.recipient} onChange={(e) => setField('recipient', e.target.value)} placeholder="Recipient Full Name" />
-                  </div>
-                </Field>
+              <StepIndicator step={step} />
 
-                <Field className="flex flex-col gap-1.5">
-                  <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Destination Address</FieldLabel>
-                  <div className="relative">
-                    <Navigation className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 z-10 text-slate-400" />
-                    <LocationSearch key={formData.drop ? 'drop-filled' : 'drop-empty'} className="h-14 rounded-2xl border-slate-200 bg-slate-50/70" value={formData.drop} onChange={(val) => handleAddressChange('drop', val)} placeholder="Search destination location..." />
-                  </div>
-                </Field>
+              {step === 1 && (
+                <div className="animate-in fade-in duration-200">
+                  <FormSection eyebrow="Step 1 of 2" title="Sender and pickup" description="Tell us who is sending the parcel and where the rider should collect it.">
+                    <FormField id="sender" label="Sender Name" icon={User} required>
+                      <FormInput id="sender" icon={User} value={formData.sender} onChange={(e) => setField('sender', e.target.value)} placeholder="Your full name" autoComplete="name" required />
+                    </FormField>
 
-                <Field className="flex flex-col gap-1.5">
-                  <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Recipient Contact</FieldLabel>
-                  <div className="relative">
-                    <Phone className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-                    <Input className="h-14 rounded-2xl border-slate-200 bg-slate-50/70 pl-12 focus:bg-white transition" type="tel" value={formData.phone2} onChange={(e) => setField('phone2', e.target.value)} placeholder="Recipient Mobile Number" />
-                  </div>
-                </Field>
+                    <FormField id="pickup" label="Pickup Address" icon={MapPin} required hint="Accra only">
+                      <LocationSearch id="pickup" className={`${formInputClass} pl-12`} value={formData.pickup} onChange={(val) => handleAddressChange('pickup', val)} placeholder="Search pickup location in Accra..." autoComplete="street-address" required />
+                    </FormField>
 
-                <Field className="flex flex-col gap-1.5">
-                  <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Cargo Details</FieldLabel>
-                  <div className="relative">
-                    <Package className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-                    <Input className="h-14 rounded-2xl border-slate-200 bg-slate-50/70 pl-12 focus:bg-white transition" value={formData.item} onChange={(e) => setField('item', e.target.value)} placeholder="What are you sending?" />
-                  </div>
-                </Field>
-
-                {distanceLoading && (
-                  <div className="flex items-center rounded-xl bg-slate-900 text-white p-3 text-xs font-bold shadow-inner">
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin text-red-500" />
-                    Calculating distance footprint...
-                  </div>
-                )}
-
-                {distanceError && (
-                  <div className="flex items-start gap-2 rounded-2xl bg-red-50 p-3 text-xs font-bold leading-5 text-red-700">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{distanceError}</span>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-3 border border-slate-100">
-                  <div>
-                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Auto Distance</span>
-                    <p className="mt-0.5 text-xs font-bold text-slate-700">{currentDistance.toFixed(1)} km</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setManualOverride(!manualOverride)
-                      setDistanceMethod(!manualOverride ? 'manual' : localDistance <= 8 ? 'routed' : 'straight-line')
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
-                  >
-                    <Edit3 className="h-3 w-3 text-red-600" />
-                    {manualOverride ? 'Override On' : 'Override'}
-                  </button>
+                    <FormField id="phone" label="Contact Number" icon={Phone} required>
+                      <FormInput id="phone" icon={Phone} type="tel" inputMode="tel" value={formData.phone} onChange={(e) => setField('phone', e.target.value)} placeholder="+233 XX XXX XXXX" autoComplete="tel" required />
+                    </FormField>
+                  </FormSection>
                 </div>
+              )}
 
-                {manualOverride && (
-                  <Field className="flex flex-col gap-1.5 animate-in fade-in duration-150">
-                    <FieldLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">Distance override (km)</FieldLabel>
-                    <Input
-                      className="h-14 rounded-2xl border-slate-200 bg-slate-50"
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      max="8"
-                      value={formData.distance}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value)
-                        if (!isNaN(v) && v > 0) {
-                          setField('distance', v)
-                          setLocalDistance(v)
-                        }
-                      }}
-                      placeholder="Enter distance manually"
-                    />
-                  </Field>
-                )}
+              {step === 2 && (
+                <div className="animate-in fade-in duration-200">
+                  <FormSection eyebrow="Step 2 of 2" title="Delivery and cargo" description="Add the recipient, destination, package details, and any handover instructions.">
+                    <FormField id="recipient" label="Recipient Name" icon={User} required>
+                      <FormInput id="recipient" icon={User} value={formData.recipient} onChange={(e) => setField('recipient', e.target.value)} placeholder="Recipient full name" autoComplete="name" required />
+                    </FormField>
 
-                {!manualOverride && distanceMethod && (
-                  <p className="rounded-xl bg-slate-100 p-2 text-center text-[9px] font-bold uppercase tracking-widest text-slate-500">
-                    {distanceMethod === 'routed' ? '⚡ Native Routed distance' : '📍 Straight-line estimation'}
-                  </p>
-                )}
+                    <FormField id="drop" label="Destination Address" icon={Navigation} required hint="Accra only">
+                      <LocationSearch id="drop" className={`${formInputClass} pl-12`} value={formData.drop} onChange={(val) => handleAddressChange('drop', val)} placeholder="Search destination location..." autoComplete="street-address" required />
+                    </FormField>
 
-                <PricePreview distance={currentDistance} />
-              </div>
-            )}
+                    <FormField id="phone2" label="Recipient Contact" icon={Phone} required>
+                      <FormInput id="phone2" icon={Phone} type="tel" inputMode="tel" value={formData.phone2} onChange={(e) => setField('phone2', e.target.value)} placeholder="+233 XX XXX XXXX" autoComplete="tel" required />
+                    </FormField>
+
+                    <FormField id="item" label="Cargo Details" icon={Package} required>
+                      <FormInput id="item" icon={Package} value={formData.item} onChange={(e) => setField('item', e.target.value)} placeholder="What are you sending?" required />
+                    </FormField>
+
+                    <FormField id="instructions" label="Delivery Instructions" icon={Edit3} hint="Optional">
+                      <textarea
+                        id="instructions"
+                        value={formData.instructions}
+                        onChange={(e) => setField('instructions', e.target.value)}
+                        placeholder="Gate code, landmark, recipient note, or handover instruction"
+                        className="min-h-28 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-red-200 focus:bg-white focus:ring-4 focus:ring-red-500/10"
+                      />
+                    </FormField>
+                  </FormSection>
+
+                  <div className="space-y-3">
+                    <div className="rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Estimated Distance</p>
+                          <p className="mt-0.5 text-2xl font-black tracking-tight text-slate-950">{currentDistance.toFixed(1)} km</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setManualOverride(!manualOverride)
+                            setDistanceMethod(!manualOverride ? 'manual' : localDistance <= 8 ? 'routed' : 'straight-line')
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-700 shadow-sm transition hover:bg-slate-100 active:scale-95"
+                        >
+                          <Edit3 className="h-3.5 w-3.5 text-red-600" />
+                          {manualOverride ? 'Override On' : 'Override'}
+                        </button>
+                      </div>
+
+                      {distanceLoading && (
+                        <div className="mt-3 flex items-center rounded-xl bg-slate-900 p-3 text-xs font-bold text-white shadow-inner" aria-live="polite">
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin text-red-500" />
+                          Calculating distance footprint...
+                        </div>
+                      )}
+
+                      {distanceError && (
+                        <div className="mt-3 flex items-start gap-2 rounded-2xl bg-red-50 p-3 text-xs font-bold leading-5 text-red-700">
+                          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                          <span>{distanceError}</span>
+                        </div>
+                      )}
+
+                      {manualOverride && (
+                        <div className="mt-3">
+                          <FormField id="distance" label="Distance override (km)" required>
+                            <FormInput
+                              id="distance"
+                              type="number"
+                              step="0.1"
+                              min="0.1"
+                              max="8"
+                              value={formData.distance}
+                              onChange={(e) => {
+                                const v = parseFloat(e.target.value)
+                                if (!isNaN(v) && v > 0) {
+                                  setField('distance', v)
+                                  setLocalDistance(v)
+                                }
+                              }}
+                              placeholder="Enter distance manually"
+                            />
+                          </FormField>
+                        </div>
+                      )}
+
+                      {!manualOverride && distanceMethod && (
+                        <p className="mt-3 rounded-xl bg-slate-100 p-2 text-center text-[9px] font-black uppercase tracking-widest text-slate-500">
+                          {distanceMethod === 'routed' ? 'Native routed distance' : 'Straight-line estimation'}
+                        </p>
+                      )}
+                    </div>
+
+                    <PricePreview distance={currentDistance} />
+                  </div>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* FIXED BASE FOOTER COMPONENT DIALOGUE */}
-      <div className="fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[60] border-t border-slate-200 bg-white/80 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 backdrop-blur-xl">
-        <div className="mx-auto max-w-2xl">
+      <div className="fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[60] border-t border-slate-200 bg-white/90 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 backdrop-blur-xl sm:px-6">
+        <div className="mx-auto max-w-xl">
           <div className="flex gap-3">
             {step === 2 && (
-              <Button type="button" onClick={() => setStep(1)} className="h-14 flex-1 rounded-2xl bg-slate-100 font-black uppercase text-slate-700 hover:bg-slate-200 transition">
+              <Button type="button" onClick={() => setStep(1)} className="h-14 flex-1 rounded-2xl bg-slate-100 font-black uppercase text-slate-700 transition hover:bg-slate-200">
                 <ChevronLeft className="mr-1 h-4 w-4" />
                 Back
               </Button>
@@ -498,16 +536,16 @@ export default function OrderScreen({ onOrderSuccess }) {
                 type="button"
                 disabled={!canSubmitStep1(formData)}
                 onClick={() => setStep(2)}
-                className="flex-[2] h-14 rounded-2xl bg-red-600 font-black uppercase text-white shadow-lg shadow-red-600/20 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none transition-all"
+                className="flex-[2] h-14 rounded-2xl bg-red-600 font-black uppercase text-white shadow-lg shadow-red-600/20 transition-all disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
               >
                 Next
                 <ChevronRight className="ml-1 h-4 w-4" />
               </Button>
             ) : (
               <Button
-                type="submit" // 🔥 CHANGED TO SEMANTIC SUBMIT: Triggers your main standard onSubmit framework natively
+                type="submit"
                 disabled={distanceLoading || !canSubmitStep2(formData)}
-                className="flex-[2] h-14 rounded-2xl bg-red-600 font-black uppercase text-white shadow-lg shadow-red-600/20 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none transition-all"
+                className="flex-[2] h-14 rounded-2xl bg-red-600 font-black uppercase text-white shadow-lg shadow-red-600/20 transition-all disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
               >
                 Confirm Request
               </Button>
