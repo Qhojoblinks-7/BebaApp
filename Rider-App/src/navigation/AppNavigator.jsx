@@ -4,7 +4,7 @@ import { NavigationContainer, useNavigationContainerRef } from "@react-navigatio
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Home, Briefcase, Route, DollarSign, Utensils } from "lucide-react-native";
+import { Home, Briefcase, Route, DollarSign } from "lucide-react-native";
 import { useThemeStore } from "../store/themeStore";
 import { useAuth } from "../context/AuthContext";
 import useNotificationStore from "../store/notificationStore";

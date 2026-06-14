@@ -400,6 +400,19 @@ export default function ProfileScreen({ navigation }) {
             </View>
             <ChevronRight size={18} color={colors.textMuted} />
           </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.settingItem, { borderBottomColor: "transparent" }]} 
+            onPress={() => navigation.navigate("Preferences")}
+          >
+            <View style={styles.settingLeft}>
+              <View style={[styles.settingIcon, { backgroundColor: colors.primaryAlpha }]}>
+                <Settings size={18} color={colors.primary} />
+              </View>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Preferences</Text>
+            </View>
+            <ChevronRight size={18} color={colors.textMuted} />
+          </TouchableOpacity>
         </View>
 
         {/* Utilities Section Title */}

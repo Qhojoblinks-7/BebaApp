@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import TrackerScreen from './screens/TrackerScreen'
 import OrderScreen from './screens/OrderScreen'
 import HomeScreen from './screens/HomeScreen'
@@ -6,19 +6,55 @@ import LandingScreen from './screens/LandingScreen'
 import VendorScreen from './screens/VendorScreen'
 import { BottomTabBar } from './components/ui/bottom-tab-bar'
 
+function isInstalledApp() {
+  return Boolean(window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true)
+}
+
+function isIOSDevice() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream
+}
+
 function InstallPrompt() {
-  const [visible, setVisible] = useState(false)
+  const promptEventRef = useRef(null)
   const [promptEvent, setPromptEvent] = useState(null)
+  const [fallbackVisible, setFallbackVisible] = useState(false)
+  const [iosVisible, setIosVisible] = useState(false)
 
   useEffect(() => {
-    const handler = (event) => {
+    if (isInstalledApp()) return undefined
+
+    const handleBeforeInstallPrompt = (event) => {
       event.preventDefault()
+      promptEventRef.current = event
       setPromptEvent(event)
-      setVisible(true)
+      setFallbackVisible(false)
+      setIosVisible(false)
     }
 
-    window.addEventListener('beforeinstallprompt', handler)
-    return () => window.removeEventListener('beforeinstallprompt', handler)
+    const handleAppInstalled = () => {
+      promptEventRef.current = null
+      setPromptEvent(null)
+      setFallbackVisible(false)
+      setIosVisible(false)
+    }
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+    window.addEventListener('appinstalled', handleAppInstalled)
+
+    const timer = window.setTimeout(() => {
+      if (promptEventRef.current) return
+      if (isIOSDevice()) {
+        setIosVisible(true)
+      } else {
+        setFallbackVisible(true)
+      }
+    }, isIOSDevice() ? 1200 : 3500)
+
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+      window.removeEventListener('appinstalled', handleAppInstalled)
+    }
   }, [])
 
   const handleInstall = useCallback(async () => {
@@ -27,11 +63,23 @@ function InstallPrompt() {
     promptEvent.prompt()
     const { outcome } = await promptEvent.userChoice
 
-    if (outcome === 'accepted') setVisible(false)
+    if (outcome === 'accepted') {
+      setPromptEvent(null)
+      setFallbackVisible(false)
+      setIosVisible(false)
+    }
+
+    promptEventRef.current = null
     setPromptEvent(null)
   }, [promptEvent])
 
-  if (!visible) return null
+  const dismiss = useCallback(() => {
+    setPromptEvent(null)
+    setFallbackVisible(false)
+    setIosVisible(false)
+  }, [])
+
+  if (!promptEvent && !fallbackVisible && !iosVisible) return null
 
   return (
     <div className="fixed inset-x-0 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-50 px-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -43,26 +91,42 @@ function InstallPrompt() {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-black text-slate-900">Install Beba App</p>
             <p className="mt-1 text-xs leading-5 text-slate-500">
-              Add Beba to your home screen for fast booking, instant tracking, and native-like delivery updates.
+              {iosVisible
+                ? 'iOS does not show install prompts here. Tap Share, then Add to Home Screen.'
+                : fallbackVisible
+                  ? 'Install Beba from your browser menu for fast booking, instant tracking, and native-like delivery updates.'
+                  : 'Add Beba to your home screen for fast booking, instant tracking, and native-like delivery updates.'}
             </p>
           </div>
         </div>
 
         <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            onClick={handleInstall}
-            className="flex-1 rounded-2xl bg-red-600 px-4 py-3 text-xs font-black uppercase tracking-wide text-white shadow-lg shadow-red-600/20 transition active:scale-95"
-          >
-            Install
-          </button>
-          <button
-            type="button"
-            onClick={() => setVisible(false)}
-            className="flex-1 rounded-2xl bg-slate-100 px-4 py-3 text-xs font-black uppercase tracking-wide text-slate-600 transition active:scale-95"
-          >
-            Not now
-          </button>
+          {promptEvent ? (
+            <>
+              <button
+                type="button"
+                onClick={handleInstall}
+                className="flex-1 rounded-2xl bg-red-600 px-4 py-3 text-xs font-black uppercase tracking-wide text-white shadow-lg shadow-red-600/20 transition active:scale-95"
+              >
+                Install
+              </button>
+              <button
+                type="button"
+                onClick={dismiss}
+                className="flex-1 rounded-2xl bg-slate-100 px-4 py-3 text-xs font-black uppercase tracking-wide text-slate-600 transition active:scale-95"
+              >
+                Not now
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={dismiss}
+              className="w-full rounded-2xl bg-red-600 px-4 py-3 text-xs font-black uppercase tracking-wide text-white shadow-lg shadow-red-600/20 transition active:scale-95"
+            >
+              Got it
+            </button>
+          )}
         </div>
       </div>
     </div>

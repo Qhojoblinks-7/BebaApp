@@ -87,6 +87,13 @@ function getInitials(name) {
     .toUpperCase() || "V";
 }
 
+const MetaPill = ({ icon, label, ui }) => (
+  <View style={styles.metaPill}>
+    {icon}
+    <Text style={styles.metaText} numberOfLines={1}>{label}</Text>
+  </View>
+);
+
 function formatFee(value) {
   const parsed = Number.parseFloat(value);
   return Number.isNaN(parsed) ? "GH₵ 0" : `GH₵ ${parsed.toFixed(2)}`;
